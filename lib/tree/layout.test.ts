@@ -38,11 +38,17 @@ describe("layoutGraph", () => {
 		const withRelations = await layoutGraph(nodes, [
 			...family,
 			// If this edge reached ELK, "friend" would be pushed a layer below
-			// "child" and every y coordinate here would change.
+			// "child" and the whole skeleton would shift with it.
 			relationEdge("r1", "child", "friend"),
 		]);
 
-		expect(withRelations.map((n) => n.position)).toEqual(withoutRelations.map((n) => n.position));
+		// Only the family-connected nodes. "friend" is expected to move -- it has no
+		// family edge, so it gets anchored beside somebody it knows. What must never
+		// move is the skeleton: a social edge cannot reposition a relative.
+		const skeleton = (positioned: Awaited<ReturnType<typeof layoutGraph>>) =>
+			positioned.filter((n) => n.id !== "friend").map((n) => ({ id: n.id, ...n.position }));
+
+		expect(skeleton(withRelations)).toEqual(skeleton(withoutRelations));
 	});
 
 	it("places a parent above their child", async () => {
@@ -56,7 +62,7 @@ describe("layoutGraph", () => {
 		expect(parent && child && parent.position.y < child.position.y).toBe(true);
 	});
 
-	it("keeps a friend in the same generation as the person they know", async () => {
+	it("puts a friend on the same row as the person they know", async () => {
 		const positioned = await layoutGraph(
 			[personNode("parent"), personNode("child"), personNode("friend")],
 			[familyEdge("f1", "parent", "child"), relationEdge("r1", "child", "friend")],
@@ -64,8 +70,47 @@ describe("layoutGraph", () => {
 
 		const child = positioned.find((n) => n.id === "child");
 		const friend = positioned.find((n) => n.id === "friend");
-		// Both are roots as far as the family graph is concerned... except child has
-		// a parent, so what matters is that friend was not pushed BELOW child.
-		expect(friend && child && friend.position.y <= child.position.y).toBe(true);
+
+		// Exact equality, not "<=". Left to ELK, a person with no family edge is an
+		// isolated node and lands in the TOP layer, rendering a friend as somebody
+		// older than the grandparents.
+		expect(friend?.position.y).toBe(child?.position.y);
+		// Beside them, not on top of them.
+		expect((friend?.position.x ?? 0) >= (child?.position.x ?? 0) + (child?.width ?? 0)).toBe(true);
+	});
+
+	it("chains a friend of a friend onto the same row", async () => {
+		const positioned = await layoutGraph(
+			[personNode("parent"), personNode("child"), personNode("friend"), personNode("theirFriend")],
+			[
+				familyEdge("f1", "parent", "child"),
+				relationEdge("r1", "child", "friend"),
+				relationEdge("r2", "friend", "theirFriend"),
+			],
+		);
+
+		const rowOf = (id: string) => positioned.find((n) => n.id === id)?.position.y;
+		expect(rowOf("theirFriend")).toBe(rowOf("child"));
+	});
+
+	it("does not stack two friends of the same person", async () => {
+		const positioned = await layoutGraph(
+			[personNode("parent"), personNode("child"), personNode("friendA"), personNode("friendB")],
+			[
+				familyEdge("f1", "parent", "child"),
+				relationEdge("r1", "child", "friendA"),
+				relationEdge("r2", "child", "friendB"),
+			],
+		);
+
+		const a = positioned.find((n) => n.id === "friendA");
+		const b = positioned.find((n) => n.id === "friendB");
+		expect(a?.position.x).not.toBe(b?.position.x);
+	});
+
+	it("leaves a person with no connections at all where ELK put them", async () => {
+		// Nothing to anchor to, so this is not a case the pass can improve.
+		const positioned = await layoutGraph([personNode("orphan"), personNode("other")], []);
+		expect(positioned).toHaveLength(2);
 	});
 });

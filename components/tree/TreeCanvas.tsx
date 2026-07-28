@@ -19,7 +19,7 @@ import {
 	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FlowEdge, FlowNode } from "@/lib/tree/graph";
 import { layoutGraph } from "@/lib/tree/layout";
 import { PersonNode, UnionNode } from "./PersonNode";
@@ -43,6 +43,11 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId }: Props) {
 	// instead would silently no-op in that window and never retry.
 	const measured = useNodesInitialized();
 
+	// The person whose social links are lit up. Relation edges cannot be hovered
+	// themselves: they render above the cards so their labels stay readable, which
+	// means they must not intercept pointer events.
+	const [focusedId, setFocusedId] = useState<string | null>(null);
+
 	// Edges are a pure projection of the source data, so derive rather than store.
 	const flowEdges = useMemo<Edge[]>(
 		() =>
@@ -57,8 +62,12 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId }: Props) {
 						type: "bezier",
 						label: edge.label,
 						className: `is-relation is-${edge.relationKind}`,
-						// Below family edges, so the tree structure stays legible.
-						zIndex: 0,
+						// Above the cards, because a label pinned to a curve's midpoint
+						// otherwise gets painted over by whatever card it passes behind.
+						// Safe only because the line itself is a faint 1px dash: it reads
+						// as an overlay and never competes with the family skeleton. The
+						// label stays hidden until hover or tap (see globals.css).
+						zIndex: 1001,
 						...(edge.directed
 							? { markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 } }
 							: {}),
@@ -116,12 +125,40 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId }: Props) {
 		void fitView({ padding: 0.2, duration: 400 });
 	}, [measured, nodes, fitView]);
 
+	// Light up the focused person's social links. Deliberately its own effect that
+	// only touches className: folding focus into the flowEdges memo would re-run
+	// ELK on every hover, since the layout effect depends on that memo.
+	useEffect(() => {
+		setEdges((current) =>
+			current.map((edge) => {
+				if (!edge.className?.includes("is-relation")) return edge;
+
+				const active = Boolean(
+					focusedId && (edge.source === focusedId || edge.target === focusedId),
+				);
+				const base = edge.className.replace(" is-active", "");
+				const next = active ? `${base} is-active` : base;
+
+				return next === edge.className ? edge : { ...edge, className: next };
+			}),
+		);
+	}, [focusedId, setEdges]);
+
+	// Tap counts as well as hover: on a phone there is no hover, and a tap that
+	// only selects a card would leave the labels unreachable.
+	const focus = useCallback((_: unknown, node: Node) => setFocusedId(node.id), []);
+	const blur = useCallback(() => setFocusedId(null), []);
+
 	return (
 		<ReactFlow
 			nodes={nodes}
 			edges={edges}
 			onNodesChange={onNodesChange}
 			onEdgesChange={onEdgesChange}
+			onNodeMouseEnter={focus}
+			onNodeMouseLeave={blur}
+			onNodeClick={focus}
+			onPaneClick={blur}
 			nodeTypes={nodeTypes}
 			// Connecting nodes by dragging would imply a relationship kind we
 			// cannot infer; relationships are added through the editor instead.

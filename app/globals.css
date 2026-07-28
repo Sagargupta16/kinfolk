@@ -105,8 +105,36 @@ body {
 	stroke-dasharray: 2 4;
 }
 
+/*
+ * Relations sit above the cards so their labels are never painted over, which
+ * means they must not intercept pointer events -- an invisible hit area over a
+ * card would block dragging it.
+ *
+ * So they are not hovered directly. Hovering or tapping a PERSON activates the
+ * relations touching them (see TreeCanvas), which is the question you actually
+ * have: who is this person connected to, and how.
+ */
+/*
+ * Every descendant, not just the group: React Flow sets pointer-events: all on
+ * edge labels, and that beats a `none` on the ancestor. A label rect sitting
+ * over a card would otherwise swallow the drag that should move the card.
+ */
+.react-flow__edge.is-relation,
+.react-flow__edge.is-relation * {
+	pointer-events: none;
+}
+
+.react-flow__edge.is-relation .react-flow__edge-textwrapper {
+	opacity: 0;
+	transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.react-flow__edge.is-relation.is-active .react-flow__edge-textwrapper {
+	opacity: 1;
+}
+
 .react-flow__edge.is-relation .react-flow__edge-text {
-	fill: var(--color-ink-faint);
+	fill: var(--color-accent);
 	font-family: var(--font-mono);
 	font-size: 9px;
 }
@@ -122,8 +150,8 @@ body {
 	fill: var(--color-hairline-strong);
 }
 
-/* Hovering a relation lifts it above the family skeleton so you can trace it. */
-.react-flow__edge.is-relation:hover .react-flow__edge-path {
+/* An active relation lifts out of the background so you can trace it. */
+.react-flow__edge.is-relation.is-active .react-flow__edge-path {
 	stroke: var(--color-accent);
 	stroke-width: 1.5;
 }

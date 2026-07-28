@@ -14,12 +14,16 @@ import type { FlowEdge, FlowNode } from "./graph";
 export const PERSON_WIDTH = 200;
 export const PERSON_HEIGHT = 92;
 const UNION_SIZE = 12;
+/** Matches elk.spacing.nodeNode, so anchored nodes sit on the same rhythm. */
+const NODE_GAP = 40;
 
 export type PositionedNode = FlowNode & {
 	position: { x: number; y: number };
 	width: number;
 	height: number;
 };
+
+type Box = { x: number; y: number; width: number; height: number };
 
 /**
  * ELK ships as a bundled worker-less build; importing it lazily keeps it out of
@@ -68,12 +72,14 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 	};
 
 	const laid = await elk.layout(graph);
-	const positions = new Map(
+	const positions = new Map<string, Box>(
 		(laid.children ?? []).map((child) => [
 			child.id as string,
 			{ x: child.x ?? 0, y: child.y ?? 0, width: child.width ?? 0, height: child.height ?? 0 },
 		]),
 	);
+
+	anchorFamilylessNodes(nodes, edges, positions);
 
 	return nodes.map((node) => {
 		const box = positions.get(node.id);
@@ -84,4 +90,70 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 			height: box?.height ?? PERSON_HEIGHT,
 		};
 	});
+}
+
+/**
+ * Place people who have no family edge beside somebody they actually know.
+ *
+ * ELK only saw hierarchical edges, so a friend with no parents and no partner is
+ * an isolated node: it gets dropped into the first layer, which reads as "older
+ * than the grandparents". That is worse than being unplaced, because the canvas
+ * asserts a generation that does not exist.
+ *
+ * So they are positioned afterwards, to the right of their best-known contact
+ * and on that person's row. This runs after layout rather than as an ELK
+ * constraint on purpose: the family skeleton must not shift to accommodate a
+ * friend, which is the invariant layout.test.ts pins down.
+ */
+function anchorFamilylessNodes(
+	nodes: FlowNode[],
+	edges: FlowEdge[],
+	positions: Map<string, Box>,
+): void {
+	const inFamily = new Set<string>();
+	for (const edge of edges) {
+		if (!edge.layout) continue;
+		inFamily.add(edge.source);
+		inFamily.add(edge.target);
+	}
+
+	const floating = nodes.filter((node) => !inFamily.has(node.id));
+	if (floating.length === 0 || floating.length === nodes.length) return;
+
+	// Anchor to whoever they know who is themselves anchored. Resolved in passes
+	// so a friend-of-a-friend still lands somewhere sensible.
+	const pending = new Set(floating.map((n) => n.id));
+	// Rows fill left to right, so two friends of one person do not stack.
+	const occupied = new Map<number, number>();
+	for (const [id, box] of positions) {
+		if (pending.has(id)) continue;
+		occupied.set(box.y, Math.max(occupied.get(box.y) ?? 0, box.x + box.width));
+	}
+
+	let progressed = true;
+	while (pending.size > 0 && progressed) {
+		progressed = false;
+
+		for (const id of [...pending]) {
+			const anchorId = edges.find(
+				(edge) =>
+					!edge.layout &&
+					((edge.source === id && !pending.has(edge.target)) ||
+						(edge.target === id && !pending.has(edge.source))),
+			);
+			if (!anchorId) continue;
+
+			const otherId = anchorId.source === id ? anchorId.target : anchorId.source;
+			const anchor = positions.get(otherId);
+			const box = positions.get(id);
+			if (!anchor || !box) continue;
+
+			const rowEnd = occupied.get(anchor.y) ?? anchor.x + anchor.width;
+			box.x = rowEnd + NODE_GAP;
+			box.y = anchor.y;
+			occupied.set(anchor.y, box.x + box.width);
+			pending.delete(id);
+			progressed = true;
+		}
+	}
 }
