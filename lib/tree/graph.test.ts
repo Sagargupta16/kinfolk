@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Person } from "../db/schema";
+import type {
+	ContactDetail,
+	ContactKind,
+	Person,
+	PersonRelation,
+	RelationKind,
+} from "../db/schema";
 import { fuseTrees, lifespan, type TreeSlice, toFlowGraph, type UnionWithChildren } from "./graph";
+import { canonicalPair, relationLabel } from "./relations";
 
 function person(id: string, treeId: string, overrides: Partial<Person> = {}): Person {
 	return {
@@ -47,8 +54,56 @@ function union(
 	};
 }
 
-function slice(treeId: string, people: Person[], unions: UnionWithChildren[]): TreeSlice {
-	return { treeId, treeName: treeId, people, unions };
+function relation(
+	id: string,
+	treeId: string,
+	kind: RelationKind,
+	a: string,
+	b: string,
+): PersonRelation {
+	const pair = canonicalPair(kind, a, b);
+	return {
+		id,
+		treeId,
+		personAId: pair.personAId,
+		personBId: pair.personBId,
+		kind,
+		label: null,
+		startDate: null,
+		endDate: null,
+		note: null,
+		createdAt: new Date("2026-01-01"),
+	};
+}
+
+function contact(
+	id: string,
+	personId: string,
+	kind: ContactKind,
+	value: string,
+	overrides: Partial<ContactDetail> = {},
+): ContactDetail {
+	return {
+		id,
+		personId,
+		kind,
+		value,
+		label: null,
+		visibility: "tree",
+		isPrimary: false,
+		createdAt: new Date("2026-01-01"),
+		updatedAt: new Date("2026-01-01"),
+		...overrides,
+	};
+}
+
+function slice(
+	treeId: string,
+	people: Person[],
+	unions: UnionWithChildren[],
+	extra: Partial<Pick<TreeSlice, "relations" | "contacts">> = {},
+): TreeSlice {
+	return { treeId, treeName: treeId, people, unions, ...extra };
 }
 
 describe("fuseTrees", () => {
@@ -231,6 +286,234 @@ describe("toFlowGraph", () => {
 
 		const { edges } = toFlowGraph(graph);
 		expect(edges.filter((e) => e.kind === "child")).toHaveLength(0);
+	});
+});
+
+describe("relation kinds", () => {
+	it("sorts the pair for symmetric kinds so a friendship cannot be stored twice", () => {
+		expect(canonicalPair("friend", "z", "a")).toEqual({ personAId: "a", personBId: "z" });
+		expect(canonicalPair("friend", "a", "z")).toEqual({ personAId: "a", personBId: "z" });
+	});
+
+	it("preserves order for directed kinds, since A holds the role", () => {
+		expect(canonicalPair("mentor", "z", "a")).toEqual({ personAId: "z", personBId: "a" });
+	});
+
+	it("reads a directed relation from either end", () => {
+		expect(relationLabel("mentor", "teacher-id", "teacher-id")).toBe("mentor");
+		expect(relationLabel("mentor", "teacher-id", "student-id")).toBe("mentee");
+	});
+
+	it("prefers a custom label over the generated one", () => {
+		expect(relationLabel("cousin", "a", "a", "second cousin, mother's side")).toBe(
+			"second cousin, mother's side",
+		);
+	});
+});
+
+describe("relations in the fused graph", () => {
+	it("rewrites relation endpoints onto fused ids", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("uncle1", "t1"), person("kid", "t1")], [], {
+					relations: [relation("r1", "t1", "mentor", "uncle1", "kid")],
+				}),
+				slice("t2", [person("uncle2", "t2")], []),
+			],
+			[{ personAId: "uncle1", personBId: "uncle2" }],
+		);
+
+		const fusedUncleId = graph.idMap.get("uncle2");
+		expect(graph.relations[0]?.personAId).toBe(fusedUncleId);
+	});
+
+	it("collapses the same friendship recorded by two families", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a1", "t1"), person("b1", "t1")], [], {
+					relations: [relation("r1", "t1", "friend", "a1", "b1")],
+				}),
+				slice("t2", [person("a2", "t2"), person("b2", "t2")], [], {
+					// Same two humans, recorded in the opposite order.
+					relations: [relation("r2", "t2", "friend", "b2", "a2")],
+				}),
+			],
+			[
+				{ personAId: "a1", personBId: "a2" },
+				{ personAId: "b1", personBId: "b2" },
+			],
+		);
+
+		expect(graph.relations).toHaveLength(1);
+	});
+
+	it("keeps both directions of a directed relation, since they are different claims", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a", "t1"), person("b", "t1")], [], {
+					relations: [
+						relation("r1", "t1", "mentor", "a", "b"),
+						relation("r2", "t1", "mentor", "b", "a"),
+					],
+				}),
+			],
+			[],
+		);
+
+		expect(graph.relations).toHaveLength(2);
+	});
+
+	it("drops a relation that fusion turned into a self-loop", () => {
+		// Two rows the owner later declared to be the same human, with a stale
+		// relation between them.
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("dup1", "t1")], [], {
+					relations: [relation("r1", "t1", "friend", "dup1", "dup2")],
+				}),
+				slice("t2", [person("dup2", "t2")], []),
+			],
+			[{ personAId: "dup1", personBId: "dup2" }],
+		);
+
+		expect(graph.relations).toHaveLength(0);
+	});
+
+	it("marks relation edges as non-layout so they cannot shift a generation", () => {
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("dad", "t1"), person("kid", "t1"), person("friend", "t1")],
+					[union("u1", "t1", "dad", null, ["kid"])],
+					{ relations: [relation("r1", "t1", "friend", "kid", "friend")] },
+				),
+			],
+			[],
+		);
+
+		const { edges } = toFlowGraph(graph);
+		const relationEdges = edges.filter((e) => e.kind === "relation");
+
+		expect(relationEdges).toHaveLength(1);
+		expect(relationEdges[0]?.layout).toBe(false);
+		// Every family edge must still drive layout.
+		expect(edges.filter((e) => e.kind !== "relation").every((e) => e.layout)).toBe(true);
+	});
+
+	it("omits relation edges entirely when the overlay is off", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a", "t1"), person("b", "t1")], [], {
+					relations: [relation("r1", "t1", "friend", "a", "b")],
+				}),
+			],
+			[],
+		);
+
+		const { edges } = toFlowGraph(graph, { includeRelations: false });
+		expect(edges.filter((e) => e.kind === "relation")).toHaveLength(0);
+	});
+
+	it("drops a relation whose other end is not visible", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a", "t1")], [], {
+					relations: [relation("r1", "t1", "friend", "a", "someone-in-a-hidden-tree")],
+				}),
+			],
+			[],
+		);
+
+		const { edges } = toFlowGraph(graph);
+		expect(edges.filter((e) => e.kind === "relation")).toHaveLength(0);
+	});
+
+	it("labels a directed relation A -> B and marks it directed", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("guru", "t1"), person("pupil", "t1")], [], {
+					relations: [relation("r1", "t1", "teacher", "guru", "pupil")],
+				}),
+			],
+			[],
+		);
+
+		const edge = toFlowGraph(graph).edges.find((e) => e.kind === "relation");
+		expect(edge?.source).toBe("guru");
+		expect(edge?.label).toBe("teacher");
+		expect(edge?.directed).toBe(true);
+	});
+});
+
+describe("contact details", () => {
+	it("gathers contacts from every contributing row", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a1", "t1")], [], {
+					contacts: { a1: [contact("c1", "a1", "phone", "+91 111")] },
+				}),
+				slice("t2", [person("a2", "t2")], [], {
+					contacts: { a2: [contact("c2", "a2", "email", "x@example.com")] },
+				}),
+			],
+			[{ personAId: "a1", personBId: "a2" }],
+		);
+
+		expect(graph.people[0]?.contacts).toHaveLength(2);
+	});
+
+	it("dedupes the same number recorded by two families", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a1", "t1")], [], {
+					contacts: { a1: [contact("c1", "a1", "phone", "+91 98765 43210")] },
+				}),
+				slice("t2", [person("a2", "t2")], [], {
+					// Same value, different casing/whitespace is still the same number.
+					contacts: { a2: [contact("c2", "a2", "phone", " +91 98765 43210 ")] },
+				}),
+			],
+			[{ personAId: "a1", personBId: "a2" }],
+		);
+
+		expect(graph.people[0]?.contacts).toHaveLength(1);
+	});
+
+	it("keeps a primary flag set by either family when deduping", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a1", "t1")], [], {
+					contacts: { a1: [contact("c1", "a1", "phone", "+91 111")] },
+				}),
+				slice("t2", [person("a2", "t2")], [], {
+					contacts: { a2: [contact("c2", "a2", "phone", "+91 111", { isPrimary: true })] },
+				}),
+			],
+			[{ personAId: "a1", personBId: "a2" }],
+		);
+
+		expect(graph.people[0]?.contacts[0]?.isPrimary).toBe(true);
+	});
+
+	it("keeps two different numbers for the same person", () => {
+		const graph = fuseTrees(
+			[
+				slice("t1", [person("a", "t1")], [], {
+					contacts: {
+						a: [contact("c1", "a", "phone", "+91 111"), contact("c2", "a", "phone", "+91 222")],
+					},
+				}),
+			],
+			[],
+		);
+
+		expect(graph.people[0]?.contacts).toHaveLength(2);
+	});
+
+	it("leaves contacts empty when none were passed", () => {
+		const graph = fuseTrees([slice("t1", [person("a", "t1")], [])], []);
+		expect(graph.people[0]?.contacts).toEqual([]);
 	});
 });
 

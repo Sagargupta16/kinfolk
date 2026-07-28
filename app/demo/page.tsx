@@ -9,9 +9,11 @@ import { useMemo, useState } from "react";
 import { TreeCanvas } from "@/components/tree/TreeCanvas";
 import { fuseTrees, toFlowGraph } from "@/lib/tree/graph";
 import { sampleLinks, samplePrimaryTreeId, sampleSelfId, sampleSlices } from "@/lib/tree/sample";
+import { cn } from "@/lib/utils";
 
 export default function DemoPage() {
 	const [combined, setCombined] = useState(true);
+	const [showRelations, setShowRelations] = useState(true);
 
 	const { nodes, edges, stats } = useMemo(() => {
 		// Mine-only mode drops the other tree AND its links, which is exactly what
@@ -22,7 +24,7 @@ export default function DemoPage() {
 		const links = combined ? sampleLinks : [];
 
 		const fused = fuseTrees(slices, links, samplePrimaryTreeId);
-		const graph = toFlowGraph(fused);
+		const graph = toFlowGraph(fused, { includeRelations: showRelations });
 
 		return {
 			...graph,
@@ -30,9 +32,10 @@ export default function DemoPage() {
 				people: fused.people.length,
 				rows: slices.reduce((n, s) => n + s.people.length, 0),
 				merged: fused.people.filter((p) => p.sources.length > 1).length,
+				relations: fused.relations.length,
 			},
 		};
-	}, [combined]);
+	}, [combined, showRelations]);
 
 	return (
 		<main className="flex h-dvh flex-col bg-canvas">
@@ -59,20 +62,41 @@ export default function DemoPage() {
 						<dt className="text-ink-faint">merged</dt>
 						<dd className="tabular text-accent">{stats.merged}</dd>
 					</div>
+					<div className="flex items-center gap-1.5">
+						<dt className="text-ink-faint">links</dt>
+						<dd className="tabular text-ink">{stats.relations}</dd>
+					</div>
 				</dl>
 
-				{/* 44px minimum hit target. */}
-				<button
-					type="button"
-					onClick={() => setCombined((value) => !value)}
-					aria-pressed={combined}
-					className="min-h-11 rounded-md border border-hairline px-3.5 text-xs font-medium text-ink transition-colors duration-[--duration-fast] ease-[--ease-out] hover:border-hairline-strong hover:bg-surface-raised"
-				>
-					<span className="sm:hidden">{combined ? "Combined" : "Mine only"}</span>
-					<span className="hidden sm:inline">
-						{combined ? "Showing combined tree" : "Showing my tree only"}
-					</span>
-				</button>
+				{/* 44px minimum hit targets. */}
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={() => setShowRelations((value) => !value)}
+						aria-pressed={showRelations}
+						className={cn(
+							"min-h-11 rounded-md border px-3.5 text-xs font-medium transition-colors duration-[--duration-fast] ease-[--ease-out]",
+							showRelations
+								? "border-hairline-strong bg-surface-raised text-ink"
+								: "border-hairline text-ink-muted hover:border-hairline-strong",
+						)}
+					>
+						<span className="sm:hidden">Links</span>
+						<span className="hidden sm:inline">Social links</span>
+					</button>
+
+					<button
+						type="button"
+						onClick={() => setCombined((value) => !value)}
+						aria-pressed={combined}
+						className="min-h-11 rounded-md border border-hairline px-3.5 text-xs font-medium text-ink transition-colors duration-[--duration-fast] ease-[--ease-out] hover:border-hairline-strong hover:bg-surface-raised"
+					>
+						<span className="sm:hidden">{combined ? "Combined" : "Mine only"}</span>
+						<span className="hidden sm:inline">
+							{combined ? "Showing combined tree" : "Showing my tree only"}
+						</span>
+					</button>
+				</div>
 			</header>
 
 			<div className="min-h-0 flex-1">

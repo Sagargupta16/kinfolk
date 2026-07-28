@@ -54,11 +54,17 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 			width: node.type === "union" ? UNION_SIZE : PERSON_WIDTH,
 			height: node.type === "union" ? UNION_SIZE : PERSON_HEIGHT,
 		})),
-		edges: edges.map((edge) => ({
-			id: edge.id,
-			sources: [edge.source],
-			targets: [edge.target],
-		})),
+		// Only hierarchical edges. A friendship or a cousinhood carries no
+		// generation, so including it here would pull that person into a lower
+		// layer and misrepresent the family. Those edges are drawn as an overlay
+		// on top of the family layout instead.
+		edges: edges
+			.filter((edge) => edge.layout)
+			.map((edge) => ({
+				id: edge.id,
+				sources: [edge.source],
+				targets: [edge.target],
+			})),
 	};
 
 	const laid = await elk.layout(graph);

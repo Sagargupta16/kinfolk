@@ -13,7 +13,8 @@
  * Layout itself is ELK's problem (see layout.ts). This file stays pure so it is
  * testable without a browser or a database.
  */
-import type { Person, Union } from "../db/schema";
+import type { ContactDetail, Person, PersonRelation, RelationKind, Union } from "../db/schema";
+import { RELATION_KINDS } from "./relations";
 
 /** A union plus its children, as loaded from `unions` + `union_children`. */
 export type UnionWithChildren = Union & {
@@ -26,6 +27,10 @@ export type TreeSlice = {
 	treeName: string;
 	people: Person[];
 	unions: UnionWithChildren[];
+	/** Non-parentage edges: cousins, friends, colleagues, mentors. */
+	relations?: PersonRelation[];
+	/** Keyed by person id. Callers pass only details the viewer may see. */
+	contacts?: Record<string, ContactDetail[]>;
 };
 
 /** An accepted `person_links` row, reduced to the pair. */
@@ -42,11 +47,18 @@ export type FusedPerson = {
 	primary: Person;
 	sources: Person[];
 	contributingTreeIds: string[];
+	/**
+	 * Deduped across every contributing row: two families holding the same phone
+	 * number should show it once, not twice.
+	 */
+	contacts: ContactDetail[];
 };
 
 export type FusedGraph = {
 	people: FusedPerson[];
 	unions: UnionWithChildren[];
+	/** Endpoints rewritten onto fused ids, same as unions. */
+	relations: PersonRelation[];
 	/** Maps every original person id to its fused id. */
 	idMap: Map<string, string>;
 };
@@ -113,6 +125,14 @@ export function fuseTrees(
 	const idMap = new Map<string, string>();
 	const people: FusedPerson[] = [];
 
+	// Contacts arrive keyed by ORIGINAL person id, so collect them per group.
+	const contactsByPersonId = new Map<string, ContactDetail[]>();
+	for (const slice of slices) {
+		for (const [personId, details] of Object.entries(slice.contacts ?? {})) {
+			contactsByPersonId.set(personId, details);
+		}
+	}
+
 	for (const [root, members] of groups) {
 		for (const member of members) idMap.set(member.id, root);
 		people.push({
@@ -120,6 +140,7 @@ export function fuseTrees(
 			primary: pickPrimary(members, primaryTreeId),
 			sources: members,
 			contributingTreeIds: [...new Set(members.map((m) => m.treeId))],
+			contacts: dedupeContacts(members.flatMap((m) => contactsByPersonId.get(m.id) ?? [])),
 		});
 	}
 
@@ -133,7 +154,64 @@ export function fuseTrees(
 			childIds: [...new Set(u.childIds.map((id) => idMap.get(id) ?? id))],
 		}));
 
-	return { people, unions: dedupeUnions(unions), idMap };
+	// Same treatment for social/professional edges: after fusion, "my cousin" and
+	// "your cousin" pointing at the same human must become one edge.
+	const relations = slices
+		.flatMap((s) => s.relations ?? [])
+		.map((r) => ({
+			...r,
+			personAId: idMap.get(r.personAId) ?? r.personAId,
+			personBId: idMap.get(r.personBId) ?? r.personBId,
+		}));
+
+	return {
+		people,
+		unions: dedupeUnions(unions),
+		relations: dedupeRelations(relations),
+		idMap,
+	};
+}
+
+/**
+ * Same channel + same value is the same contact, regardless of which family
+ * recorded it. Kept in first-seen order, and a primary flag from any source
+ * wins so a merged card still knows which number to show first.
+ */
+function dedupeContacts(details: ContactDetail[]): ContactDetail[] {
+	const byKey = new Map<string, ContactDetail>();
+
+	for (const detail of details) {
+		const key = `${detail.kind}::${detail.value.trim().toLowerCase()}`;
+		const existing = byKey.get(key);
+		if (!existing) {
+			byKey.set(key, detail);
+			continue;
+		}
+		if (detail.isPrimary && !existing.isPrimary) byKey.set(key, detail);
+	}
+
+	return [...byKey.values()];
+}
+
+/**
+ * After fusion two trees can describe the same friendship or cousinhood. Keyed
+ * on kind plus endpoints, with symmetric kinds sorted so (A,B) and (B,A) collapse
+ * while directed kinds stay distinct -- "A mentors B" and "B mentors A" are two
+ * different claims and both deserve to survive.
+ */
+function dedupeRelations(relations: PersonRelation[]): PersonRelation[] {
+	const byKey = new Map<string, PersonRelation>();
+
+	for (const relation of relations) {
+		if (relation.personAId === relation.personBId) continue; // fusion made it a self-loop
+		const pair = RELATION_KINDS[relation.kind].symmetric
+			? [relation.personAId, relation.personBId].sort().join("::")
+			: `${relation.personAId}->${relation.personBId}`;
+		const key = `${relation.kind}::${pair}`;
+		if (!byKey.has(key)) byKey.set(key, relation);
+	}
+
+	return [...byKey.values()];
 }
 
 function pickPrimary(members: Person[], primaryTreeId?: string): Person {
@@ -179,9 +257,21 @@ export type FlowEdge = {
 	id: string;
 	source: string;
 	target: string;
-	kind: "partner" | "child";
-	/** Child edges carry the parentage role so the UI can dash non-biological links. */
-	role?: UnionWithChildren["childIds"] extends never ? never : string;
+	kind: "partner" | "child" | "relation";
+	/**
+	 * False for edges that must not influence node placement.
+	 *
+	 * This is the whole reason social edges are worth separating: a friendship is
+	 * not hierarchical, and handing it to a layered layout drags that friend into
+	 * a lower generation. Layout runs on family edges; the rest is overlay.
+	 */
+	layout: boolean;
+	/** Relation kind, for styling and the edge label. Only set when kind is "relation". */
+	relationKind?: RelationKind;
+	/** Pre-rendered label ("cousin", "mentor"), read A -> B. */
+	label?: string;
+	/** Symmetric relations draw no arrowhead. */
+	directed?: boolean;
 };
 
 /**
@@ -191,7 +281,10 @@ export type FlowEdge = {
  * directly. With N children that would mean 2N crossing edges; via a union node
  * it is 2 + N, and siblings visibly share one origin point.
  */
-export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: FlowEdge[] } {
+export function toFlowGraph(
+	graph: FusedGraph,
+	options: { includeRelations?: boolean } = {},
+): { nodes: FlowNode[]; edges: FlowEdge[] } {
 	const nodes: FlowNode[] = graph.people.map((p) => ({ id: p.id, type: "person", data: p }));
 	const edges: FlowEdge[] = [];
 	const known = new Set(graph.people.map((p) => p.id));
@@ -209,6 +302,7 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 					source: partnerId,
 					target: unionNodeId,
 					kind: "partner",
+					layout: true,
 				});
 			}
 		}
@@ -220,6 +314,28 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 				source: unionNodeId,
 				target: childId,
 				kind: "child",
+				layout: true,
+			});
+		}
+	}
+
+	if (options.includeRelations !== false) {
+		for (const relation of graph.relations) {
+			// Both ends must be visible; a relation to someone in a tree the viewer
+			// cannot see is simply not drawn.
+			if (!known.has(relation.personAId) || !known.has(relation.personBId)) continue;
+
+			const spec = RELATION_KINDS[relation.kind];
+			edges.push({
+				id: `r:${relation.id}`,
+				source: relation.personAId,
+				target: relation.personBId,
+				kind: "relation",
+				// Never influences placement. See the FlowEdge comment.
+				layout: false,
+				relationKind: relation.kind,
+				label: relation.label ?? spec.label,
+				directed: !spec.symmetric,
 			});
 		}
 	}

@@ -9,6 +9,7 @@ import {
 	BackgroundVariant,
 	Controls,
 	type Edge,
+	MarkerType,
 	type Node,
 	ReactFlow,
 	ReactFlowProvider,
@@ -45,13 +46,33 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId }: Props) {
 	// Edges are a pure projection of the source data, so derive rather than store.
 	const flowEdges = useMemo<Edge[]>(
 		() =>
-			sourceEdges.map((edge) => ({
-				id: edge.id,
-				source: edge.source,
-				target: edge.target,
-				type: "smoothstep",
-				className: edge.kind === "partner" ? "is-partner" : undefined,
-			})),
+			sourceEdges.map((edge) => {
+				if (edge.kind === "relation") {
+					return {
+						id: edge.id,
+						source: edge.source,
+						target: edge.target,
+						// Curved, not orthogonal: social edges cut across the generation
+						// grid, and a curve reads as "not part of the skeleton".
+						type: "bezier",
+						label: edge.label,
+						className: `is-relation is-${edge.relationKind}`,
+						// Below family edges, so the tree structure stays legible.
+						zIndex: 0,
+						...(edge.directed
+							? { markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 } }
+							: {}),
+					};
+				}
+
+				return {
+					id: edge.id,
+					source: edge.source,
+					target: edge.target,
+					type: "smoothstep",
+					className: edge.kind === "partner" ? "is-partner" : undefined,
+				};
+			}),
 		[sourceEdges],
 	);
 

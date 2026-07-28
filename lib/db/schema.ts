@@ -21,6 +21,7 @@
  */
 import { relations } from "drizzle-orm";
 import {
+	boolean,
 	date,
 	index,
 	integer,
@@ -71,6 +72,67 @@ export const proposalStatusEnum = pgEnum("proposal_status", [
 	"accepted",
 	"rejected",
 	"revoked",
+]);
+
+/**
+ * Non-parentage relations: everything that is not "partner of" or "child of".
+ *
+ * Directed kinds are stored ONE way only -- "mentee" is not a value, it is
+ * `mentor` read from the other end. Storing both directions would let the same
+ * fact exist twice with nothing to reconcile the pair. See lib/tree/relations.ts
+ * for the label/inverse table.
+ */
+export const relationKindEnum = pgEnum("relation_kind", [
+	// Kin the union model cannot express on its own, or where the connecting
+	// ancestor is unknown.
+	"cousin",
+	"in_law",
+	"step_sibling",
+	"godparent",
+	// Social
+	"friend",
+	"close_friend",
+	"family_friend",
+	"neighbour",
+	"classmate",
+	"roommate",
+	// Professional
+	"colleague",
+	"business_partner",
+	"mentor",
+	"teacher",
+	"employer",
+	// Care
+	"caregiver",
+	"other",
+]);
+
+/** Channel for a stored contact detail. */
+export const contactKindEnum = pgEnum("contact_kind", [
+	"phone",
+	"email",
+	"whatsapp",
+	"address",
+	"instagram",
+	"linkedin",
+	"facebook",
+	"x",
+	"website",
+	"other",
+]);
+
+/**
+ * Who may see a contact detail. Contact info is the most sensitive data in the
+ * app -- a phone number is not public just because a family tree is shared --
+ * so it defaults to the narrowest setting and widens only on an explicit choice.
+ */
+export const visibilityEnum = pgEnum("visibility", [
+	/** Only the owning tree's members. */
+	"tree",
+	/** Anyone whose tree is joined to this one by an accepted person link. */
+	"linked",
+	/** Every signed-in viewer with any access to the tree. */
+	"shared",
 ]);
 
 /* -------------------------------------------------------------------------- */
@@ -293,6 +355,93 @@ export const unionChildren = pgTable(
 	],
 );
 
+/**
+ * Any relation that is not parentage or partnership: cousins, friends,
+ * colleagues, mentors, neighbours.
+ *
+ * Deliberately a separate table from `unions` rather than another union status.
+ * These edges are NOT hierarchical -- a friend belongs to no generation -- and
+ * feeding them to a layered layout would drag that friend into a lower row and
+ * wreck the tree. Storing them apart is what lets the renderer lay out on
+ * family edges only and overlay the rest.
+ *
+ * Self-relations are prevented in application code; Postgres cannot express
+ * `personAId <> personBId` in a Drizzle index, so it lives in the insert path.
+ */
+export const personRelations = pgTable(
+	"person_relations",
+	{
+		id: uuid("id").defaultRandom().primaryKey(),
+		treeId: uuid("tree_id")
+			.notNull()
+			.references(() => trees.id, { onDelete: "cascade" }),
+		/**
+		 * For directed kinds, A holds the role: A is B's mentor / teacher /
+		 * godparent. For symmetric kinds the pair is stored id-sorted so the same
+		 * friendship cannot be recorded twice. See `canonicalPair()`.
+		 */
+		personAId: uuid("person_a_id")
+			.notNull()
+			.references(() => people.id, { onDelete: "cascade" }),
+		personBId: uuid("person_b_id")
+			.notNull()
+			.references(() => people.id, { onDelete: "cascade" }),
+		kind: relationKindEnum("kind").notNull(),
+		/** Overrides the generated label: "cousin" -> "second cousin, mother's side". */
+		label: text("label"),
+		/** Relations end. A past colleague is still worth recording. */
+		startDate: date("start_date"),
+		endDate: date("end_date"),
+		note: text("note"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(t) => [
+		// One row per (pair, kind): two people can be both cousins and colleagues,
+		// but not cousins twice.
+		uniqueIndex("person_relations_unique_idx").on(t.personAId, t.personBId, t.kind),
+		index("person_relations_tree_idx").on(t.treeId),
+		// Relations are read from both ends, so the reverse direction needs its own
+		// index; the unique index above only serves lookups starting at A.
+		index("person_relations_b_idx").on(t.personBId),
+	],
+);
+
+/**
+ * Contact details, one row per channel.
+ *
+ * A column-per-channel table (`phone`, `email`, `instagram`, ...) cannot hold
+ * two phone numbers and needs a migration for every new platform. Rows also let
+ * each detail carry its own visibility, which matters: someone may share an
+ * email tree-wide but keep a home address to their own household.
+ */
+export const contactDetails = pgTable(
+	"contact_details",
+	{
+		id: uuid("id").defaultRandom().primaryKey(),
+		personId: uuid("person_id")
+			.notNull()
+			.references(() => people.id, { onDelete: "cascade" }),
+		kind: contactKindEnum("kind").notNull(),
+		/**
+		 * Stored as entered. Phone numbers are not normalised on write: relatives
+		 * abroad have country codes, older records have landlines, and rewriting
+		 * them loses information the owner deliberately typed.
+		 */
+		value: text("value").notNull(),
+		/** "work", "home", "old number" -- free text, since the set is unbounded. */
+		label: text("label"),
+		visibility: visibilityEnum("visibility").notNull().default("tree"),
+		/** The one to show on a collapsed card when several exist for a channel. */
+		isPrimary: boolean("is_primary").notNull().default(false),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(t) => [
+		index("contact_details_person_idx").on(t.personId),
+		uniqueIndex("contact_details_unique_idx").on(t.personId, t.kind, t.value),
+	],
+);
+
 /* -------------------------------------------------------------------------- */
 /* Cross-tree stitching                                                       */
 /* -------------------------------------------------------------------------- */
@@ -354,6 +503,17 @@ export const treesRelations = relations(trees, ({ one, many }) => ({
 export const peopleRelations = relations(people, ({ one, many }) => ({
 	tree: one(trees, { fields: [people.treeId], references: [trees.id] }),
 	childOf: many(unionChildren),
+	contacts: many(contactDetails),
+}));
+
+export const contactDetailsRelations = relations(contactDetails, ({ one }) => ({
+	person: one(people, { fields: [contactDetails.personId], references: [people.id] }),
+}));
+
+export const personRelationsRelations = relations(personRelations, ({ one }) => ({
+	tree: one(trees, { fields: [personRelations.treeId], references: [trees.id] }),
+	personA: one(people, { fields: [personRelations.personAId], references: [people.id] }),
+	personB: one(people, { fields: [personRelations.personBId], references: [people.id] }),
 }));
 
 export const unionsRelations = relations(unions, ({ one, many }) => ({
@@ -374,3 +534,10 @@ export type Person = typeof people.$inferSelect;
 export type NewPerson = typeof people.$inferInsert;
 export type Union = typeof unions.$inferSelect;
 export type PersonLink = typeof personLinks.$inferSelect;
+export type PersonRelation = typeof personRelations.$inferSelect;
+export type NewPersonRelation = typeof personRelations.$inferInsert;
+export type RelationKind = (typeof relationKindEnum.enumValues)[number];
+export type ContactDetail = typeof contactDetails.$inferSelect;
+export type NewContactDetail = typeof contactDetails.$inferInsert;
+export type ContactKind = (typeof contactKindEnum.enumValues)[number];
+export type Visibility = (typeof visibilityEnum.enumValues)[number];

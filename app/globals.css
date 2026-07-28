@@ -73,6 +73,61 @@ body {
 	stroke-dasharray: 4 4;
 }
 
+/**
+ * Social, professional and extended-kin edges.
+ *
+ * Dashed and thinner than family edges on purpose: the solid orthogonal lines
+ * are the skeleton of the tree, and these must read as an overlay rather than
+ * competing with it. Category is carried by dash rhythm, not by colour, so the
+ * one-accent rule survives.
+ */
+.react-flow__edge.is-relation .react-flow__edge-path {
+	stroke: var(--color-hairline-strong);
+	stroke-width: 1;
+	stroke-dasharray: 5 4;
+}
+
+/* Extended kin: tightest dash, closest to a family edge. */
+.react-flow__edge.is-cousin .react-flow__edge-path,
+.react-flow__edge.is-in_law .react-flow__edge-path,
+.react-flow__edge.is-step_sibling .react-flow__edge-path,
+.react-flow__edge.is-godparent .react-flow__edge-path {
+	stroke: var(--color-ink-faint);
+	stroke-dasharray: 8 3;
+}
+
+/* Professional: long dash with a gap, visually the furthest from kinship. */
+.react-flow__edge.is-colleague .react-flow__edge-path,
+.react-flow__edge.is-business_partner .react-flow__edge-path,
+.react-flow__edge.is-mentor .react-flow__edge-path,
+.react-flow__edge.is-teacher .react-flow__edge-path,
+.react-flow__edge.is-employer .react-flow__edge-path {
+	stroke-dasharray: 2 4;
+}
+
+.react-flow__edge.is-relation .react-flow__edge-text {
+	fill: var(--color-ink-faint);
+	font-family: var(--font-mono);
+	font-size: 9px;
+}
+
+.react-flow__edge.is-relation .react-flow__edge-textbg {
+	fill: var(--color-canvas);
+}
+
+/* Arrowheads on directed relations (mentor, teacher, godparent). */
+.react-flow__edge.is-relation .react-flow__arrowhead polyline,
+.react-flow__edge.is-relation marker path {
+	stroke: var(--color-hairline-strong);
+	fill: var(--color-hairline-strong);
+}
+
+/* Hovering a relation lifts it above the family skeleton so you can trace it. */
+.react-flow__edge.is-relation:hover .react-flow__edge-path {
+	stroke: var(--color-accent);
+	stroke-width: 1.5;
+}
+
 .react-flow__handle {
 	opacity: 0;
 	pointer-events: none;

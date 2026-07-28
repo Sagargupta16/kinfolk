@@ -12,7 +12,7 @@
  * same person, the footer says so rather than silently picking a winner.
  */
 import { Handle, Position } from "@xyflow/react";
-import { Users } from "lucide-react";
+import { AtSign, Phone, Users } from "lucide-react";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,12 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 	const dates = lifespan(person);
 	const isDeceased = Boolean(person.deathDate ?? person.deathDateApprox);
 	const sharedBy = data.contributingTreeIds.length;
+
+	// The card shows only WHICH channels exist, never the values. A canvas is
+	// screenshotted and shared; a phone number should take a deliberate click.
+	const contacts = data.contacts ?? [];
+	const hasPhone = contacts.some((c) => c.kind === "phone" || c.kind === "whatsapp");
+	const hasHandle = contacts.some((c) => c.kind !== "phone" && c.kind !== "whatsapp");
 
 	return (
 		<div
@@ -66,10 +72,24 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 					)}
 				</div>
 
-				{sharedBy > 1 && (
-					<div className="mt-1.5 flex items-center gap-1 text-ink-faint">
-						<Users aria-hidden className="size-3" strokeWidth={1.5} />
-						<span className="font-mono text-[0.625rem]">{sharedBy} families</span>
+				{(sharedBy > 1 || contacts.length > 0) && (
+					<div className="mt-1.5 flex items-center gap-2.5 text-ink-faint">
+						{sharedBy > 1 && (
+							<span className="flex items-center gap-1">
+								<Users aria-hidden className="size-3" strokeWidth={1.5} />
+								<span className="font-mono text-[0.625rem]">{sharedBy} families</span>
+							</span>
+						)}
+						{hasPhone && (
+							<Phone aria-label="has a phone number on file" className="size-3" strokeWidth={1.5} />
+						)}
+						{hasHandle && (
+							<AtSign
+								aria-label="has an email or social handle on file"
+								className="size-3"
+								strokeWidth={1.5}
+							/>
+						)}
 					</div>
 				)}
 			</div>
