@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/**
+ * Kinfolk design tokens.
+ *
+ * Monochrome surface stack + one accent. The accent is warm amber rather than
+ * the usual product blue: this is an archive of relatives, and warmth reads as
+ * personal where blue reads as SaaS.
+ *
+ * Canvas is near-black, never #000, so elevated surfaces remain visible.
+ */
+@theme {
+	--color-canvas: #0a0b0d;
+	--color-surface: #121316;
+	--color-surface-raised: #191b1f;
+	--color-hairline: #26282e;
+	--color-hairline-strong: #33363e;
+
+	--color-ink: #f2f3f5;
+	--color-ink-muted: #a1a5ad;
+	--color-ink-faint: #6f747d;
+
+	--color-accent: #e0a33e;
+	--color-accent-dim: #8a6526;
+
+	/* Living vs deceased is the one semantic colour pair a tree needs. */
+	--color-living: #5fb47f;
+	--color-past: #6f747d;
+
+	--radius-node: 0.625rem;
+
+	--duration-fast: 120ms;
+	--duration-base: 200ms;
+	--duration-slow: 320ms;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+	--font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+	color-scheme: dark;
+}
+
+body {
+	background-color: var(--color-canvas);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Numbers in a genealogy UI are dates; they must not jitter between rows. */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* React Flow's defaults are light-themed and heavy; quiet them down. */
+.react-flow__background {
+	background-color: var(--color-canvas);
+}
+
+.react-flow__edge-path {
+	stroke: var(--color-hairline-strong);
+	stroke-width: 1.5;
+}
+
+.react-flow__edge.is-partner .react-flow__edge-path {
+	stroke: var(--color-accent-dim);
+}
+
+.react-flow__edge.is-inferred .react-flow__edge-path {
+	stroke-dasharray: 4 4;
+}
+
+.react-flow__handle {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.react-flow__attribution {
+	background: transparent;
+	color: var(--color-ink-faint);
+}

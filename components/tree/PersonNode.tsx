@@ -1,0 +1,97 @@
+"use client";
+
+/**
+ * A person card on the canvas.
+ *
+ * Design intent: this is an archive card, not a dashboard tile. Flat surface,
+ * 1px hairline, mono metadata, one accent reserved for "this is you". The left
+ * edge carries a 2px living/deceased rail because that is the single fact you
+ * scan a tree for, and a rail reads faster than a badge.
+ *
+ * A card also has to say how much it is trusted: when two families describe the
+ * same person, the footer says so rather than silently picking a winner.
+ */
+import { Handle, Position } from "@xyflow/react";
+import { Users } from "lucide-react";
+import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
+import { cn } from "@/lib/utils";
+
+export type PersonNodeData = FusedPerson & {
+	/** Highlights the viewer's own card. */
+	isSelf?: boolean;
+};
+
+export function PersonNode({ data, selected }: { data: PersonNodeData; selected?: boolean }) {
+	const person = data.primary;
+	const name = displayName(person);
+	const dates = lifespan(person);
+	const isDeceased = Boolean(person.deathDate ?? person.deathDateApprox);
+	const sharedBy = data.contributingTreeIds.length;
+
+	return (
+		<div
+			className={cn(
+				"group relative flex w-[200px] overflow-hidden rounded-[--radius-node] border bg-surface",
+				"transition-[border-color,transform,box-shadow] duration-[--duration-fast] ease-[--ease-out]",
+				"hover:-translate-y-px hover:border-hairline-strong",
+				selected ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]" : "border-hairline",
+			)}
+		>
+			{/* Layout needs handles, but they are visually suppressed in globals.css. */}
+			<Handle type="target" position={Position.Top} />
+			<Handle type="source" position={Position.Bottom} />
+
+			{/* Living / deceased rail. */}
+			<span aria-hidden className={cn("w-0.5 shrink-0", isDeceased ? "bg-past" : "bg-living")} />
+
+			<div className="min-w-0 flex-1 px-3 py-2.5">
+				<p className="truncate text-[0.9375rem] font-medium leading-tight tracking-[-0.01em] text-ink">
+					{name}
+				</p>
+
+				{person.birthFamilyName && (
+					<p className="truncate text-xs leading-tight text-ink-faint">
+						born {person.birthFamilyName}
+					</p>
+				)}
+
+				<div className="mt-1.5 flex items-center gap-1.5">
+					{dates && (
+						<span className="tabular font-mono text-[0.6875rem] text-ink-muted">{dates}</span>
+					)}
+					{data.isSelf && (
+						<span className="font-mono text-[0.625rem] uppercase tracking-wider text-accent">
+							you
+						</span>
+					)}
+				</div>
+
+				{sharedBy > 1 && (
+					<div className="mt-1.5 flex items-center gap-1 text-ink-faint">
+						<Users aria-hidden className="size-3" strokeWidth={1.5} />
+						<span className="font-mono text-[0.625rem]">{sharedBy} families</span>
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+/**
+ * The junction between partners. Deliberately tiny: a couple should read as two
+ * cards joined by a point, not as three boxes in a row.
+ */
+export function UnionNode({ data }: { data: { union: { status: string } } }) {
+	const dissolved = ["separated", "divorced"].includes(data.union.status);
+
+	return (
+		<div className="relative flex size-3 items-center justify-center">
+			<Handle type="target" position={Position.Top} />
+			<Handle type="source" position={Position.Bottom} />
+			<span
+				aria-hidden
+				className={cn("size-1.5 rounded-full", dissolved ? "bg-hairline-strong" : "bg-accent-dim")}
+			/>
+		</div>
+	);
+}

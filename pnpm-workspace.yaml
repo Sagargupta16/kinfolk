@@ -1,0 +1,11 @@
+packages:
+  - "."
+
+# pnpm 11 reads build-script approval from here, not from package.json.
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+# Transitive deps drag in old esbuild builds; hold everything at the current line.
+overrides:
+  esbuild: ">=0.28.1"

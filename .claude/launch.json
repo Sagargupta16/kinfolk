@@ -1,0 +1,11 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "kinfolk",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": ["dev", "--port", "3007"],
+			"port": 3007
+		}
+	]
+}

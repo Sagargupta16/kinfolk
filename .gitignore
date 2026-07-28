@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnp.*
+
+# Build output
+dist/
+build/
+.output/
+.vercel/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.history/
+
+# Cache
+.cache/
+.turbo/
+playwright-report/
+test-results/
+
+# Claude / per-user (never commit)
+.claude/settings.local.json
+.claude/.cache/
+.claude/.local/
+CLAUDE.local.md
+
+# Temp screenshots
+/*.png
+/*.jpeg
+/*.jpg
+!public/**/*.png
+tmp/
+
+# graphify knowledge graph artifacts
+graphify-out/
