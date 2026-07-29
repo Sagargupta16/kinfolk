@@ -28,7 +28,7 @@ export function DemoBanner() {
 			<div className="flex shrink-0 items-center gap-1">
 				<Link
 					href="/signin"
-					className="flex min-h-11 items-center rounded-md px-2.5 text-xs font-medium text-accent transition-colors duration-[--duration-fast] ease-[--ease-out] hover:bg-surface-raised sm:px-3"
+					className="flex min-h-11 items-center rounded-md px-2.5 text-xs font-medium text-accent transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-surface-raised sm:px-3"
 				>
 					<span className="sm:hidden">Sign in</span>
 					<span className="hidden sm:inline">Sign in to build yours</span>
@@ -36,7 +36,7 @@ export function DemoBanner() {
 				<form action={exitDemo}>
 					<button
 						type="submit"
-						className="flex min-h-11 items-center rounded-md px-3 text-xs text-ink-faint transition-colors duration-[--duration-fast] ease-[--ease-out] hover:bg-surface-raised hover:text-ink-muted"
+						className="flex min-h-11 items-center rounded-md px-3 text-xs text-ink-faint transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-surface-raised hover:text-ink-muted"
 					>
 						Exit
 					</button>
