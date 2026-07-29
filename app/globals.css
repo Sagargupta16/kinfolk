@@ -676,3 +676,25 @@ body {
 	margin: 0.75rem;
 	margin-bottom: 2.25rem;
 }
+
+/**
+ * The overview map.
+ *
+ * Our own svg rather than React Flow's `<MiniMap>`, for the two reasons recorded in
+ * TreeMinimap.tsx -- so this is a plain element and needs none of the position or
+ * margin unwinding a `Panel` would have.
+ *
+ * `touch-action: none` matters on a phone: without it a drag across the map scrolls
+ * the page instead of aiming, and the panel is the one place on this screen where a
+ * swipe means something other than pan.
+ */
+.kf-overview {
+	display: block;
+	overflow: hidden;
+	border: 1px solid var(--color-hairline);
+	border-radius: 0.375rem;
+	background-color: color-mix(in oklab, var(--color-canvas) 88%, transparent);
+	backdrop-filter: blur(4px);
+	touch-action: none;
+	cursor: crosshair;
+}
