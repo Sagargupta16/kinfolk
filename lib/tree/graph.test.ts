@@ -24,8 +24,15 @@ function person(id: string, treeId: string, overrides: Partial<Person> = {}): Pe
 		deathDate: null,
 		deathDateApprox: null,
 		deathPlace: null,
+		living: "unknown",
 		bio: null,
 		photoKey: null,
+		currentPlace: null,
+		occupation: null,
+		verification: "unverified",
+		sourceNote: null,
+		verifiedAt: null,
+		verifiedById: null,
 		claimedByUserId: null,
 		createdAt: new Date("2026-01-01"),
 		updatedAt: new Date("2026-01-01"),
@@ -69,6 +76,7 @@ function relation(
 		personBId: pair.personBId,
 		kind,
 		label: null,
+		closeness: null,
 		startDate: null,
 		endDate: null,
 		note: null,
@@ -314,6 +322,65 @@ describe("fuseTrees", () => {
 		);
 
 		expect(forward.people[0]?.id).toBe(reversed.people[0]?.id);
+	});
+});
+
+describe("trust", () => {
+	/** Two trees describing one human, each with its own verification claim. */
+	function linked(a: Partial<Person>, b: Partial<Person>) {
+		const graph = fuseTrees(
+			[slice("t1", [person("a", "t1", a)], []), slice("t2", [person("b", "t2", b)], [])],
+			[{ personAId: "a", personBId: "b" }],
+		);
+		return graph.people[0]?.trust;
+	}
+
+	it("defaults a lone unverified row to unverified with one corroborator", () => {
+		const graph = fuseTrees([slice("t1", [person("a", "t1")], [])], []);
+		expect(graph.people[0]?.trust).toEqual({
+			level: "unverified",
+			corroborators: 1,
+			conflicted: false,
+		});
+	});
+
+	it("takes the strongest claim, since a document is not weakened by hearsay", () => {
+		expect(
+			linked({ verification: "documented" }, { verification: "family_recalled" }),
+		).toMatchObject({ level: "documented" });
+	});
+
+	it("counts one corroborator per tree, not per row", () => {
+		expect(linked({}, {})).toMatchObject({ corroborators: 2 });
+	});
+
+	it("lets a single disputed row override every confident one", () => {
+		// Confidence elsewhere must not outvote a recorded conflict.
+		expect(linked({ verification: "documented" }, { verification: "disputed" })).toMatchObject({
+			level: "disputed",
+		});
+	});
+
+	it("treats conflicting birth dates as disputed even when both rows claim documented", () => {
+		const trust = linked(
+			{ verification: "documented", birthDate: "1901-04-02" },
+			{ verification: "documented", birthDate: "1903-04-02" },
+		);
+		expect(trust).toMatchObject({ level: "disputed", conflicted: true });
+	});
+
+	it("does not treat a missing date as a conflict with a known one", () => {
+		// Half the rows in a real genealogy are blank; blank is not disagreement.
+		expect(linked({ birthDate: "1901-04-02" }, { birthDate: null })).toMatchObject({
+			conflicted: false,
+		});
+	});
+
+	it("does not treat differently spelled names as a conflict", () => {
+		// "Katharina" and "Catherine" are the same woman in two families' spelling.
+		expect(linked({ givenName: "Katharina" }, { givenName: "Catherine" })).toMatchObject({
+			conflicted: false,
+		});
 	});
 });
 

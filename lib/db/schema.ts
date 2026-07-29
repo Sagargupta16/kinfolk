@@ -44,6 +44,40 @@ import {
  */
 export const sexEnum = pgEnum("sex", ["female", "male", "other", "unknown"]);
 
+/**
+ * Whether a person is alive, as a stored tri-state rather than an inference.
+ *
+ * A missing death date is NOT the same as being alive -- most rows in a
+ * genealogy have neither date -- so deriving it marks every half-recorded
+ * great-grandparent as living. The renderer needs the difference because
+ * "alive" and "not known" deserve different marks on a card.
+ */
+export const livingStatusEnum = pgEnum("living_status", ["living", "deceased", "unknown"]);
+
+/**
+ * How well attested a person row is.
+ *
+ * This is the level ASSERTED by the tree that owns the row. Corroboration by
+ * another family is deliberately NOT stored here: it is derivable from accepted
+ * person links at read time, and a stored copy would go stale the moment a link
+ * was withdrawn.
+ *
+ * Ordered weakest to strongest, except `disputed`, which sits outside the ladder
+ * because it is a conflict signal rather than a lesser degree of confidence.
+ */
+export const verificationEnum = pgEnum("verification", [
+	/** Somebody typed it in. The default, and the honest one. */
+	"unverified",
+	/** Recalled by a relative who knew the person. */
+	"family_recalled",
+	/** The person themselves confirmed it while signed in. */
+	"self_confirmed",
+	/** Backed by a record: certificate, register, gravestone, archive scan. */
+	"documented",
+	/** Two sources disagree and nobody has resolved it. */
+	"disputed",
+]);
+
 /** How a union ended, if it did. Drives dashed vs solid edges in the canvas. */
 export const unionStatusEnum = pgEnum("union_status", [
 	"partnered",
@@ -282,9 +316,31 @@ export const people = pgTable(
 		deathDate: date("death_date"),
 		deathDateApprox: text("death_date_approx"),
 		deathPlace: text("death_place"),
-		/** Null means unknown, which is NOT the same as alive. Prefer the date fields. */
+		/**
+		 * Stored, not derived from `deathDate`. A row with neither date is the normal
+		 * case in genealogy, and inferring "alive" from a missing death date quietly
+		 * claims every unrecorded ancestor is still with us.
+		 */
+		living: livingStatusEnum("living").notNull().default("unknown"),
 		bio: text("bio"),
 		photoKey: text("photo_key"),
+		/** Where they live now, or last did. Unlike a contact detail, this is not private. */
+		currentPlace: text("current_place"),
+		/** "carpenter", "schoolteacher" -- the one line a relative tends to remember. */
+		occupation: text("occupation"),
+
+		/* -- Provenance -------------------------------------------------------- */
+
+		/**
+		 * How well attested this row is, as asserted by its owning tree. Sits next to
+		 * `sourceNote` because a `documented` claim with an empty note is the first
+		 * thing a reviewer should look at.
+		 */
+		verification: verificationEnum("verification").notNull().default("unverified"),
+		/** Free text: "birth certificate", "grandmother, interviewed 2019". */
+		sourceNote: text("source_note"),
+		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		verifiedById: uuid("verified_by_id").references(() => users.id, { onDelete: "set null" }),
 		/** Set when this person row corresponds to a real signed-in user. */
 		claimedByUserId: uuid("claimed_by_user_id").references(() => users.id, {
 			onDelete: "set null",
@@ -389,6 +445,12 @@ export const personRelations = pgTable(
 		kind: relationKindEnum("kind").notNull(),
 		/** Overrides the generated label: "cousin" -> "second cousin, mother's side". */
 		label: text("label"),
+		/**
+		 * 1..3, overriding the kind's default weight when the owner disagrees with it
+		 * ("a colleague, but my closest one"). Null means "use the default", which is
+		 * not the same as 1: it lets the default improve later without rewriting rows.
+		 */
+		closeness: integer("closeness"),
 		/** Relations end. A past colleague is still worth recording. */
 		startDate: date("start_date"),
 		endDate: date("end_date"),
@@ -537,6 +599,8 @@ export type PersonLink = typeof personLinks.$inferSelect;
 export type PersonRelation = typeof personRelations.$inferSelect;
 export type NewPersonRelation = typeof personRelations.$inferInsert;
 export type RelationKind = (typeof relationKindEnum.enumValues)[number];
+export type LivingStatus = (typeof livingStatusEnum.enumValues)[number];
+export type Verification = (typeof verificationEnum.enumValues)[number];
 export type ContactDetail = typeof contactDetails.$inferSelect;
 export type NewContactDetail = typeof contactDetails.$inferInsert;
 export type ContactKind = (typeof contactKindEnum.enumValues)[number];

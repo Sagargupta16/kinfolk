@@ -15,6 +15,16 @@ import type { RelationKind } from "../db/schema";
 
 export type RelationCategory = "kin" | "social" | "professional" | "care" | "other";
 
+/**
+ * How close a relation is, 1 (acquaintance) to 3 (intimate).
+ *
+ * Drives how heavily the edge is drawn, so a close friendship reads as a firmer
+ * connection than a former colleague. Deliberately coarse: three steps is all
+ * that survives being rendered as stroke weight, and a finer scale would invite
+ * arguments about whether a neighbour outranks a classmate.
+ */
+export type Closeness = 1 | 2 | 3;
+
 type RelationSpec = {
 	/** Reading A -> B: "A is B's ___". */
 	label: string;
@@ -23,58 +33,125 @@ type RelationSpec = {
 	/** Symmetric relations have no direction, so no arrowhead and a sorted pair. */
 	symmetric: boolean;
 	category: RelationCategory;
+	/** Default weight for the edge. A stored `closeness` on the row overrides it. */
+	closeness: Closeness;
 };
 
 export const RELATION_KINDS: Record<RelationKind, RelationSpec> = {
 	/* Kin the union model cannot express on its own. `cousin` and `in_law` exist
 	   for the common case where you know you are related but not through whom --
 	   asserting the edge beats inventing ancestors you have no record of. */
-	cousin: { label: "cousin", inverse: "cousin", symmetric: true, category: "kin" },
-	in_law: { label: "in-law", inverse: "in-law", symmetric: true, category: "kin" },
+	cousin: { label: "cousin", inverse: "cousin", symmetric: true, category: "kin", closeness: 2 },
+	in_law: { label: "in-law", inverse: "in-law", symmetric: true, category: "kin", closeness: 2 },
 	step_sibling: {
 		label: "step-sibling",
 		inverse: "step-sibling",
 		symmetric: true,
 		category: "kin",
+		closeness: 3,
 	},
-	godparent: { label: "godparent", inverse: "godchild", symmetric: false, category: "kin" },
+	godparent: {
+		label: "godparent",
+		inverse: "godchild",
+		symmetric: false,
+		category: "kin",
+		closeness: 3,
+	},
 
-	friend: { label: "friend", inverse: "friend", symmetric: true, category: "social" },
+	friend: {
+		label: "friend",
+		inverse: "friend",
+		symmetric: true,
+		category: "social",
+		closeness: 2,
+	},
 	close_friend: {
 		label: "close friend",
 		inverse: "close friend",
 		symmetric: true,
 		category: "social",
+		closeness: 3,
 	},
 	family_friend: {
 		label: "family friend",
 		inverse: "family friend",
 		symmetric: true,
 		category: "social",
+		closeness: 2,
 	},
-	neighbour: { label: "neighbour", inverse: "neighbour", symmetric: true, category: "social" },
-	classmate: { label: "classmate", inverse: "classmate", symmetric: true, category: "social" },
-	roommate: { label: "roommate", inverse: "roommate", symmetric: true, category: "social" },
+	neighbour: {
+		label: "neighbour",
+		inverse: "neighbour",
+		symmetric: true,
+		category: "social",
+		closeness: 1,
+	},
+	classmate: {
+		label: "classmate",
+		inverse: "classmate",
+		symmetric: true,
+		category: "social",
+		closeness: 1,
+	},
+	roommate: {
+		label: "roommate",
+		inverse: "roommate",
+		symmetric: true,
+		category: "social",
+		closeness: 2,
+	},
 
 	colleague: {
 		label: "colleague",
 		inverse: "colleague",
 		symmetric: true,
 		category: "professional",
+		closeness: 1,
 	},
 	business_partner: {
 		label: "business partner",
 		inverse: "business partner",
 		symmetric: true,
 		category: "professional",
+		closeness: 2,
 	},
-	mentor: { label: "mentor", inverse: "mentee", symmetric: false, category: "professional" },
-	teacher: { label: "teacher", inverse: "student", symmetric: false, category: "professional" },
-	employer: { label: "employer", inverse: "employee", symmetric: false, category: "professional" },
+	mentor: {
+		label: "mentor",
+		inverse: "mentee",
+		symmetric: false,
+		category: "professional",
+		closeness: 2,
+	},
+	teacher: {
+		label: "teacher",
+		inverse: "student",
+		symmetric: false,
+		category: "professional",
+		closeness: 1,
+	},
+	employer: {
+		label: "employer",
+		inverse: "employee",
+		symmetric: false,
+		category: "professional",
+		closeness: 1,
+	},
 
-	caregiver: { label: "caregiver", inverse: "cared for by", symmetric: false, category: "care" },
+	caregiver: {
+		label: "caregiver",
+		inverse: "cared for by",
+		symmetric: false,
+		category: "care",
+		closeness: 3,
+	},
 
-	other: { label: "connected to", inverse: "connected to", symmetric: true, category: "other" },
+	other: {
+		label: "connected to",
+		inverse: "connected to",
+		symmetric: true,
+		category: "other",
+		closeness: 1,
+	},
 };
 
 /**
@@ -103,6 +180,23 @@ export function relationLabel(
 	if (customLabel) return customLabel;
 	const spec = RELATION_KINDS[kind];
 	return fromPersonId === personAId ? spec.label : spec.inverse;
+}
+
+/**
+ * Weight for one relation edge.
+ *
+ * An ENDED relation always drops to the floor whatever its kind says, because a
+ * former business partner is a historical fact rather than a live connection,
+ * and drawing it as heavily as a current one overstates the graph.
+ */
+export function closenessOf(
+	kind: RelationKind,
+	row: { closeness?: number | null; endDate?: string | null } = {},
+): Closeness {
+	if (row.endDate) return 1;
+	const stored = row.closeness;
+	if (stored === 1 || stored === 2 || stored === 3) return stored;
+	return RELATION_KINDS[kind].closeness;
 }
 
 /** Grouped for pickers, so the editor does not show 17 flat options. */
