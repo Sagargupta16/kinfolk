@@ -212,6 +212,15 @@ type Props = {
 	 * cousin once removed", and a card holding one person cannot do it.
 	 */
 	kinship?: Map<string, Kinship>;
+	/**
+	 * Called with the person whose card was clicked, so the editor can pre-fill its
+	 * "from" field.
+	 *
+	 * Clicking already sets hover focus (there is no hover on a phone), so this rides the
+	 * same handler rather than adding a second gesture -- naming somebody you can see is
+	 * exactly what a click on their card should mean.
+	 */
+	onPick?: (person: { id: string; name: string } | null) => void;
 };
 
 function Canvas({
@@ -223,6 +232,7 @@ function Canvas({
 	goTo,
 	degree,
 	kinship,
+	onPick,
 }: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -695,6 +705,23 @@ function Canvas({
 	const focus = useCallback((_: unknown, node: Node) => setFocusedId(node.id), []);
 	const blur = useCallback(() => setFocusedId(null), []);
 
+	/**
+	 * A click both focuses and NAMES the person, for the editor's "from" field.
+	 *
+	 * Union dots are skipped: a junction is not somebody you can relate to, and reporting
+	 * one would put "Unknown" in a picker. The name is read off the node's own data rather
+	 * than looked up, since the card already holds the fused person.
+	 */
+	const pick = useCallback(
+		(event: unknown, node: Node) => {
+			focus(event, node);
+			if (node.type !== "person") return;
+			const person = node.data as { primary?: Parameters<typeof displayName>[0] };
+			if (person.primary) onPick?.({ id: node.id, name: displayName(person.primary) });
+		},
+		[focus, onPick],
+	);
+
 	return (
 		<ReactFlow
 			nodes={nodes}
@@ -703,7 +730,7 @@ function Canvas({
 			onEdgesChange={onEdgesChange}
 			onNodeMouseEnter={focus}
 			onNodeMouseLeave={blur}
-			onNodeClick={focus}
+			onNodeClick={pick}
 			onPaneClick={blur}
 			nodeTypes={nodeTypes}
 			edgeTypes={edgeTypes}

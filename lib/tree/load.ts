@@ -24,6 +24,7 @@ import {
 	unionChildren,
 	unions,
 } from "../db/schema";
+import { editableTreeIds } from "./authz";
 import { fuseTrees, type TreeSlice, toFlowGraph, type UnionWithChildren } from "./graph";
 import { kinshipMap } from "./kinship";
 import type { TreeView } from "./view";
@@ -204,6 +205,13 @@ export async function loadTreeView(
 		person.sources.some((source) => source.claimedByUserId === userId),
 	)?.id;
 
+	// Which graph the Add panel writes into. The viewer's OWN first tree, never a linked
+	// one: an accepted person link means "we agree this is the same human", not "you may
+	// edit my records". Recomputed rather than assumed from `access`, because that map
+	// grants `member` for reading and says nothing about write grants.
+	const writable = await editableTreeIds(userId);
+	const editableTreeId = ownTreeIds.find((id) => writable.includes(id)) ?? null;
+
 	return {
 		nodes,
 		edges,
@@ -212,6 +220,7 @@ export async function loadTreeView(
 		kinship: kinshipMap(fused, selfId),
 		treeNames: filtered.map((slice) => slice.treeName),
 		isDemo: false,
+		editableTreeId,
 		isCombined: combined,
 		showRelations,
 		stats: {
