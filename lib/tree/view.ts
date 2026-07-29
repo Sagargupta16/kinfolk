@@ -16,7 +16,7 @@ export type TreeViewStats = {
 	rows: number;
 	/** How many of those humans were described by more than one family. */
 	merged: number;
-	/** Non-hierarchical edges currently drawn. */
+	/** Non-hierarchical edges in the data, whether or not the overlay is showing them. */
 	relations: number;
 	/** Trees contributing to this view. */
 	trees: number;
@@ -24,6 +24,13 @@ export type TreeViewStats = {
 
 export type TreeView = {
 	nodes: FlowNode[];
+	/**
+	 * Every edge, including relations a viewer with the overlay off will not see.
+	 *
+	 * Deliberately not pre-filtered: layout follows relation edges to place a person
+	 * who has no family recorded, so removing them here moves people instead of
+	 * merely hiding lines. `visibleEdges()` in graph.ts is where the toggle applies.
+	 */
 	edges: FlowEdge[];
 	/** Person id to highlight as the viewer, when known. */
 	selfId?: string;

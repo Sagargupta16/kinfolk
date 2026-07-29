@@ -401,10 +401,7 @@ export type FlowEdge = {
  * directly. With N children that would mean 2N crossing edges; via a union node
  * it is 2 + N, and siblings visibly share one origin point.
  */
-export function toFlowGraph(
-	graph: FusedGraph,
-	options: { includeRelations?: boolean } = {},
-): { nodes: FlowNode[]; edges: FlowEdge[] } {
+export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: FlowEdge[] } {
 	const nodes: FlowNode[] = graph.people.map((p) => ({ id: p.id, type: "person", data: p }));
 	const edges: FlowEdge[] = [];
 	const known = new Set(graph.people.map((p) => p.id));
@@ -439,30 +436,52 @@ export function toFlowGraph(
 		}
 	}
 
-	if (options.includeRelations !== false) {
-		for (const relation of graph.relations) {
-			// Both ends must be visible; a relation to someone in a tree the viewer
-			// cannot see is simply not drawn.
-			if (!known.has(relation.personAId) || !known.has(relation.personBId)) continue;
+	// Relations are ALWAYS projected, even when the viewer has the overlay off.
+	//
+	// Hiding them here rather than at render looks equivalent and is not:
+	// `anchorFamilylessNodes()` finds a person's row by following who they know, so
+	// with the relation edges gone a friend with no family has nothing to anchor to
+	// and ELK drops them in the FIRST layer -- rendering them as a generation older
+	// than the oldest ancestor. Measured with five such people: y=12 against
+	// grandparents at y=124, and a sixth phantom band above the whole tree.
+	//
+	// So the projection is total and `visibleEdges()` decides what is drawn.
+	for (const relation of graph.relations) {
+		// Both ends must be visible; a relation to someone in a tree the viewer
+		// cannot see is simply not drawn.
+		if (!known.has(relation.personAId) || !known.has(relation.personBId)) continue;
 
-			const spec = RELATION_KINDS[relation.kind];
-			edges.push({
-				id: `r:${relation.id}`,
-				source: relation.personAId,
-				target: relation.personBId,
-				kind: "relation",
-				// Never influences placement. See the FlowEdge comment.
-				layout: false,
-				relationKind: relation.kind,
-				label: relation.label ?? spec.label,
-				directed: !spec.symmetric,
-				closeness: closenessOf(relation.kind, relation),
-				ended: Boolean(relation.endDate),
-			});
-		}
+		const spec = RELATION_KINDS[relation.kind];
+		edges.push({
+			id: `r:${relation.id}`,
+			source: relation.personAId,
+			target: relation.personBId,
+			kind: "relation",
+			// Never influences placement. See the FlowEdge comment.
+			layout: false,
+			relationKind: relation.kind,
+			label: relation.label ?? spec.label,
+			directed: !spec.symmetric,
+			closeness: closenessOf(relation.kind, relation),
+			ended: Boolean(relation.endDate),
+		});
 	}
 
 	return { nodes, edges };
+}
+
+/**
+ * The edges a viewer with the social overlay off should see.
+ *
+ * The counterpart to projecting relations unconditionally: ELK needs them to place
+ * people, and the viewer asked not to look at them. One helper rather than a
+ * `filter` at each call site, because three consumers have to agree on the answer
+ * -- what is drawn, which people light up on hover, and how connected each person
+ * appears -- and a person whose ring says "well connected" while every line to
+ * them is hidden is a worse lie than either fact alone.
+ */
+export function visibleEdges(edges: FlowEdge[], showRelations: boolean): FlowEdge[] {
+	return showRelations ? edges : edges.filter((edge) => edge.kind !== "relation");
 }
 
 /** Display name with sensible fallbacks; genealogy data is often partial. */

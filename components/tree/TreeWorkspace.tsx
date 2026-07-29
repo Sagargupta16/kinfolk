@@ -113,7 +113,16 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 			{view.isDemo && <DemoBanner />}
 
 			<div className="min-h-0 flex-1">
-				<TreeStage nodes={view.nodes} edges={view.edges} selfId={view.selfId} />
+				{/* Every edge is handed down, including the relations this viewer has
+				    switched off: the layout engine needs them to place a person who has
+				    no family, and dropping them earlier put those people in a phantom
+				    generation above the grandparents. The stage decides what is drawn. */}
+				<TreeStage
+					nodes={view.nodes}
+					edges={view.edges}
+					selfId={view.selfId}
+					showRelations={view.showRelations}
+				/>
 			</div>
 		</main>
 	);

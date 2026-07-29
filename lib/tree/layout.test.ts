@@ -3,7 +3,7 @@
  * anybody. Everything else about ELK's output is its business, not ours.
  */
 import { describe, expect, it } from "vitest";
-import type { FlowEdge, FlowNode, FusedPerson } from "./graph";
+import { type FlowEdge, type FlowNode, type FusedPerson, visibleEdges } from "./graph";
 import { type Lod, layoutGraph, NODE_METRICS, type PositionedNode } from "./layout";
 
 function personNode(id: string): FlowNode {
@@ -218,6 +218,55 @@ describe("generation bands", () => {
 		);
 
 		expect(bands.map((b) => b.count)).toEqual([1, 2]);
+	});
+
+	/**
+	 * Why the overlay toggle filters at RENDER and never before layout.
+	 *
+	 * Relation edges must not reach ELK, but they must still reach `layoutGraph`,
+	 * because that is where a person with no family gets anchored beside somebody
+	 * they know. Filter them out one step earlier -- at projection, or by handing the
+	 * canvas a pre-filtered list -- and those people become isolated nodes, which ELK
+	 * puts in the FIRST layer: a phantom generation above the grandparents, made
+	 * entirely of friends.
+	 *
+	 * The sample data has no family-less people, so this is invisible in manual QA
+	 * and the guard has to be synthetic.
+	 */
+	it("keeps positions and bands identical whether or not relations are drawn", async () => {
+		const nodes = [
+			personNode("gran"),
+			personNode("parent"),
+			personNode("child"),
+			personNode("mate1"),
+			personNode("mate2"),
+			personNode("mate3"),
+		];
+		const edges = [
+			familyEdge("f1", "gran", "parent"),
+			familyEdge("f2", "parent", "child"),
+			relationEdge("r1", "child", "mate1"),
+			relationEdge("r2", "child", "mate2"),
+			relationEdge("r3", "parent", "mate3"),
+		];
+
+		// One layout, both views. The overlay toggle changes which edges are DRAWN, so
+		// there is nothing for it to move.
+		const { nodes: positioned, bands } = await layoutGraph(nodes, edges);
+		expect(bands).toHaveLength(3);
+
+		const rowOf = (id: string) => positioned.find((n) => n.id === id)?.position.y;
+		expect(rowOf("mate1")).toBe(rowOf("child"));
+		expect(rowOf("mate3")).toBe(rowOf("parent"));
+
+		// And the failure that would replace it, had the filter run any earlier: the
+		// three friends land in a band of their own, above the oldest ancestor.
+		const preFiltered = await layoutGraph(nodes, visibleEdges(edges, false));
+		expect(preFiltered.bands).toHaveLength(4);
+
+		const stranded = preFiltered.nodes.find((n) => n.id === "mate1")?.position.y ?? 0;
+		const oldest = preFiltered.nodes.find((n) => n.id === "gran")?.position.y ?? 0;
+		expect(stranded).toBeLessThan(oldest);
 	});
 
 	it("excludes union dots so they cannot invent a half-generation", async () => {

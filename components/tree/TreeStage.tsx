@@ -17,7 +17,7 @@
 import { Rows3, Square, SquareDot } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { degrees } from "@/lib/tree/density";
-import type { FlowEdge, FlowNode } from "@/lib/tree/graph";
+import { type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 import { TreeCanvas } from "./TreeCanvas";
@@ -40,10 +40,14 @@ export function TreeStage({
 	nodes,
 	edges,
 	selfId,
+	showRelations = true,
 }: {
 	nodes: FlowNode[];
+	/** Every edge, including hidden relations: layout needs them. See TreeWorkspace. */
 	edges: FlowEdge[];
 	selfId?: string;
+	/** False draws the bare family skeleton, without changing where anyone sits. */
+	showRelations?: boolean;
 }) {
 	const [lod, setLod] = useState<Lod>("full");
 
@@ -55,7 +59,13 @@ export function TreeStage({
 	// Computed here rather than in each consumer: the canvas draws presence rings
 	// from it and search ranks namesakes by it, and doing it twice over 151 nodes on
 	// every render would be the same work for the same answer.
-	const degree = useMemo(() => degrees(nodes, edges), [nodes, edges]);
+	//
+	// From the VISIBLE edges, so a ring never claims a connection whose line the
+	// viewer has switched off.
+	const degree = useMemo(
+		() => degrees(nodes, visibleEdges(edges, showRelations)),
+		[nodes, edges, showRelations],
+	);
 
 	return (
 		<div className="relative size-full">
@@ -66,6 +76,7 @@ export function TreeStage({
 				lod={lod}
 				goTo={goTo}
 				degree={degree}
+				showRelations={showRelations}
 			/>
 
 			{/* Top-left, opposite the detail control.

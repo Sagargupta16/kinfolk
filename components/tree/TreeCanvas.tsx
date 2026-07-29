@@ -24,7 +24,13 @@ import "@xyflow/react/dist/style.css";
 import { Crosshair } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Degree } from "@/lib/tree/density";
-import { displayName, type FlowEdge, type FlowNode, lifespan } from "@/lib/tree/graph";
+import {
+	displayName,
+	type FlowEdge,
+	type FlowNode,
+	lifespan,
+	visibleEdges,
+} from "@/lib/tree/graph";
 import { type GenerationBand, type Lod, layoutGraph, NODE_METRICS } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
 import { cn } from "@/lib/utils";
@@ -147,7 +153,17 @@ function withFlag(flag: string, className: string | undefined, on: boolean): str
 
 type Props = {
 	nodes: FlowNode[];
+	/**
+	 * EVERY edge, including relations the viewer has switched off.
+	 *
+	 * Layout needs them even when they are not drawn: `anchorFamilylessNodes()` finds
+	 * a person with no family by following who they know, so filtering them out here
+	 * would put those people in ELK's first layer and invent a generation above the
+	 * oldest ancestor. `showRelations` decides what is DRAWN, nothing more.
+	 */
 	edges: FlowEdge[];
+	/** False draws the bare family skeleton, at identical positions. */
+	showRelations?: boolean;
 	/** Person id to highlight as the viewer. */
 	selfId?: string;
 	/** How much of each person to draw. Changes node size, so it re-runs layout. */
@@ -171,6 +187,7 @@ type Props = {
 function Canvas({
 	nodes: sourceNodes,
 	edges: sourceEdges,
+	showRelations = true,
 	selfId,
 	lod = "full",
 	goTo,
@@ -241,10 +258,22 @@ function Canvas({
 		return neighbourhood(familyEdges, selfId, (id) => unionIds.has(id)).nodeIds;
 	}, [selfId, sourceNodes, sourceEdges]);
 
+	/**
+	 * The edges to DRAW, which is not the same set the layout gets.
+	 *
+	 * Everything downstream of here -- what is rendered, and who lights up on hover --
+	 * reads this one. `layoutGraph` keeps reading `sourceEdges`, so turning the
+	 * overlay off changes what you see without moving a single card.
+	 */
+	const drawnEdges = useMemo(
+		() => visibleEdges(sourceEdges, showRelations),
+		[sourceEdges, showRelations],
+	);
+
 	// Edges are a pure projection of the source data, so derive rather than store.
 	const flowEdges = useMemo<Edge[]>(
 		() =>
-			sourceEdges.map((edge) => {
+			drawnEdges.map((edge) => {
 				if (edge.kind === "relation") {
 					return {
 						id: edge.id,
@@ -290,7 +319,7 @@ function Canvas({
 					className: edge.kind === "partner" ? "is-partner" : undefined,
 				};
 			}),
-		[sourceEdges],
+		[drawnEdges],
 	);
 
 	useEffect(() => {
@@ -524,11 +553,14 @@ function Canvas({
 	// Who lights up when somebody is focused. Traverses through union dots, so
 	// hovering a parent reaches their partner and children rather than stopping at
 	// the junction between them.
+	//
+	// Over the DRAWN edges: with the overlay off, lighting a friend whose connecting
+	// line is not on screen would highlight them for no visible reason.
 	const lit = useMemo(() => {
 		if (!focusedId) return null;
 		const unionIds = new Set(sourceNodes.filter((n) => n.type === "union").map((n) => n.id));
-		return neighbourhood(sourceEdges, focusedId, (id) => unionIds.has(id));
-	}, [focusedId, sourceNodes, sourceEdges]);
+		return neighbourhood(drawnEdges, focusedId, (id) => unionIds.has(id));
+	}, [focusedId, sourceNodes, drawnEdges]);
 
 	// Apply focus by rewriting className only. Deliberately its own effect:
 	// folding focus into the flowEdges memo would re-run ELK on every hover, since
