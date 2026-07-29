@@ -37,6 +37,17 @@ export type Degree = {
 };
 
 /**
+ * Below this rank a person gets no presence ring at all.
+ *
+ * A floor rather than a fade: a 1px halo on somebody with two relatives reads as a
+ * rendering artefact, and a channel that is always on stops being a signal. Lives
+ * here rather than in the card because rank is this file's unit, and the legend has
+ * to agree with the card about who counts as connected -- a key that says "ring means
+ * well connected" beside a canvas of rings on everybody explains nothing.
+ */
+export const RING_MIN_RANK = 0.2;
+
+/**
  * Count real connections per person id.
  *
  * Returns a Map so callers can look up by node id without a second pass; nodes

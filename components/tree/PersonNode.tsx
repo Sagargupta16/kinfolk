@@ -22,7 +22,7 @@
 import { Handle, Position } from "@xyflow/react";
 import { AtSign, Phone, ShieldQuestion, Users } from "lucide-react";
 import type { CSSProperties } from "react";
-import type { Degree } from "@/lib/tree/density";
+import { type Degree, RING_MIN_RANK } from "@/lib/tree/density";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
@@ -56,8 +56,13 @@ function stackDepths(sharedBy: number): number[] {
  * label is what a reader gets on hover, and it is phrased as the EVIDENCE rather
  * than a status, because "documented" tells you what you could go and check
  * whereas "verified" only tells you somebody was satisfied.
+ *
+ * Exported for the legend, which lists these marks. Declaration order is strongest
+ * evidence first, and the legend reads it in that order -- a scale explained from the
+ * weak end reads as a list of unrelated glyphs. The two blank marks are skipped
+ * there, so adding a level with no glyph needs no change to the legend.
  */
-const PROVENANCE: Record<
+export const PROVENANCE: Record<
 	FusedPerson["trust"]["level"],
 	{ mark: string; title: string; className: string }
 > = {
@@ -77,7 +82,7 @@ const PROVENANCE: Record<
  * behind the card, and a big glow would out-shout the name.
  */
 function ringSpread(rank: number): number {
-	if (rank <= 0.2) return 0;
+	if (rank <= RING_MIN_RANK) return 0;
 	return Math.round(2 + rank * 8);
 }
 
