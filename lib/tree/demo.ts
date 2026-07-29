@@ -49,6 +49,10 @@ export function buildDemoView({
 		nodes,
 		edges,
 		selfId: sampleSelfId,
+		// Nothing to write to: the demo owns no rows and has no user to attribute them to,
+		// so the editor is not rendered at all. `edit-actions.ts` refuses a demo request
+		// server-side as well -- this only avoids offering a button that would be refused.
+		editableTreeId: null,
 		kinship: kinshipMap(fused, fusedSelfId(fused, sampleSelfId)),
 		treeNames: slices.map((slice) => slice.treeName),
 		isDemo: true,

@@ -123,6 +123,7 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 					selfId={view.selfId}
 					kinship={view.kinship}
 					showRelations={view.showRelations}
+					editableTreeId={view.editableTreeId}
 				/>
 			</div>
 		</main>

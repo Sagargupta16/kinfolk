@@ -50,6 +50,16 @@ export type TreeView = {
 	treeNames: string[];
 	/** True when this is sample data, which drives the banner and mutation guards. */
 	isDemo: boolean;
+	/**
+	 * The graph this viewer may WRITE to, or null for a read-only canvas.
+	 *
+	 * Null in demo mode and for a viewer holding only a read grant. Its absence hides the
+	 * editor rather than disabling it, since a disabled control advertises an action that
+	 * can never succeed here. This is a rendering hint only -- every mutation re-checks
+	 * permission server-side in lib/tree/authz.ts, because a value that reached the client
+	 * is a value the client can change.
+	 */
+	editableTreeId: string | null;
 	/** Echoed back so the header can render toggles without re-reading searchParams. */
 	isCombined: boolean;
 	showRelations: boolean;

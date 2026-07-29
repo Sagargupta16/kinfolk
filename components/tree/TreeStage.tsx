@@ -18,10 +18,11 @@ import { Rows3, Square, SquareDot } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
-import { type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
+import { displayName, type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
+import { EditorPanel, type PickablePerson } from "./EditorPanel";
 import { TreeCanvas } from "./TreeCanvas";
 import { TreeLegend } from "./TreeLegend";
 import { TreeSearch } from "./TreeSearch";
@@ -45,6 +46,7 @@ export function TreeStage({
 	selfId,
 	kinship,
 	showRelations = true,
+	editableTreeId,
 }: {
 	nodes: FlowNode[];
 	/** Every edge, including hidden relations: layout needs them. See TreeWorkspace. */
@@ -54,8 +56,46 @@ export function TreeStage({
 	kinship?: Map<string, Kinship>;
 	/** False draws the bare family skeleton, without changing where anyone sits. */
 	showRelations?: boolean;
+	/**
+	 * The graph this viewer may write to, or absent for a read-only canvas.
+	 *
+	 * Absent in demo mode and for a viewer with only a read grant, and its absence is
+	 * what hides the editor entirely -- a disabled Add button would advertise an action
+	 * that can never work here. The server re-checks anyway; this only decides what to
+	 * draw.
+	 */
+	editableTreeId?: string | null;
 }) {
 	const [lod, setLod] = useState<Lod>("full");
+
+	/**
+	 * The card most recently clicked, which pre-fills the editor's "from" field.
+	 *
+	 * Kept here rather than inside the panel because the canvas is the thing that knows
+	 * it, and lifting it means clicking a person you can SEE is how you name them --
+	 * which is the whole reason the editor is docked beside the graph.
+	 */
+	const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
+
+	/**
+	 * People the pickers can offer, derived from the nodes already on screen.
+	 *
+	 * Not a server round trip: these nodes are in memory, carry their names, and are
+	 * exactly the set a viewer can see. `editablePeople()` exists for the same job but
+	 * would send a second copy of data the client already holds -- and only names are
+	 * needed, never contact values.
+	 */
+	const pickable = useMemo<PickablePerson[]>(
+		() =>
+			nodes
+				.filter((node) => node.type === "person")
+				.map((node) => ({
+					id: node.id,
+					name: displayName(node.data.primary),
+				}))
+				.sort((a, b) => a.name.localeCompare(b.name)),
+		[nodes],
+	);
 
 	// A fresh object per request, so searching the same name twice still travels.
 	// The canvas compares by identity for exactly this reason.
@@ -90,6 +130,7 @@ export function TreeStage({
 				degree={degree}
 				kinship={kinship}
 				showRelations={showRelations}
+				onPick={setPicked}
 			/>
 
 			{/* Top-left, opposite the detail control.
@@ -154,6 +195,28 @@ export function TreeStage({
 				    fill where a card uses the rail. */}
 				<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} />
 			</div>
+
+			{/*
+			 * Bottom-LEFT, and only when there is something to write to.
+			 *
+			 * Not bottom-right: that corner already holds the overview map and the "You"
+			 * button, and the editor sheet is 20rem wide -- stacking it there would bury
+			 * both. Left is React Flow's zoom stack, which is hidden on a touch screen and
+			 * only 44px wide otherwise, so the sheet clears it with the bottom offset.
+			 *
+			 * Rendered as nothing at all for a read-only viewer rather than as a disabled
+			 * button, because a disabled Add advertises an action that will never work here.
+			 */}
+			{editableTreeId && (
+				<div className="pointer-events-none absolute bottom-3 left-3 z-30 flex flex-col items-start gap-1.5 sm:bottom-3 sm:left-16">
+					<EditorPanel
+						treeId={editableTreeId}
+						people={pickable}
+						selectedId={picked?.id}
+						selectedName={picked?.name}
+					/>
+				</div>
+			)}
 		</div>
 	);
 }
