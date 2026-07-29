@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { FlowEdge, FlowNode, FusedPerson } from "./graph";
-import { layoutGraph, type PositionedNode } from "./layout";
+import { type Lod, layoutGraph, NODE_METRICS, type PositionedNode } from "./layout";
 
 function personNode(id: string): FlowNode {
 	const fused = {
@@ -117,6 +117,83 @@ describe("layoutGraph", () => {
 		// Nothing to anchor to, so this is not a case the pass can improve.
 		const positioned = await layoutNodes([personNode("orphan"), personNode("other")], []);
 		expect(positioned).toHaveLength(2);
+	});
+});
+
+/**
+ * The level-of-detail switch has one job: a smaller footprint. If the spacing did
+ * not collapse with the nodes, a tree of dots would keep card-sized gaps and the
+ * overview it exists to give would not fit any better than the cards did.
+ */
+describe("level of detail", () => {
+	/** A three-generation family with siblings, so both axes have something to shrink. */
+	function family(): { nodes: FlowNode[]; edges: FlowEdge[] } {
+		return {
+			nodes: [
+				personNode("gran"),
+				personNode("parent"),
+				personNode("aunt"),
+				personNode("kidA"),
+				personNode("kidB"),
+			],
+			edges: [
+				familyEdge("f1", "gran", "parent"),
+				familyEdge("f2", "gran", "aunt"),
+				familyEdge("f3", "parent", "kidA"),
+				familyEdge("f4", "parent", "kidB"),
+			],
+		};
+	}
+
+	async function footprint(lod: Lod): Promise<{ width: number; height: number }> {
+		const { nodes, edges } = family();
+		const positioned = (await layoutGraph(nodes, edges, lod)).nodes;
+		return {
+			width:
+				Math.max(...positioned.map((n) => n.position.x + n.width)) -
+				Math.min(...positioned.map((n) => n.position.x)),
+			height:
+				Math.max(...positioned.map((n) => n.position.y + n.height)) -
+				Math.min(...positioned.map((n) => n.position.y)),
+		};
+	}
+
+	it("shrinks on both axes at every step down", async () => {
+		const full = await footprint("full");
+		const compact = await footprint("compact");
+		const dot = await footprint("dot");
+
+		expect(compact.width).toBeLessThan(full.width);
+		expect(compact.height).toBeLessThan(full.height);
+		expect(dot.width).toBeLessThan(compact.width);
+		expect(dot.height).toBeLessThan(compact.height);
+	});
+
+	it("collapses the gaps too, not only the nodes", async () => {
+		// The failure this guards: shrink the cards, leave elk.spacing.nodeNode alone,
+		// and a tree of dots is still as wide as one of cards. So the footprint has to
+		// shrink by MORE than the nodes themselves did.
+		const full = await footprint("full");
+		const dot = await footprint("dot");
+		const nodeRatio = NODE_METRICS.dot.width / NODE_METRICS.full.width;
+
+		expect(dot.width / full.width).toBeLessThan(nodeRatio + 0.2);
+	});
+
+	it("keeps generation order whatever the detail level", async () => {
+		for (const lod of ["full", "compact", "dot"] as Lod[]) {
+			const positioned = (await layoutGraph(family().nodes, family().edges, lod)).nodes;
+			const y = (id: string) => positioned.find((n) => n.id === id)?.position.y ?? 0;
+			expect(y("gran")).toBeLessThan(y("parent"));
+			expect(y("parent")).toBeLessThan(y("kidA"));
+		}
+	});
+
+	it("defaults to full detail when no level is given", async () => {
+		const { nodes, edges } = family();
+		const implicit = (await layoutGraph(nodes, edges)).nodes;
+		const explicit = (await layoutGraph(nodes, edges, "full")).nodes;
+		expect(implicit.map((n) => n.position)).toEqual(explicit.map((n) => n.position));
 	});
 });
 

@@ -10,7 +10,7 @@ import Link from "next/link";
 import type { TreeView } from "@/lib/tree/view";
 import { cn } from "@/lib/utils";
 import { DemoBanner } from "./DemoBanner";
-import { TreeCanvas } from "./TreeCanvas";
+import { TreeStage } from "./TreeStage";
 
 /** Mono stat, `tabular-nums` so digits do not jitter between values. */
 function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
@@ -113,7 +113,7 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 			{view.isDemo && <DemoBanner />}
 
 			<div className="min-h-0 flex-1">
-				<TreeCanvas nodes={view.nodes} edges={view.edges} selfId={view.selfId} />
+				<TreeStage nodes={view.nodes} edges={view.edges} selfId={view.selfId} />
 			</div>
 		</main>
 	);

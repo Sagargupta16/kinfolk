@@ -63,6 +63,10 @@ body {
 .react-flow__edge-path {
 	stroke: var(--color-hairline-strong);
 	stroke-width: 1.5;
+	/* Rounded joins on the orthogonal skeleton: a mitred right angle at 1.5px reads
+	   as a printing artefact, and the corner is where the eye follows the line. */
+	stroke-linejoin: round;
+	stroke-linecap: round;
 }
 
 .react-flow__edge.is-partner .react-flow__edge-path {
@@ -71,6 +75,40 @@ body {
 
 .react-flow__edge.is-inferred .react-flow__edge-path {
 	stroke-dasharray: 4 4;
+}
+
+/**
+ * Family edges draw themselves on, once, in generation order.
+ *
+ * The cards already arrive oldest row first; without this the skeleton is simply
+ * there from frame one, so the lines look like a backdrop the cards were placed
+ * on rather than the connections that put them where they are.
+ *
+ * The path carries `pathLength="1"` (set in TreeCanvas), which normalises the
+ * dash maths: one keyframe then covers every edge whatever its real length,
+ * where a pixel dasharray would let short edges finish while long ones are still
+ * drawing.
+ *
+ * `stroke-dasharray` lives INSIDE the keyframes rather than on the rule, so that
+ * with `backwards` fill it reverts the moment the animation ends. A dasharray
+ * left on the rule would persist against a normalised path length, and every
+ * later dash pattern (an ended relation, a professional tie) would compose with
+ * it and render as a solid line.
+ */
+@keyframes kf-draw {
+	from {
+		stroke-dasharray: 1;
+		stroke-dashoffset: 1;
+	}
+	to {
+		stroke-dasharray: 1;
+		stroke-dashoffset: 0;
+	}
+}
+
+.react-flow__edge.kf-draw .react-flow__edge-path {
+	animation: kf-draw var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms);
 }
 
 /**
@@ -103,6 +141,42 @@ body {
 .react-flow__edge.is-teacher .react-flow__edge-path,
 .react-flow__edge.is-employer .react-flow__edge-path {
 	stroke-dasharray: 2 4;
+}
+
+/**
+ * Closeness, as stroke weight.
+ *
+ * The "show immediate connections more densely" half of the graph: a close friend
+ * draws a firmer line than an acquaintance, so the dense core of somebody's world
+ * is visible without reading a single label. Weight is pre-attentive, which is
+ * exactly why it is driven by stored closeness rather than picked by eye.
+ *
+ * Kept under the 1.5px family skeleton at every step -- a relation that outweighs
+ * a parentage would invert the hierarchy the layout just established.
+ */
+.react-flow__edge.is-close-1 .react-flow__edge-path {
+	stroke-width: 0.75;
+	opacity: 0.7;
+}
+
+.react-flow__edge.is-close-2 .react-flow__edge-path {
+	stroke-width: 1;
+}
+
+.react-flow__edge.is-close-3 .react-flow__edge-path {
+	stroke-width: 1.4;
+	stroke: var(--color-ink-faint);
+}
+
+/*
+ * A relation that has ended. Halved opacity and a sparse dash: it is history, and
+ * a former colleague drawn as firmly as a current one overstates the graph. The
+ * dash overrides the category rhythm on purpose -- "over" outranks "professional"
+ * as the thing you need to know.
+ */
+.react-flow__edge.is-ended .react-flow__edge-path {
+	opacity: 0.4;
+	stroke-dasharray: 1 5;
 }
 
 /*
@@ -150,10 +224,30 @@ body {
 	fill: var(--color-hairline-strong);
 }
 
-/* An active relation lifts out of the background so you can trace it. */
+/**
+ * An active relation lifts out of the background so you can trace it, and its
+ * dashes travel from A towards B.
+ *
+ * The motion is what makes a DIRECTION legible on a curve that crosses three
+ * generations: an arrowhead at one end is a 14px mark on a 400px line, and on a
+ * phone it lands under a fingertip. Running only while active keeps the canvas
+ * still at rest -- a tree with fifty animated edges is a screensaver.
+ *
+ * Negative offset, so the dashes move source -> target. Positive would run the
+ * flow backwards and quietly reverse the meaning of "A mentors B".
+ */
+@keyframes kf-flow {
+	to {
+		stroke-dashoffset: -18;
+	}
+}
+
 .react-flow__edge.is-relation.is-active .react-flow__edge-path {
 	stroke: var(--color-accent);
 	stroke-width: 1.5;
+	opacity: 1;
+	stroke-dasharray: 5 4;
+	animation: kf-flow 700ms linear infinite;
 }
 
 /**
@@ -278,6 +372,44 @@ body {
 	   visibly gather behind it rather than everything arriving at once. */
 	animation: kf-fuse var(--duration-slow) var(--ease-out) backwards;
 	animation-delay: calc(var(--kf-delay, 0ms) + 160ms + var(--kf-stack) * 60ms);
+}
+
+/**
+ * Presence ring: how connected somebody is.
+ *
+ * Behind the card, spreading further the busier the person. A ring rather than a
+ * bigger card because ELK has already reserved this node's box -- growing the
+ * busiest ones would overlap their neighbours, or force every row to reserve the
+ * maximum and waste the space on the quiet people.
+ *
+ * Neutral rather than accent-tinted: connectedness is a property of everybody on
+ * the canvas, and an amber halo on half the tree would spend the one accent that
+ * has to keep meaning "you" and "this relation".
+ */
+.kf-presence {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--radius-node);
+	/*
+	 * Spread only, no blur radius offset: a blurred glow at these sizes reads as a
+	 * drop shadow and the design uses hairlines rather than shadows.
+	 */
+	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-hairline) 60%, transparent);
+	pointer-events: none;
+	/* Animates when the level of detail changes, since the box changes with it. */
+	transition: box-shadow var(--duration-base) var(--ease-out);
+}
+
+/**
+ * Two families disagreeing about the same person.
+ *
+ * A dashed border, not a colour: the whole point is that this must survive being
+ * read by somebody who cannot distinguish the accent, and it pairs with a glyph
+ * on the card so the state is never carried by one channel alone.
+ */
+.kf-conflicted {
+	border-style: dashed;
+	border-color: var(--color-accent-dim);
 }
 
 /**
