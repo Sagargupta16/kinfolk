@@ -47,16 +47,22 @@ pnpm lint
 ## Entry points
 
 - [app/page.tsx](app/page.tsx) -- landing page
-- [app/demo/page.tsx](app/demo/page.tsx) -- combined-vs-mine-only demo, runs on `lib/tree/sample.ts`, no database
+- [app/tree/page.tsx](app/tree/page.tsx) -- the tree. One page, two data sources; resolves session first, demo cookie second.
+- [app/signin/page.tsx](app/signin/page.tsx) -- GitHub sign-in, with the demo offered just as prominently
+- [app/demo/route.ts](app/demo/route.ts) -- sets the demo cookie and redirects to `/tree`. A route handler, not a page: a page cannot set a cookie during render.
 - [app/api/auth/[...nextauth]/route.ts](app/api/auth/%5B...nextauth%5D/route.ts) -- Auth.js handler
-- [auth.ts](auth.ts) -- Auth.js config
+- [auth.ts](auth.ts) -- Auth.js config plus `sessionOrNull()`, which pages use instead of `auth()`
 
 ## Key files
 
 - [lib/db/schema.ts](lib/db/schema.ts) -- the brain. Read this before touching any data logic.
 - [lib/tree/relations.ts](lib/tree/relations.ts) -- `RELATION_KINDS`, the single source of truth for what each relation means, its inverse, and whether it is symmetric. Insert, display, and canvas all read it.
 - [lib/tree/graph.ts](lib/tree/graph.ts) -- fusion (union-find) plus React Flow projection. Pure, no browser or DB deps.
-- [lib/tree/layout.ts](lib/tree/layout.ts) -- ELK layered layout, node dimension constants
+- [lib/tree/layout.ts](lib/tree/layout.ts) -- ELK layered layout, generation bands, node dimension constants
+- [lib/tree/view.ts](lib/tree/view.ts) -- `TreeView`, the one shape the UI renders. Demo and database both produce it.
+- [lib/tree/load.ts](lib/tree/load.ts) -- the database path to a `TreeView`; [lib/tree/demo.ts](lib/tree/demo.ts) is the sample-data path
+- [lib/tree/visibility.ts](lib/tree/visibility.ts) -- server-side contact filtering. Nothing else may decide what a viewer receives.
+- [lib/tree/neighbourhood.ts](lib/tree/neighbourhood.ts) -- who lights up on hover, traversing through union dots
 - [components/tree/TreeCanvas.tsx](components/tree/TreeCanvas.tsx) -- canvas, owns layout-on-data-change and nothing else
 - [app/globals.css](app/globals.css) -- design tokens; do not hardcode colours in components
 
@@ -89,6 +95,12 @@ Read this before adding a table or a query -- most "obvious" schema changes here
 - **Phone numbers are stored as entered, never normalised.** Relatives abroad have country codes, older records have landlines, and rewriting the string loses information the owner deliberately typed. Dedupe compares trimmed + lowercased values only.
 - **`next-env.d.ts` is excluded from Biome.** Next regenerates it with CRLF on every dev boot, so formatting it just loses the race. [.gitattributes](.gitattributes) pins LF for everything else.
 - **React Flow error#004 ("parent container needs a width and a height") is not always noise.** While the container measures 0x0 React Flow never measures nodes, so edges render as an empty container. Framing keys off `useNodesInitialized`, not `requestAnimationFrame`, for exactly this reason.
+- **`lib/db/client.ts` must stay importable with no `DATABASE_URL`.** Next collects page data by importing every route's module graph, so throwing at module scope fails `pnpm build` on a fresh clone. The client is always constructed for real and pointed at a placeholder URL whose queries throw a message saying what to do. A lazy Proxy is not an option: the Auth.js Drizzle adapter type-checks the instance it is handed at import time.
+- **Pages call `sessionOrNull()`, never `auth()` directly.** Sessions live in the database, so with no `DATABASE_URL` there is nothing to look one up in and Auth.js logs `MissingSecret` on every render. Reading the demo tree needs no auth, so the guard belongs in one place.
+- **Only the INNER card animates on entrance, never the node wrapper.** React Flow owns the wrapper's `transform` for positioning; animating it fights the layout and the node lands in the wrong place. Hence `.kf-enter > *` in globals.css rather than `.kf-enter`.
+- **Import `getNodesBounds` from `useReactFlow()`, not the package root.** The standalone export has no node lookup, cannot handle sub-flows, and warns on every single call.
+- **The fusion reveal reads `contributingTreeIds.length`, so it is a property of the data, not a flag.** Mine-only mode produces `merged 0` and therefore no stacked sheets, automatically. The sheets carry no `z-index`: they and the card are all `z-index: auto`, so paint order alone puts the card on top, and that survives an ancestor gaining a stacking context in a way a negative index would not.
+- **Generation bands come from person nodes only.** A union dot sits between two rows, so including one invents a half-generation. The entrance stagger therefore snaps each node to its NEAREST band rather than an exact y match, or every union dot gets delay 0 and pops in ahead of the couple it joins.
 
 ## Repo-specific rules
 
@@ -99,8 +111,17 @@ Read this before adding a table or a query -- most "obvious" schema changes here
 - A new relation kind means three edits, in this order: the `relationKindEnum` member, its `RELATION_KINDS` spec (label, inverse, symmetric, category), and a `.is-<kind>` rule in globals.css if it joins a category that has one. Skip the spec and `relationLabel()` throws on read.
 - Private repo, so no Renovate.
 
+## Demo mode
+
+Sample data is reachable before auth exists, following the ledger-sync pattern: ONE UI, two data sources, a flag, and mutation guards. The difference is that Kinfolk renders on the server, so the flag is an httpOnly cookie read in a server component rather than a client store -- which also keeps `lib/tree/sample.ts` out of the client bundle entirely.
+
+- Both paths produce the same `TreeView` ([lib/tree/view.ts](lib/tree/view.ts)), so no component knows which one it is rendering.
+- [lib/tree/demo.ts](lib/tree/demo.ts) calls the real `fuseTrees` and `toFlowGraph` rather than shipping pre-computed positions. If fusion breaks, the demo must break too; a demo that cannot fail is a screenshot, not a proof.
+- Mine-only mode drops the other tree AND its links, so it is a genuinely smaller dataset rather than the same tree with nodes hidden. That is what a viewer without a share grant would actually get.
+- A real session beats the demo cookie, so signing in from inside the demo shows your own (possibly empty) tree instead of silently keeping sample data on screen.
+
 ## Status
 
-Scaffold. Built and verified: schema, fusion + layout pipeline (39 tests), relation overlay and contact details, canvas, design tokens, demo route.
+Built and verified (67 tests, typecheck, lint, build): schema, fusion + layout pipeline, generation bands, relation overlay, server-side contact visibility filtering, canvas with staggered entrance / hover focus / fusion reveal, design tokens, demo mode, `/signin`, `/tree` with both data sources.
 
-Not built yet: `/signin` page (referenced by [auth.ts](auth.ts)), the tree editor, invite/share flow, merge-proposal UI, DB-backed data loading, contact and relation editor UI. Visibility is stored on every contact row but nothing enforces it yet -- the read path must filter before contacts ever leave the server. No migration has been run against a real Neon branch.
+Not built yet: the tree editor, invite/share flow, merge-proposal UI, contact and relation editor UI. No migration has been run against a real Neon branch, so `loadTreeView()` is verified by types and unit tests only -- every live check so far has been on the demo path. Sign-in itself is unexercised: it needs `AUTH_SECRET` plus a GitHub OAuth app.
