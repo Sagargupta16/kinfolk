@@ -15,11 +15,13 @@
  * changes.
  */
 import { Rows3, Square, SquareDot } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { degrees } from "@/lib/tree/density";
 import type { FlowEdge, FlowNode } from "@/lib/tree/graph";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 import { TreeCanvas } from "./TreeCanvas";
+import { TreeSearch } from "./TreeSearch";
 
 /**
  * Ordered least to most collapsed, which is the direction the control reads.
@@ -45,9 +47,34 @@ export function TreeStage({
 }) {
 	const [lod, setLod] = useState<Lod>("full");
 
+	// A fresh object per request, so searching the same name twice still travels.
+	// The canvas compares by identity for exactly this reason.
+	const [goTo, setGoTo] = useState<{ id: string } | null>(null);
+	const onGoTo = useCallback((id: string) => setGoTo({ id }), []);
+
+	// Computed here rather than in each consumer: the canvas draws presence rings
+	// from it and search ranks namesakes by it, and doing it twice over 151 nodes on
+	// every render would be the same work for the same answer.
+	const degree = useMemo(() => degrees(nodes, edges), [nodes, edges]);
+
 	return (
 		<div className="relative size-full">
-			<TreeCanvas nodes={nodes} edges={edges} selfId={selfId} lod={lod} />
+			<TreeCanvas
+				nodes={nodes}
+				edges={edges}
+				selfId={selfId}
+				lod={lod}
+				goTo={goTo}
+				degree={degree}
+			/>
+
+			{/* Top-left, opposite the detail control.
+			    Capped at 15rem and NOT full width on a phone: the results drop over the
+			    canvas, and a list spanning the screen would hide the tree it is meant to
+			    help you read. */}
+			<div className="absolute left-3 top-3 z-20 w-[min(15rem,calc(100%-8.5rem))]">
+				<TreeSearch nodes={nodes} selfId={selfId} degree={degree} onGoTo={onGoTo} />
+			</div>
 
 			{/* Top-right: React Flow puts its own zoom controls bottom-left, and the
 			    two must not share an edge on a phone. Above the canvas, so it needs a
