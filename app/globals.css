@@ -481,3 +481,32 @@ body {
 	width: 0.875rem;
 	height: 0.875rem;
 }
+
+/**
+ * No zoom buttons on a touch screen.
+ *
+ * Not a viewport-width query: a narrow window on a laptop still has a cursor and
+ * a scroll wheel, and hiding its zoom buttons would remove a control that works.
+ * `pointer: coarse` asks the question that actually matters -- is the input a
+ * finger -- and a finger already has pinch, which zooms about the point being
+ * looked at rather than the viewport centre.
+ *
+ * 133px of vertical canvas is the saving, on the axis a phone has least of.
+ */
+@media (pointer: coarse) {
+	.react-flow .kf-zoom-controls {
+		display: none;
+	}
+}
+
+/*
+ * Bottom-right, clear of React Flow's attribution.
+ *
+ * The extra bottom margin is the attribution's own height: it occupies this exact
+ * corner, and at the standard 0.75rem inset the button covered the last 7px of
+ * it. The credit stays, so the button moves.
+ */
+.react-flow .kf-locate {
+	margin: 0.75rem;
+	margin-bottom: 2.25rem;
+}
