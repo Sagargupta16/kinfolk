@@ -6,7 +6,14 @@ import type {
 	PersonRelation,
 	RelationKind,
 } from "../db/schema";
-import { fuseTrees, lifespan, type TreeSlice, toFlowGraph, type UnionWithChildren } from "./graph";
+import {
+	fuseTrees,
+	lifespan,
+	type TreeSlice,
+	toFlowGraph,
+	type UnionWithChildren,
+	visibleEdges,
+} from "./graph";
 import { canonicalPair, relationLabel } from "./relations";
 
 function person(id: string, treeId: string, overrides: Partial<Person> = {}): Person {
@@ -548,7 +555,7 @@ describe("relations in the fused graph", () => {
 		expect(edges.filter((e) => e.kind !== "relation").every((e) => e.layout)).toBe(true);
 	});
 
-	it("omits relation edges entirely when the overlay is off", () => {
+	it("projects relations even when the viewer has the overlay off", () => {
 		const graph = fuseTrees(
 			[
 				slice("t1", [person("a", "t1"), person("b", "t1")], [], {
@@ -558,8 +565,35 @@ describe("relations in the fused graph", () => {
 			[],
 		);
 
-		const { edges } = toFlowGraph(graph, { includeRelations: false });
-		expect(edges.filter((e) => e.kind === "relation")).toHaveLength(0);
+		// The projection is total on purpose: layout follows relation edges to place a
+		// person with no family, so dropping them here would move people rather than
+		// just hiding lines. `visibleEdges` is what the overlay toggle filters with.
+		const { edges } = toFlowGraph(graph);
+		expect(edges.filter((e) => e.kind === "relation")).toHaveLength(1);
+		expect(visibleEdges(edges, false).filter((e) => e.kind === "relation")).toHaveLength(0);
+		expect(visibleEdges(edges, true)).toBe(edges);
+	});
+
+	it("keeps every family edge when the overlay is off", () => {
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("dad", "t1"), person("kid", "t1")],
+					[union("u1", "t1", "dad", null, ["kid"])],
+					{
+						relations: [relation("r1", "t1", "friend", "dad", "kid")],
+					},
+				),
+			],
+			[],
+		);
+
+		const { edges } = toFlowGraph(graph);
+		const hidden = visibleEdges(edges, false);
+
+		expect(hidden).toHaveLength(edges.filter((e) => e.layout).length);
+		expect(hidden.every((e) => e.layout)).toBe(true);
 	});
 
 	it("drops a relation whose other end is not visible", () => {

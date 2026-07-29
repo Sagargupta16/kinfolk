@@ -42,7 +42,7 @@ export function buildDemoView({
 	const links = combined ? sampleLinks : [];
 
 	const fused = fuseTrees(slices, links, samplePrimaryTreeId);
-	const { nodes, edges } = toFlowGraph(fused, { includeRelations: showRelations });
+	const { nodes, edges } = toFlowGraph(fused);
 
 	return {
 		nodes,

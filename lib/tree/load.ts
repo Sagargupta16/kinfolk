@@ -196,7 +196,7 @@ export async function loadTreeView(
 
 	const primaryTreeId = ownTreeIds[0];
 	const fused = fuseTrees(filtered, links, primaryTreeId);
-	const { nodes, edges } = toFlowGraph(fused, { includeRelations: showRelations });
+	const { nodes, edges } = toFlowGraph(fused);
 
 	// The viewer's own card, when they have claimed a person row.
 	const selfId = fused.people.find((person) =>
