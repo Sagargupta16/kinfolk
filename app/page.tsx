@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { enterDemo } from "@/lib/tree/demo-actions";
 
 export default function HomePage() {
 	return (
@@ -18,12 +19,23 @@ export default function HomePage() {
 				</p>
 			</div>
 
-			<div>
+			{/* Sample data first, sign-in second: there is nothing to show a new visitor
+			    yet, and asking them to authorise a GitHub app before they know what this
+			    is would be the wrong order. */}
+			<div className="flex flex-col gap-3 sm:flex-row">
+				<form action={enterDemo}>
+					<button
+						type="submit"
+						className="flex min-h-11 w-full items-center justify-center rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-[--duration-fast] ease-[--ease-out] hover:-translate-y-px active:translate-y-0 sm:w-auto"
+					>
+						See the sample tree
+					</button>
+				</form>
 				<Link
-					href="/demo"
-					className="inline-flex min-h-11 items-center rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-[--duration-fast] ease-[--ease-out] hover:-translate-y-px active:translate-y-0"
+					href="/signin"
+					className="flex min-h-11 items-center justify-center rounded-md border border-hairline px-4 text-sm font-medium text-ink transition-colors duration-[--duration-fast] ease-[--ease-out] hover:border-hairline-strong hover:bg-surface-raised"
 				>
-					See the demo tree
+					Sign in
 				</Link>
 			</div>
 		</main>
