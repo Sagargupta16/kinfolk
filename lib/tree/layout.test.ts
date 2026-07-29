@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { type FlowEdge, type FlowNode, type FusedPerson, visibleEdges } from "./graph";
-import { type Lod, layoutGraph, NODE_METRICS, type PositionedNode } from "./layout";
+import { graphExtent, type Lod, layoutGraph, NODE_METRICS, type PositionedNode } from "./layout";
 
 function personNode(id: string): FlowNode {
 	const fused = {
@@ -32,7 +32,14 @@ async function layoutNodes(nodes: FlowNode[], edges: FlowEdge[]): Promise<Positi
 
 describe("layoutGraph", () => {
 	it("returns nothing for an empty graph", async () => {
-		expect(await layoutGraph([], [])).toEqual({ nodes: [], bands: [] });
+		expect(await layoutGraph([], [])).toEqual({
+			nodes: [],
+			bands: [],
+			// A zero box rather than an absent one. The minimap divides by the width to
+			// pick its aspect ratio, so an undefined extent would be a NaN height on an
+			// empty tree -- which is the state a new account opens in.
+			extent: { x: 0, y: 0, width: 0, height: 0 },
+		});
 	});
 
 	it("ignores relation edges when assigning generations", async () => {
@@ -284,5 +291,65 @@ describe("generation bands", () => {
 		// Parents, then child. The dot sits between those rows and must not become
 		// a third band -- a label there would read as a generation nobody is in.
 		expect(bands.map((b) => b.count)).toEqual([2, 1]);
+	});
+});
+
+/**
+ * The extent is what the minimap shapes its panel from, so the property that matters
+ * is that it contains everything DRAWN -- the opposite of generation bands, which are
+ * about people only.
+ */
+describe("graphExtent", () => {
+	it("returns a zero box for no nodes", () => {
+		// Not an empty-array guard for its own sake: the minimap divides by the width,
+		// and a new account's tree has no nodes in it.
+		expect(graphExtent([])).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+	});
+
+	it("spans from the top-left corner to the bottom-right edge", () => {
+		const boxed = (id: string, x: number, y: number, width: number, height: number) =>
+			({ ...personNode(id), position: { x, y }, width, height }) as PositionedNode;
+
+		// Deliberately not axis-aligned: the leftmost node is not the topmost one, so a
+		// box built from a single node's corner would be wrong in one axis.
+		expect(graphExtent([boxed("a", 10, 200, 200, 92), boxed("b", 400, 40, 200, 92)])).toEqual({
+			x: 10,
+			y: 40,
+			width: 590,
+			height: 252,
+		});
+	});
+
+	it("includes union dots, unlike generation bands", async () => {
+		const union = {
+			id: "u1",
+			type: "union",
+			data: { union: { id: "u1", childIds: [] } },
+		} as unknown as FlowNode;
+
+		// A dot is drawn, so a box that skipped it would clip the canvas it describes.
+		// Asserted through a real layout rather than hand-placed boxes, since the only
+		// way this regresses is somebody filtering on `type === "person"` here the way
+		// `generationBands` correctly does.
+		const { nodes: positioned, extent } = await layoutGraph(
+			[personNode("mum"), personNode("dad"), union],
+			[familyEdge("f1", "mum", "u1"), familyEdge("f2", "dad", "u1")],
+		);
+
+		const dot = positioned.find((n) => n.id === "u1");
+		if (!dot) throw new Error("union dot was not laid out");
+		expect(extent.y + extent.height).toBeGreaterThanOrEqual(dot.position.y + dot.height);
+	});
+
+	it("grows with the level of detail, which is why the minimap cannot be a fixed box", async () => {
+		const nodes = [personNode("a"), personNode("b"), personNode("c")];
+		const edges = [familyEdge("f1", "a", "b"), familyEdge("f2", "b", "c")];
+
+		const full = (await layoutGraph(nodes, edges, "full")).extent;
+		const dot = (await layoutGraph(nodes, edges, "dot")).extent;
+
+		// The ratio, not just the size: 9.5:1 as cards against 3.1:1 as dots on the
+		// sample tree is the whole reason the panel computes its own height.
+		expect(full.width / full.height).not.toBeCloseTo(dot.width / dot.height, 1);
 	});
 });

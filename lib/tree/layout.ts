@@ -80,9 +80,45 @@ export type GenerationBand = {
 export type LayoutResult = {
 	nodes: PositionedNode[];
 	bands: GenerationBand[];
+	/** The box every node fits inside. See `graphExtent`. */
+	extent: Box;
 };
 
-type Box = { x: number; y: number; width: number; height: number };
+/** Exported for the minimap, which shapes its own panel from the graph extent. */
+export type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * The box the whole laid-out graph occupies.
+ *
+ * Returned with the layout because layout is the only thing that knows it: the
+ * numbers are the positions it just assigned, and any consumer recomputing them
+ * would either duplicate the sizing table or read measured DOM boxes that do not
+ * exist until React Flow has painted.
+ *
+ * The overview minimap needs it to choose its own aspect ratio, and that has to be
+ * derived rather than picked: this tree measures 10760x1137 as cards (9.5:1) and
+ * 1512x488 as dots (3.1:1), so one fixed box would spend most of its area on empty
+ * space at whichever level it was not tuned for.
+ */
+export function graphExtent(nodes: PositionedNode[]): Box {
+	if (nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+
+	let left = Number.POSITIVE_INFINITY;
+	let top = Number.POSITIVE_INFINITY;
+	let right = Number.NEGATIVE_INFINITY;
+	let bottom = Number.NEGATIVE_INFINITY;
+
+	// Every node, union dots included -- unlike generation bands, which are about
+	// people. A dot is drawn, so a box that excluded it would clip the canvas.
+	for (const node of nodes) {
+		left = Math.min(left, node.position.x);
+		top = Math.min(top, node.position.y);
+		right = Math.max(right, node.position.x + node.width);
+		bottom = Math.max(bottom, node.position.y + node.height);
+	}
+
+	return { x: left, y: top, width: right - left, height: bottom - top };
+}
 
 /**
  * ELK ships as a bundled worker-less build; importing it lazily keeps it out of
@@ -98,7 +134,8 @@ export async function layoutGraph(
 	edges: FlowEdge[],
 	lod: Lod = "full",
 ): Promise<LayoutResult> {
-	if (nodes.length === 0) return { nodes: [], bands: [] };
+	if (nodes.length === 0)
+		return { nodes: [], bands: [], extent: { x: 0, y: 0, width: 0, height: 0 } };
 
 	const elk = await loadElk();
 	const metrics = NODE_METRICS[lod];
@@ -155,7 +192,11 @@ export async function layoutGraph(
 		};
 	});
 
-	return { nodes: positioned, bands: generationBands(positioned, metrics.height) };
+	return {
+		nodes: positioned,
+		bands: generationBands(positioned, metrics.height),
+		extent: graphExtent(positioned),
+	};
 }
 
 /**

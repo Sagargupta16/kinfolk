@@ -31,12 +31,20 @@ import {
 	lifespan,
 	visibleEdges,
 } from "@/lib/tree/graph";
-import { type GenerationBand, type Lod, layoutGraph, NODE_METRICS } from "@/lib/tree/layout";
+import {
+	type Box,
+	type GenerationBand,
+	type Lod,
+	layoutGraph,
+	NODE_METRICS,
+} from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
+import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
 import { PersonNode, UnionNode } from "./PersonNode";
+import { TreeMinimap } from "./TreeMinimap";
 
 const nodeTypes = { person: PersonNode, union: UnionNode };
 const edgeTypes = { family: FamilyEdge };
@@ -197,6 +205,23 @@ function Canvas({
 	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 	const [bands, setBands] = useState<GenerationBand[]>([]);
 	/**
+	 * The box the laid-out tree occupies, for the minimap to shape itself to.
+	 *
+	 * From the layout rather than `getNodesBounds`: this has to be right on the FIRST
+	 * render of the panel, and React Flow's bounds are only correct once every node
+	 * has been measured -- which is the frame after. Sizing on stale bounds gave the
+	 * card view the dot view's ratio for one paint, a visible jump in the corner.
+	 */
+	const [extent, setExtent] = useState<Box>({ x: 0, y: 0, width: 0, height: 0 });
+	/**
+	 * The tree as coloured boxes for the overview, derived alongside the layout.
+	 *
+	 * Not from `nodes`: hover focus rewrites every node's className, so a memo over the
+	 * live array would rebuild 151 rectangles on each mouse move to redraw the identical
+	 * picture. Positions are the only input the map has, and they change here.
+	 */
+	const [overview, setOverview] = useState<OverviewNode[]>([]);
+	/**
 	 * Bumped once per completed layout, and the only thing framing keys off.
 	 *
 	 * Deliberately not `nodes`: hover focus rewrites className via setNodes, so the
@@ -346,72 +371,76 @@ function Canvas({
 
 		// ELK is async and imported lazily, so a fast second data change can
 		// resolve out of order. The flag drops stale layouts.
-		void layoutGraph(sourceNodes, sourceEdges, lod).then(({ nodes: positioned, bands: rows }) => {
-			if (cancelled) return;
+		void layoutGraph(sourceNodes, sourceEdges, lod).then(
+			({ nodes: positioned, bands: rows, extent: box }) => {
+				if (cancelled) return;
 
-			/** Entrance delay per node id, reused below to time the edges. */
-			const delays = new Map<string, number>();
-			for (const node of positioned) {
-				delays.set(
-					node.id,
-					Math.min(rowFor(node.position.y, rows) * ROW_STAGGER_MS, MAX_STAGGER_MS),
-				);
-			}
+				/** Entrance delay per node id, reused below to time the edges. */
+				const delays = new Map<string, number>();
+				for (const node of positioned) {
+					delays.set(
+						node.id,
+						Math.min(rowFor(node.position.y, rows) * ROW_STAGGER_MS, MAX_STAGGER_MS),
+					);
+				}
 
-			setNodes(
-				positioned.map((node) => ({
-					id: node.id,
-					type: node.type,
-					position: node.position,
-					data:
-						node.type === "person"
+				setNodes(
+					positioned.map((node) => ({
+						id: node.id,
+						type: node.type,
+						position: node.position,
+						data:
+							node.type === "person"
+								? {
+										...node.data,
+										isSelf: node.data.sources.some((s) => s.id === selfId),
+										degree: degree.get(node.id),
+										lod,
+									}
+								: node.data,
+						// Name and dates, which is what the card shows. Never a contact
+						// value: an accessible name is MORE exposed than the visible card,
+						// so it must not become the back door PersonNode refuses to be.
+						...(node.type === "person"
 							? {
-									...node.data,
-									isSelf: node.data.sources.some((s) => s.id === selfId),
-									degree: degree.get(node.id),
-									lod,
+									ariaLabel: [displayName(node.data.primary), lifespan(node.data.primary)]
+										.filter(Boolean)
+										.join(", "),
 								}
-							: node.data,
-					// Name and dates, which is what the card shows. Never a contact
-					// value: an accessible name is MORE exposed than the visible card,
-					// so it must not become the back door PersonNode refuses to be.
-					...(node.type === "person"
-						? {
-								ariaLabel: [displayName(node.data.primary), lifespan(node.data.primary)]
-									.filter(Boolean)
-									.join(", "),
-							}
-						: // A junction is not a destination, so it is not a tab stop.
-							{ focusable: false }),
-					// Union dots are structural, not content; dragging them would
-					// desync the layout from the data. Nothing is draggable by
-					// finger, so a swipe from anywhere pans.
-					draggable: node.type === "person" && !coarsePointer,
-					// The animation itself is CSS (see globals.css); React Flow owns
-					// the node's transform, so a JS-driven entrance would fight it.
-					className: "kf-enter",
-					style: { "--kf-delay": `${delays.get(node.id) ?? 0}ms` } as CSSProperties,
-				})),
-			);
+							: // A junction is not a destination, so it is not a tab stop.
+								{ focusable: false }),
+						// Union dots are structural, not content; dragging them would
+						// desync the layout from the data. Nothing is draggable by
+						// finger, so a swipe from anywhere pans.
+						draggable: node.type === "person" && !coarsePointer,
+						// The animation itself is CSS (see globals.css); React Flow owns
+						// the node's transform, so a JS-driven entrance would fight it.
+						className: "kf-enter",
+						style: { "--kf-delay": `${delays.get(node.id) ?? 0}ms` } as CSSProperties,
+					})),
+				);
 
-			// Each family edge draws itself on just after the node it descends FROM has
-			// landed, so the skeleton grows downwards with the cards rather than being
-			// there waiting for them. Relation edges are excluded: they are an overlay,
-			// and animating them in would read as part of the structure.
-			setEdges(
-				flowEdges.map((edge) => {
-					if (edge.className?.includes("is-relation")) return edge;
-					const delay = (delays.get(edge.source) ?? 0) + ROW_STAGGER_MS;
-					return {
-						...edge,
-						className: withFlag("kf-draw", edge.className, true),
-						style: { ...edge.style, "--kf-delay": `${delay}ms` } as CSSProperties,
-					};
-				}),
-			);
-			setBands(rows);
-			setLayoutEpoch((epoch) => epoch + 1);
-		});
+				// Each family edge draws itself on just after the node it descends FROM has
+				// landed, so the skeleton grows downwards with the cards rather than being
+				// there waiting for them. Relation edges are excluded: they are an overlay,
+				// and animating them in would read as part of the structure.
+				setEdges(
+					flowEdges.map((edge) => {
+						if (edge.className?.includes("is-relation")) return edge;
+						const delay = (delays.get(edge.source) ?? 0) + ROW_STAGGER_MS;
+						return {
+							...edge,
+							className: withFlag("kf-draw", edge.className, true),
+							style: { ...edge.style, "--kf-delay": `${delay}ms` } as CSSProperties,
+						};
+					}),
+				);
+				setBands(rows);
+				setExtent(box);
+				setOverview(overviewNodes(positioned, selfId));
+				setLayoutEpoch((epoch) => epoch + 1);
+			},
+		);
 
 		return () => {
 			cancelled = true;
@@ -656,9 +685,14 @@ function Canvas({
 			/>
 
 			{/*
-			 * Back to yourself. The single most valuable control on a canvas 10760px
-			 * wide, and the one thing a viewer cannot recover by gesture: pan far enough
-			 * on a phone and every direction looks the same.
+			 * Bottom-right: the overview, then "back to yourself".
+			 *
+			 * ONE panel holding both, not two. React Flow positions each Panel absolutely
+			 * in its corner, so a second one in the same corner would stack on top of the
+			 * first -- and the fix is not to nudge one with a margin, since the overview's
+			 * height changes with the detail level and any hardcoded offset would be
+			 * wrong at two of the three. A flex column lets them sit above each other by
+			 * layout instead.
 			 *
 			 * Bottom-RIGHT at every size, opposite React Flow's zoom stack. Flipping
 			 * sides by media query needs a rule that beats `.react-flow__panel.left`,
@@ -667,24 +701,35 @@ function Canvas({
 			 * and stretching the panel into a full-width invisible strip across the
 			 * bottom of the tree, which then eats the drag that should pan it.
 			 */}
-			{selfId && (
-				<Panel position="bottom-right" className="kf-locate">
+			<Panel
+				position="bottom-right"
+				className="kf-locate pointer-events-none flex flex-col items-end gap-1.5"
+			>
+				<TreeMinimap nodes={overview} extent={extent} />
+
+				{/*
+				 * Back to yourself. The single most valuable control on a canvas 10760px
+				 * wide, and the one thing a viewer cannot recover by gesture: pan far
+				 * enough on a phone and every direction looks the same.
+				 */}
+				{selfId && (
 					<button
 						type="button"
 						onClick={frameSelf}
 						title="Back to your family"
 						className={cn(
-							"flex min-h-11 items-center gap-2 rounded-md border border-hairline px-3",
-							"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider text-ink-muted",
-							"backdrop-blur-sm transition-colors duration-[--duration-fast] ease-[--ease-out]",
+							"pointer-events-auto flex min-h-11 items-center gap-2 rounded-md px-3",
+							"border border-hairline bg-surface/90 font-mono text-[0.625rem]",
+							"uppercase tracking-wider text-ink-muted backdrop-blur-sm",
+							"transition-colors duration-[--duration-fast] ease-[--ease-out]",
 							"hover:border-hairline-strong hover:text-ink",
 						)}
 					>
 						<Crosshair aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
 						You
 					</button>
-				</Panel>
-			)}
+				)}
+			</Panel>
 		</ReactFlow>
 	);
 }
