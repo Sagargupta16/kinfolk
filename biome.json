@@ -10,7 +10,7 @@
 			"app/**/*.{ts,tsx}",
 			"components/**/*.{ts,tsx}",
 			"lib/**/*.{ts,tsx,mjs}",
-			"scripts/**/*.{js,mjs,ts}",
+			"scripts/**/*.{js,mjs,mts,ts}",
 			"*.json",
 			"*.{ts,tsx,mjs}",
 			"!**/.next",

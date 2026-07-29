@@ -44,6 +44,12 @@ pnpm typecheck
 pnpm lint
 ```
 
+`pnpm db:smoke` ([scripts/smoke-db.mts](scripts/smoke-db.mts)) is the LIVE check, kept out of Vitest on purpose: it needs `DATABASE_URL`, and a suite that fails on a fresh clone for want of a database tells you nothing about the code. It seeds two trees, links a person across them, reads back through `loadTreeView()`, asserts fusion / kinship / contact filtering, then deletes everything it made. Run it after any change to the schema or the read path.
+
+## Database
+
+Neon project `kinfolk` (`steep-king-95741708`) in org `org-young-dawn-25789104`, `aws-ap-southeast-1`, Postgres 17 -- the same org and region as `prod/kalchar`. Created 2026-07-29 via the Composio Neon toolkit. Schema pushed with `pnpm db:push`: 12 tables, 10 enums, 28 indexes, 24 foreign keys.
+
 ## Entry points
 
 - [app/page.tsx](app/page.tsx) -- landing page
@@ -99,6 +105,11 @@ Read this before adding a table or a query -- most "obvious" schema changes here
 - **React Flow error#004 ("parent container needs a width and a height") is not always noise.** While the container measures 0x0 React Flow never measures nodes, so edges render as an empty container. Framing keys off `useNodesInitialized`, not `requestAnimationFrame`, for exactly this reason.
 - **`lib/db/client.ts` must stay importable with no `DATABASE_URL`.** Next collects page data by importing every route's module graph, so throwing at module scope fails `pnpm build` on a fresh clone. The client is always constructed for real and pointed at a placeholder URL whose queries throw a message saying what to do. A lazy Proxy is not an option: the Auth.js Drizzle adapter type-checks the instance it is handed at import time.
 - **Pages call `sessionOrNull()`, never `auth()` directly.** Sessions live in the database, so with no `DATABASE_URL` there is nothing to look one up in and Auth.js logs `MissingSecret` on every render. Reading the demo tree needs no auth, so the guard belongs in one place.
+- **`DATABASE_URL` in `.env.local` must be the DIRECT host, not the `-pooler` one.** The app talks to Neon over their serverless HTTP driver, which is happy either way, but `drizzle-kit push` opens a plain TCP connection that the pooler endpoint will not serve. One variable feeds both, so the direct host is the only value that satisfies both readers.
+- **`drizzle-kit push` on Windows prints `Changes applied` and THEN crashes** with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and exit code 3221226505. That is libuv tearing down the websocket after the work has committed, not a failed migration. Confirm against `information_schema` rather than trusting the exit code, which is why `pnpm db:smoke` exists.
+- **`view.kinship` is a `Map`, not a record.** `kinship[id]` type-checks (index signatures on a Map object) and returns `undefined` for every id, so an assertion written that way passes vacuously against an empty expectation. Always `kinship.get(id)`.
+- **An accepted link is symmetric, so the FAR tree's owner loads your tree too.** Their `loadTreeView()` reports `trees: 2`, not 1 -- that is the product working, and the invariant to check is that the far tree arrives at `linked` access with its tree-private contacts stripped, not that it is absent.
+- **`tsx` compiles a bare `.ts` script to CJS here**, because package.json has no `"type": "module"`, so top-level `await` fails with "not supported with the cjs output format". Name a script `.mts` to get ESM.
 - **Only the INNER card animates on entrance, never the node wrapper.** React Flow owns the wrapper's `transform` for positioning; animating it fights the layout and the node lands in the wrong place. Hence `.kf-enter > *` in globals.css rather than `.kf-enter`.
 - **Import `getNodesBounds` from `useReactFlow()`, not the package root.** The standalone export has no node lookup, cannot handle sub-flows, and warns on every single call.
 - **The fusion reveal reads `contributingTreeIds.length`, so it is a property of the data, not a flag.** Mine-only mode produces `merged 0` and therefore no stacked sheets, automatically. The sheets carry no `z-index`: they and the card are all `z-index: auto`, so paint order alone puts the card on top, and that survives an ancestor gaining a stacking context in a way a negative index would not.
@@ -141,4 +152,6 @@ Sample data is reachable before auth exists, following the ledger-sync pattern: 
 
 Built and verified (161 tests, typecheck, lint, build): schema, fusion + layout pipeline, generation bands, top-centred tree with sibling bars, kinship terms on every card, relation overlay, connection density (presence rings), server-side contact visibility filtering, canvas with staggered entrance / hover glow / fusion reveal, three levels of detail, search, the census-driven legend, the overview minimap, the masked dot lattice, design tokens, demo mode, `/signin`, `/tree` with both data sources.
 
-Not built yet: the tree editor, invite/share flow, merge-proposal UI, contact and relation editor UI. No migration has been run against a real Neon branch, so `loadTreeView()` is verified by types and unit tests only -- every live check so far has been on the demo path. Sign-in itself is unexercised: it needs `AUTH_SECRET` plus a GitHub OAuth app.
+The schema is live on a real Neon branch as of 2026-07-29, and `loadTreeView()` is verified against it by `pnpm db:smoke` (22 live checks: fusion across two trees, kinship terms, contact filtering at `linked` access, mine-only, the no-tree case, and a pending link changing nothing). `/api/auth/providers` returns 200 with the callback on port 3007.
+
+Not built yet: the tree editor, invite/share flow, merge-proposal UI, contact and relation editor UI. Sign-in still cannot complete: it needs a GitHub OAuth app, which is dashboard-only (github.com/settings/developers) -- `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` are the only empty variables left in `.env.local`.

@@ -17,6 +17,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"db:push": "drizzle-kit push",
+		"db:smoke": "tsx scripts/smoke-db.mts",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio"
