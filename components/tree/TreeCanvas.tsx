@@ -22,9 +22,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Crosshair } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Degree } from "@/lib/tree/density";
-import type { FlowEdge, FlowNode } from "@/lib/tree/graph";
+import { displayName, type FlowEdge, type FlowNode, lifespan } from "@/lib/tree/graph";
 import { type GenerationBand, type Lod, layoutGraph, NODE_METRICS } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,33 @@ const LEGIBLE_ZOOM: Record<Lod, number> = {
 	compact: 0.45,
 	dot: 0.18,
 };
+
+/**
+ * Zoom limits, named because the legibility guard has to use the same numbers the
+ * canvas does. Inline on `<ReactFlow>` they could drift from the maths that
+ * predicts what a fit will produce.
+ */
+const MIN_ZOOM = 0.15;
+const MAX_ZOOM = 1.8;
+
+/** Breathing room round a fit, as React Flow's own fraction-of-viewport padding. */
+const FIT_PADDING = 0.2;
+/** More, for a household: a few cards centred in a bare viewport reads as an error. */
+const HOUSEHOLD_PADDING = 0.3;
+
+/**
+ * How much viewport a fit actually gets to use, once padding is taken out.
+ *
+ * Reproduces `parsePadding` from @xyflow/system exactly, including the floor and
+ * the doubling for both sides. Without it the legibility guard divides by the RAW
+ * viewport while `fitView` divides by the padded one, so the guard overestimates
+ * the zoom by the padding factor -- 1.2x here, 1.3x for a household -- and waves
+ * through fits that render below the floor it exists to enforce. Which is worst on
+ * a phone, where padding is the largest share of the viewport.
+ */
+function usable(viewport: number, padding: number): number {
+	return viewport - Math.floor((viewport - viewport / (1 + padding)) * 0.5) * 2;
+}
 
 /**
  * Which generation a y coordinate belongs to, for the entrance stagger.
@@ -162,6 +189,18 @@ function Canvas({
 	 * mouseleave and cancels the focus that caused it.
 	 */
 	const [layoutEpoch, setLayoutEpoch] = useState(0);
+	/**
+	 * The epoch already framed, so each layout is framed exactly once.
+	 *
+	 * The dependency array cannot express this on its own. Framing needs the current
+	 * viewport size, and `frameSelf` closes over it too, so BOTH the raw dimensions
+	 * and the callback's identity change on every resize -- and on a phone the URL
+	 * bar collapsing is a resize, mid-gesture. Measured: zoomed to 0.95, changed
+	 * height by 22px, and the viewport snapped back to the opening 0.66. A ref
+	 * compares against the thing framing is actually about (new positions to show)
+	 * rather than the things it merely reads.
+	 */
+	const framedEpoch = useRef(0);
 	// `getNodesBounds` from the hook, not the standalone export: the bare function
 	// has no node lookup and warns on every call.
 	const { fitView, getNodesBounds, getNodes, setCenter, getZoom } = useReactFlow();
@@ -218,6 +257,9 @@ function Canvas({
 						// same renderer while logging a warning on every edge.
 						type: "default",
 						label: edge.label,
+						// Otherwise React Flow announces the literal "Edge from <id> to
+						// <id>", reading fused ids aloud. The label is the fact.
+						ariaLabel: edge.label,
 						className: [
 							"is-relation",
 							`is-${edge.relationKind}`,
@@ -282,6 +324,17 @@ function Canvas({
 									lod,
 								}
 							: node.data,
+					// Name and dates, which is what the card shows. Never a contact
+					// value: an accessible name is MORE exposed than the visible card,
+					// so it must not become the back door PersonNode refuses to be.
+					...(node.type === "person"
+						? {
+								ariaLabel: [displayName(node.data.primary), lifespan(node.data.primary)]
+									.filter(Boolean)
+									.join(", "),
+							}
+						: // A junction is not a destination, so it is not a tab stop.
+							{ focusable: false }),
 					// Union dots are structural, not content; dragging them would
 					// desync the layout from the data. Nothing is draggable by
 					// finger, so a swipe from anywhere pans.
@@ -347,8 +400,8 @@ function Canvas({
 		if (household.length > 1) {
 			const bounds = getNodesBounds(household);
 			const householdZoom = Math.min(
-				viewportWidth / (bounds.width || 1),
-				viewportHeight / (bounds.height || 1),
+				usable(viewportWidth, HOUSEHOLD_PADDING) / (bounds.width || 1),
+				usable(viewportHeight, HOUSEHOLD_PADDING) / (bounds.height || 1),
 			);
 
 			if (householdZoom >= LEGIBLE_ZOOM[lod]) {
@@ -357,7 +410,12 @@ function Canvas({
 				// were designed at, with 146 relatives off screen. At 1:1 the same five
 				// are centred and the leftover room fills with the family around them,
 				// which is what a wider screen should buy.
-				void fitView({ padding: 0.3, duration: 400, nodes: household, maxZoom: 1 });
+				void fitView({
+					padding: HOUSEHOLD_PADDING,
+					duration: 400,
+					nodes: household,
+					maxZoom: 1,
+				});
 				return;
 			}
 
@@ -385,6 +443,11 @@ function Canvas({
 	useEffect(() => {
 		if (!measured || layoutEpoch === 0) return;
 
+		// Once per layout, whatever else in the array changed. The `You` button is how
+		// a viewer asks to be re-framed; nothing else should decide for them.
+		if (framedEpoch.current === layoutEpoch) return;
+		framedEpoch.current = layoutEpoch;
+
 		// Read nodes imperatively rather than depending on them, for the reason
 		// layoutEpoch exists.
 		const nodes = getNodes();
@@ -396,12 +459,12 @@ function Canvas({
 		// trusting fitView's own clamp, which reports success either way.
 		const bounds = getNodesBounds(nodes);
 		const fitZoom = Math.min(
-			viewportWidth / (bounds.width || 1),
-			viewportHeight / (bounds.height || 1),
+			usable(viewportWidth, FIT_PADDING) / (bounds.width || 1),
+			usable(viewportHeight, FIT_PADDING) / (bounds.height || 1),
 		);
 
 		if (fitZoom >= LEGIBLE_ZOOM[lod]) {
-			void fitView({ padding: 0.2, duration: 400 });
+			void fitView({ padding: FIT_PADDING, duration: 400 });
 			return;
 		}
 
@@ -511,8 +574,16 @@ function Canvas({
 			// cannot infer; relationships are added through the editor instead.
 			nodesConnectable={false}
 			elementsSelectable
-			minZoom={0.15}
-			maxZoom={1.8}
+			// React Flow deletes the selected node on Backspace by default. This canvas
+			// is read-only, so that silently drops a person from the view with no undo
+			// and leaves the screen disagreeing with the database until a reload.
+			deleteKeyCode={null}
+			// 198 relation edges in the tab order put ~200 stops between a keyboard user
+			// and the zoom controls, for elements that cannot be acted on. The people
+			// stay focusable; the lines between them are not destinations.
+			edgesFocusable={false}
+			minZoom={MIN_ZOOM}
+			maxZoom={MAX_ZOOM}
 			proOptions={{ hideAttribution: false }}
 			className="size-full"
 		>
