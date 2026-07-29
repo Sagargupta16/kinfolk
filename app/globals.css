@@ -66,6 +66,14 @@
 	--duration-slow: 320ms;
 	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	/*
+	 * Overshoots, then settles. Reserved for a gesture the viewer just made -- a card
+	 * lifting, a dot growing under the cursor -- where the overshoot reads as the thing
+	 * responding to them. Never for entrances or for anything the canvas does on its
+	 * own: a hundred cards springing past their positions is a toy, and it also fights
+	 * the layout, which is the one thing an entrance must not do.
+	 */
+	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
 	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 	--font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -122,6 +130,56 @@ body {
  */
 .react-flow .react-flow__background {
 	background-color: var(--color-canvas);
+}
+
+/*
+ * The dot lattice, faded out towards the edges.
+ *
+ * A uniform lattice competes with the tree: it is the same weight in the middle of
+ * the canvas, where the cards are, as it is in the empty margins, so the busiest
+ * region is also the noisiest one. The mask keeps the texture where there is nothing
+ * to read and gets it out of the way where there is -- the technique
+ * brand/portfolio-react uses on its own lattice (`AmbientBackground.tsx`).
+ *
+ * Masked in VIEWPORT space, which is correct here only because React Flow renders
+ * this SVG outside `.react-flow__viewport` (confirmed on a live element: the pane
+ * carries the pan transform, this does not). So the fade stays centred on the screen
+ * while the tree moves under it, and reads as depth of field rather than as a hole in
+ * the data. Masking inside the transformed pane would drag the fade around with the
+ * pan and put the dark patch over whatever you scrolled to.
+ *
+ * `mask-image` unprefixed only: this is Chrome, Firefox and Safari 15.4+, and the
+ * `-webkit-` copy would just be a second value to keep in sync.
+ */
+.react-flow .react-flow__background {
+	mask-image: radial-gradient(ellipse 85% 85% at 50% 45%, black 25%, transparent 78%);
+}
+
+/*
+ * Lattice dots, from a token rather than a literal.
+ *
+ * The `color` prop was `#1c1e23`, a value between --color-canvas and
+ * --color-hairline that belonged to neither, so the one piece of the canvas nobody
+ * could restyle from the token stack was its background.
+ *
+ * Set through React Flow's OWN variable rather than by overriding `fill`, and that
+ * was forced rather than chosen: their rule is `.react-flow__background-pattern.dots`,
+ * which ties a `.react-flow .react-flow__background-pattern` override on specificity
+ * and then wins on source order, because their stylesheet is imported after this file.
+ * A `fill` here computed to their #91919a default -- a light-theme dot on a near-black
+ * canvas. Feeding the variable their rule already reads puts the value in the one
+ * place nothing outranks. (Their fallback chain checks a `-props` variable first,
+ * which is why the `color` prop had to come off the component for this to be read.)
+ *
+ * Deliberately BELOW --color-hairline (56% of it): a hairline separates two surfaces
+ * and has to be found, where the lattice only has to be sensed. Measured against the
+ * canvas, the dot is 1.14:1 and a hairline 1.34:1, so the ordering is real rather than
+ * intended -- and 1.14 is within a hundredth of the 1.18 the old literal scored, which
+ * is the point: this tokenises a value that was already right. No 3:1 floor applies,
+ * because a texture that carried meaning would be a texture competing with the tree.
+ */
+.react-flow {
+	--xy-background-pattern-color: color-mix(in oklab, var(--color-hairline) 56%, var(--color-canvas));
 }
 
 /*
@@ -468,6 +526,41 @@ body {
 }
 
 /**
+ * The landing page's entrance: each block arrives a beat after the one above it.
+ *
+ * Same shape as the card entrance and the same `--kf-delay` channel, deliberately --
+ * a visitor meets this page and then the canvas, and two different rise distances
+ * would read as two different products. Rise is 10px rather than 6: these blocks are
+ * a headline and a paragraph, not a 78px card, and the same 6px on a much larger
+ * element barely registers.
+ *
+ * CSS rather than the per-character spring in brand/portfolio-react's
+ * `CharacterReveal`. That component needs `motion/react` and `useInView` on the
+ * client, and this page is a server component with no client boundary at all -- so
+ * porting it would ship a runtime and a hydration pass to animate four elements that
+ * are on screen at load, where `useInView` is always true anyway. The staggered
+ * arrival is the part that carries the effect; per-character is the part that costs.
+ *
+ * No `prefers-reduced-motion` here or anywhere in this file: motion in this UI is
+ * meant to be seen.
+ */
+@keyframes kf-rise {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+.kf-rise {
+	animation: kf-rise var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms);
+}
+
+/**
  * Fusion reveal.
  *
  * One offset sheet behind a card per extra family that recorded the same person.
@@ -542,8 +635,57 @@ body {
 	 */
 	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-edge) 80%, transparent);
 	pointer-events: none;
-	/* Animates when the level of detail changes, since the box changes with it. */
-	transition: box-shadow var(--duration-base) var(--ease-out);
+	/*
+	 * Animates when the level of detail changes, since the box changes with it -- and
+	 * when the person is focused, which is what `.kf-lit` below rides on.
+	 *
+	 * Spring rather than ease-out, and only because both triggers are things the viewer
+	 * just did. The overshoot IS the response: the halo swells past its resting spread
+	 * and settles, which reads as the card acknowledging the pointer rather than as a
+	 * value being interpolated. Safe on a spread specifically -- the curve overshoots
+	 * above the target and never below it, so no frame asks for a negative radius.
+	 */
+	transition: box-shadow var(--duration-base) var(--ease-spring);
+}
+
+/**
+ * The focused person's halo.
+ *
+ * Focus depth (below) works by receding everyone else, and on a dense canvas that is
+ * enough -- but not on a sparse one, nor when the lit neighbourhood is most of the
+ * screen: with little left dimmed there is nothing for the answer to stand out
+ * against, and the card you are pointing at looks like all the others. So the subject
+ * gets a mark of its own, blooming out of the ring that is already there.
+ *
+ * Reusing `.kf-presence` rather than adding an element is what makes the bloom land
+ * on the SAME box the connectedness ring occupies, so a hub's halo grows from its
+ * existing wide ring and a leaf's from nothing -- one mark that means "this one", at a
+ * size that still says how connected they are. It is also why PersonNode renders the
+ * ring even at spread 0: an invisible box-shadow costs nothing, and a person with no
+ * connections must still answer a hover.
+ *
+ * Monochrome, deliberately. Amber is spoken for by "you", "selected" and "this
+ * relation" -- and search sets selected AND focus on the same card, so an amber halo
+ * would land on top of the accent ring that means something else. Brightness is the
+ * free channel here, and the value is a measurement: --color-ink at 65% composites to
+ * 7.63:1 on the canvas and 7.60:1 over an alternating generation rail, clear of the
+ * 3:1 a meaningful graphic owes under SC 1.4.11.
+ *
+ * Two thresholds, not one, and the second is what set the number. The glow shares its
+ * box with the connectedness ring, so it also has to be distinguishable from THAT
+ * (5.10:1) or a hub's halo grows without appearing to change. 7.63 against 5.10 is a
+ * 1.50 step, so the halo reads as heating up as well as widening. --color-ink-muted at
+ * 45% was the first attempt and measured 2.44:1 -- below the floor, and dimmer than the
+ * ring it was supposed to bloom out of. Composited on a real 2D canvas rather than read
+ * off the token, because `color-mix` resolves to `oklab()` and its numbers are not sRGB.
+ *
+ * One shot, not a pulse. A tree with a throbbing card is the screensaver the active
+ * relation flow already refuses to be; the glow arrives, then holds while you read.
+ */
+.react-flow__node.kf-lit .kf-presence {
+	box-shadow:
+		0 0 0 calc(var(--kf-spread, 0px) + 7px)
+		color-mix(in oklab, var(--color-ink) 65%, transparent);
 }
 
 /**
@@ -593,10 +735,20 @@ body {
 	transition: opacity var(--duration-base) var(--ease-out);
 }
 
-/* A lit family edge brightens rather than recolours: the skeleton stays neutral
-   so the accent keeps meaning "you" and "this relation". */
+/*
+ * A lit family edge brightens rather than recolours: the skeleton stays neutral so
+ * the accent keeps meaning "you" and "this relation".
+ *
+ * `--color-ink`, not `--color-ink-muted`, and that was a measurement rather than a
+ * preference. Muted is #a1a5ad against the skeleton's #9aa0ac: 7.97:1 against 7.50:1,
+ * a 7% step, which is a "brightens" nobody can see -- so the lit path was carried
+ * entirely by the other cards dimming. Ink is 17.73:1, and the extra half pixel of
+ * weight gives the trace a second channel for the case where the whole neighbourhood
+ * is lit and there is barely anything left dimmed to compare against.
+ */
 .react-flow__edge.is-active:not(.is-relation) .react-flow__edge-path {
-	stroke: var(--color-ink-muted);
+	stroke: var(--color-ink);
+	stroke-width: 2;
 }
 
 .react-flow .react-flow__handle {

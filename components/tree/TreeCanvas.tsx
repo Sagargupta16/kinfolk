@@ -29,8 +29,10 @@ import {
 	type FlowEdge,
 	type FlowNode,
 	lifespan,
+	type UnionWithChildren,
 	visibleEdges,
 } from "@/lib/tree/graph";
+import type { Kinship } from "@/lib/tree/kinship";
 import {
 	type Box,
 	type GenerationBand,
@@ -40,6 +42,7 @@ import {
 } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
+import { siblingBars } from "@/lib/tree/siblings";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
@@ -152,6 +155,17 @@ function useCoarsePointer(): boolean {
 	return coarse;
 }
 
+/**
+ * The unions in a projected graph, for the sibling-bar pass.
+ *
+ * Read back off the union NODES rather than passed alongside them: the canvas is
+ * handed `FlowNode[]` and a union node already carries its own row, so a second
+ * prop would be the same data arriving twice with no guarantee the two agree.
+ */
+function unionsOf(nodes: FlowNode[]): UnionWithChildren[] {
+	return nodes.filter((node) => node.type === "union").map((node) => node.data.union);
+}
+
 /** Add or remove one class, preserving whatever else is on the element. */
 function withFlag(flag: string, className: string | undefined, on: boolean): string {
 	const classes = (className ?? "").split(" ").filter((c) => c && c !== flag);
@@ -190,6 +204,15 @@ type Props = {
 	 * memos over 151 nodes would be the same work for the same answer.
 	 */
 	degree: Map<string, Degree>;
+	/**
+	 * What each person is to the viewer, keyed by fused node id. See
+	 * lib/tree/kinship.ts.
+	 *
+	 * Computed on the server with the rest of the view, because it needs the whole
+	 * graph: the ancestor walk from both ends is what turns two paths into "second
+	 * cousin once removed", and a card holding one person cannot do it.
+	 */
+	kinship?: Map<string, Kinship>;
 };
 
 function Canvas({
@@ -200,6 +223,7 @@ function Canvas({
 	lod = "full",
 	goTo,
 	degree,
+	kinship,
 }: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -395,15 +419,20 @@ function Canvas({
 										...node.data,
 										isSelf: node.data.sources.some((s) => s.id === selfId),
 										degree: degree.get(node.id),
+										kinship: kinship?.get(node.id),
 										lod,
 									}
 								: node.data,
-						// Name and dates, which is what the card shows. Never a contact
-						// value: an accessible name is MORE exposed than the visible card,
-						// so it must not become the back door PersonNode refuses to be.
+						// Name, relationship and dates, which is what the card shows. Never a
+						// contact value: an accessible name is MORE exposed than the visible
+						// card, so it must not become the back door PersonNode refuses to be.
 						...(node.type === "person"
 							? {
-									ariaLabel: [displayName(node.data.primary), lifespan(node.data.primary)]
+									ariaLabel: [
+										displayName(node.data.primary),
+										kinship?.get(node.id)?.label,
+										lifespan(node.data.primary),
+									]
 										.filter(Boolean)
 										.join(", "),
 								}
@@ -420,6 +449,22 @@ function Canvas({
 					})),
 				);
 
+				/**
+				 * Sibling bars, and which child edge of each family draws the horizontal run.
+				 *
+				 * The election is by lowest edge id rather than by position, so it is stable
+				 * across relayouts: picking (say) the leftmost child would hand the bar to a
+				 * different edge whenever ELK reorders siblings, and the draw-on animation
+				 * would restart on an edge that had not changed.
+				 */
+				const bars = siblingBars(unionsOf(sourceNodes), positioned);
+				const barDrawer = new Map<string, string>();
+				for (const edge of flowEdges) {
+					if (!bars.has(edge.source)) continue;
+					const current = barDrawer.get(edge.source);
+					if (!current || edge.id < current) barDrawer.set(edge.source, edge.id);
+				}
+
 				// Each family edge draws itself on just after the node it descends FROM has
 				// landed, so the skeleton grows downwards with the cards rather than being
 				// there waiting for them. Relation edges are excluded: they are an overlay,
@@ -428,8 +473,19 @@ function Canvas({
 					flowEdges.map((edge) => {
 						if (edge.className?.includes("is-relation")) return edge;
 						const delay = (delays.get(edge.source) ?? 0) + ROW_STAGGER_MS;
+						const bar = bars.get(edge.source);
 						return {
 							...edge,
+							...(bar
+								? {
+										data: {
+											barY: bar.y,
+											barLeft: bar.left,
+											barRight: bar.right,
+											drawsBar: barDrawer.get(edge.source) === edge.id,
+										},
+									}
+								: {}),
 							className: withFlag("kf-draw", edge.className, true),
 							style: { ...edge.style, "--kf-delay": `${delay}ms` } as CSSProperties,
 						};
@@ -445,7 +501,18 @@ function Canvas({
 		return () => {
 			cancelled = true;
 		};
-	}, [sourceNodes, sourceEdges, flowEdges, selfId, lod, degree, coarsePointer, setNodes, setEdges]);
+	}, [
+		sourceNodes,
+		sourceEdges,
+		flowEdges,
+		selfId,
+		lod,
+		degree,
+		kinship,
+		coarsePointer,
+		setNodes,
+		setEdges,
+	]);
 
 	/**
 	 * Put the viewer's own household on screen at a readable zoom.
@@ -616,7 +683,14 @@ function Canvas({
 	useEffect(() => {
 		setNodes((current) =>
 			current.map((node) => {
-				const next = withFlag("kf-dim", node.className, Boolean(lit) && !lit?.nodeIds.has(node.id));
+				// Three states, and the third is why `kf-lit` exists separately from the
+				// absence of `kf-dim`. Dimming answers "not this one" for the rest of the
+				// tree; it cannot answer "this one" when the lit neighbourhood is most of the
+				// canvas, because then there is hardly anything dimmed to stand out from. The
+				// glow marks the SUBJECT, so only the focused card gets it -- its relatives
+				// are already identified by the lines running to it.
+				let next = withFlag("kf-dim", node.className, Boolean(lit) && !lit?.nodeIds.has(node.id));
+				next = withFlag("kf-lit", next, node.id === focusedId);
 				return next === node.className ? node : { ...node, className: next };
 			}),
 		);
@@ -631,7 +705,7 @@ function Canvas({
 				return next === edge.className ? edge : { ...edge, className: next };
 			}),
 		);
-	}, [lit, setNodes, setEdges]);
+	}, [lit, focusedId, setNodes, setEdges]);
 
 	// Tap counts as well as hover: on a phone there is no hover, and a tap that
 	// only selects a card would leave the labels unreachable.
@@ -667,7 +741,11 @@ function Canvas({
 			proOptions={{ hideAttribution: false }}
 			className="size-full"
 		>
-			<Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1c1e23" />
+			{/* No `color`: the dot fill and its edge fade are tokens in globals.css
+			    (`.react-flow__background-pattern`), so the lattice restyles with the rest
+			    of the surface stack instead of holding the one hardcoded colour on the
+			    canvas. Geometry stays here, since it is not a design token. */}
+			<Background variant={BackgroundVariant.Dots} gap={24} size={1} />
 			<GenerationRails bands={bands} />
 
 			{/*
@@ -721,7 +799,7 @@ function Canvas({
 							"pointer-events-auto flex min-h-11 items-center gap-2 rounded-md px-3",
 							"border border-hairline bg-surface/90 font-mono text-[0.625rem]",
 							"uppercase tracking-wider text-ink-muted backdrop-blur-sm",
-							"transition-colors duration-[--duration-fast] ease-[--ease-out]",
+							"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 							"hover:border-hairline-strong hover:text-ink",
 						)}
 					>
