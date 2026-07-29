@@ -25,6 +25,7 @@ import {
 	unions,
 } from "../db/schema";
 import { fuseTrees, type TreeSlice, toFlowGraph, type UnionWithChildren } from "./graph";
+import { kinshipMap } from "./kinship";
 import type { TreeView } from "./view";
 import { filterContacts, type ViewerAccess } from "./visibility";
 
@@ -207,6 +208,8 @@ export async function loadTreeView(
 		nodes,
 		edges,
 		selfId,
+		// Already a fused id, so no `fusedSelfId` hop: it came out of `fused.people`.
+		kinship: kinshipMap(fused, selfId),
 		treeNames: filtered.map((slice) => slice.treeName),
 		isDemo: false,
 		isCombined: combined,

@@ -20,11 +20,12 @@
  * separating nobody. Glyph plus tooltip, and never colour alone.
  */
 import { Handle, Position } from "@xyflow/react";
-import { AtSign, Phone, ShieldQuestion, Users } from "lucide-react";
+import { ShieldQuestion, Users } from "lucide-react";
 import type { CSSProperties } from "react";
 import { type Degree, RING_MIN_RANK } from "@/lib/tree/density";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
-import type { Lod } from "@/lib/tree/layout";
+import type { Kinship } from "@/lib/tree/kinship";
+import { type Lod, NODE_METRICS } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 
 export type PersonNodeData = FusedPerson & {
@@ -33,6 +34,17 @@ export type PersonNodeData = FusedPerson & {
 	/** How connected this person is; absent until density has run. */
 	degree?: Degree;
 	lod?: Lod;
+	/**
+	 * What this person is to the viewer: "grandmother", "second cousin", "friend".
+	 *
+	 * The card's second line, and it replaced a birth surname plus two channel
+	 * icons. Those were on most cards and separated nobody -- Cambridge
+	 * Intelligence: "avoid repeating words if they appear across most nodes". A
+	 * kinship term is different on nearly every card and is the one fact a viewer
+	 * cannot recover by looking, since counting six edges up and four back down is
+	 * precisely what the eye will not do.
+	 */
+	kinship?: Kinship;
 };
 
 /**
@@ -80,6 +92,10 @@ export const PROVENANCE: Record<
  * no recorded connections gets no ring at all rather than a faint one that reads
  * as a rendering artefact. Capped low on purpose -- this is a hint that sits
  * behind the card, and a big glow would out-shout the name.
+ *
+ * 0 means an invisible ring, not an absent one: the focus glow in globals.css blooms
+ * out of this same box (`.kf-lit .kf-presence`), so dropping the element for the
+ * quietest people would leave exactly them unable to answer a hover.
  */
 function ringSpread(rank: number): number {
 	if (rank <= RING_MIN_RANK) return 0;
@@ -101,11 +117,16 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 	const provenance = PROVENANCE[trust.level];
 	const spread = ringSpread(data.degree?.rank ?? 0);
 
-	// The card shows only WHICH channels exist, never the values. A canvas is
-	// screenshotted and shared; a phone number should take a deliberate click.
-	const contacts = data.contacts ?? [];
-	const hasPhone = contacts.some((c) => c.kind === "phone" || c.kind === "whatsapp");
-	const hasHandle = contacts.some((c) => c.kind !== "phone" && c.kind !== "whatsapp");
+	/**
+	 * The second line: who this person is to the viewer.
+	 *
+	 * Nothing when there is no viewer -- a signed-out visitor and mine-only demo mode
+	 * both get a bare name, which is honest, where "relative" would not be. The
+	 * channel icons this replaced are gone entirely rather than moved: what a card
+	 * owes is identity, and whether a phone number exists is a question for the person
+	 * you already found.
+	 */
+	const relation = data.kinship?.label;
 
 	const rail = (
 		<span
@@ -123,15 +144,19 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 	 * A ring rather than a size change, because ELK has already allocated this
 	 * node's box -- growing the busiest cards would either overlap their
 	 * neighbours or force the whole layout to reserve the maximum.
+	 *
+	 * Always rendered, even at spread 0 where it draws nothing. It is also the surface
+	 * the focus glow blooms from, and a zero-radius box-shadow on a positioned span
+	 * costs a paint of nothing -- where dropping the element would mean the least
+	 * connected people are the ones a hover cannot answer.
 	 */
-	const ring =
-		spread > 0 ? (
-			<span
-				aria-hidden
-				className="kf-presence"
-				style={{ "--kf-spread": `${spread}px` } as CSSProperties}
-			/>
-		) : null;
+	const ring = (
+		<span
+			aria-hidden
+			className="kf-presence"
+			style={{ "--kf-spread": `${spread}px` } as CSSProperties}
+		/>
+	);
 
 	if (lod === "dot") {
 		return (
@@ -155,8 +180,12 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 				    SIZE and survives being scaled down. */}
 				<span
 					className={cn(
-						"size-2.5 rounded-full border transition-transform duration-[--duration-fast]",
-						"ease-[--ease-out] hover:scale-150",
+						// Springs to 1.75x. At the overview zoom a dot is ~3 screen pixels, so
+						// the growth is the only channel a hover has -- there is no border
+						// colour to shift and no text to brighten. The overshoot buys a mark
+						// that small the extra frame of visibility it needs to register.
+						"size-2.5 rounded-full border transition-transform duration-(--duration-base)",
+						"ease-(--ease-spring) hover:scale-175",
 						data.isSelf
 							? "border-accent bg-accent ring-1 ring-accent ring-offset-2 ring-offset-canvas"
 							: isDeceased
@@ -174,7 +203,12 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 	return (
 		// A wrapper, because the card itself clips to its rounded corners and the
 		// stacked sheets have to escape it.
-		<div className={cn("relative", lod === "compact" ? "w-[168px]" : "w-[200px]")}>
+		//
+		// Width read from NODE_METRICS rather than written as a utility class. ELK has
+		// already reserved a box of exactly this size, so a card that disagrees either
+		// overlaps its neighbour or leaves a gap ELK is holding open for nothing -- and
+		// two numbers that must match are one number.
+		<div className="relative" style={{ width: NODE_METRICS[lod].width }}>
 			{ring}
 
 			{/* The fusion reveal: sheets slide in from further out and settle onto the
@@ -192,9 +226,14 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 
 			<div
 				className={cn(
-					"group relative flex overflow-hidden rounded-[--radius-node] border bg-surface",
-					"transition-[border-color,transform,box-shadow] duration-[--duration-fast] ease-[--ease-out]",
-					"hover:-translate-y-px hover:border-hairline-strong",
+					"group relative flex overflow-hidden rounded-(--radius-node) border bg-surface",
+					// Spring, and a 2px lift rather than 1. The card is the thing under the
+					// pointer, so the overshoot reads as it responding; at 1px with a plain
+					// ease-out the lift was below the threshold where a hover feels answered at
+					// all, which is the whole job of the gesture. Transform on the INNER card
+					// only -- React Flow owns the wrapper's transform for positioning.
+					"transition-[border-color,transform,box-shadow] duration-(--duration-base)",
+					"ease-(--ease-spring) hover:-translate-y-0.5 hover:border-hairline-strong",
 					selected ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]" : "border-hairline",
 					// Families disagreeing is the one state worth interrupting the
 					// monochrome for, and it is drawn as a dashed border rather than a
@@ -234,55 +273,44 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 					</div>
 
 					{lod === "compact" ? (
-						dates && (
-							<span className="tabular font-mono text-[0.625rem] text-ink-muted">{dates}</span>
+						// One line of metadata, and the relationship outranks the dates: at this
+						// size a viewer is scanning for WHO, and a birth year does not answer it.
+						(relation || dates) && (
+							<span className="truncate text-[0.6875rem] leading-tight text-ink-muted">
+								{relation ?? <span className="tabular font-mono">{dates}</span>}
+							</span>
 						)
 					) : (
 						<>
-							{person.birthFamilyName && (
-								<p className="truncate text-xs leading-tight text-ink-faint">
-									born {person.birthFamilyName}
+							{relation && (
+								<p
+									className={cn(
+										"truncate text-xs leading-tight",
+										// An in-law rung is inferred from a partner's line rather than
+										// read off the graph, so it is drawn a step fainter than a term
+										// the ancestor walk proved. Same hierarchy the provenance tick
+										// uses: how firmly a thing is drawn tracks how well it is known.
+										data.kinship?.via === "in_law" || data.kinship?.via === "relation"
+											? "text-ink-faint"
+											: "text-ink-muted",
+									)}
+								>
+									{relation}
 								</p>
 							)}
 
-							<div className="mt-1.5 flex items-center gap-1.5">
-								{dates && (
-									<span className="tabular font-mono text-[0.6875rem] text-ink-muted">{dates}</span>
-								)}
-								{data.isSelf && (
-									<span className="font-mono text-[0.625rem] uppercase tracking-wider text-accent">
-										you
+							<div className="mt-1.5 flex items-center gap-1.5 text-ink-faint">
+								{dates && <span className="tabular font-mono text-[0.6875rem]">{dates}</span>}
+								{sharedBy > 1 && (
+									<span
+										className="flex items-center gap-1"
+										title={`recorded by ${sharedBy} families`}
+									>
+										<Users aria-hidden className="size-3" strokeWidth={1.5} />
+										<span className="tabular font-mono text-[0.625rem]">{sharedBy}</span>
 									</span>
 								)}
 							</div>
-
-							{(sharedBy > 1 || contacts.length > 0) && (
-								<div className="mt-1.5 flex items-center gap-2.5 text-ink-faint">
-									{sharedBy > 1 && (
-										<span
-											className="flex items-center gap-1"
-											title={`recorded by ${sharedBy} families`}
-										>
-											<Users aria-hidden className="size-3" strokeWidth={1.5} />
-											<span className="tabular font-mono text-[0.625rem]">{sharedBy}</span>
-										</span>
-									)}
-									{hasPhone && (
-										<Phone
-											aria-label="has a phone number on file"
-											className="size-3"
-											strokeWidth={1.5}
-										/>
-									)}
-									{hasHandle && (
-										<AtSign
-											aria-label="has an email or social handle on file"
-											className="size-3"
-											strokeWidth={1.5}
-										/>
-									)}
-								</div>
-							)}
 						</>
 					)}
 				</div>

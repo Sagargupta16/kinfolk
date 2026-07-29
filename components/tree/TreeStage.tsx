@@ -19,6 +19,7 @@ import { useCallback, useMemo, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
 import { type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
+import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 import { TreeCanvas } from "./TreeCanvas";
@@ -42,12 +43,15 @@ export function TreeStage({
 	nodes,
 	edges,
 	selfId,
+	kinship,
 	showRelations = true,
 }: {
 	nodes: FlowNode[];
 	/** Every edge, including hidden relations: layout needs them. See TreeWorkspace. */
 	edges: FlowEdge[];
 	selfId?: string;
+	/** What each person is to the viewer. Passed straight through to the cards. */
+	kinship?: Map<string, Kinship>;
 	/** False draws the bare family skeleton, without changing where anyone sits. */
 	showRelations?: boolean;
 }) {
@@ -84,6 +88,7 @@ export function TreeStage({
 				lod={lod}
 				goTo={goTo}
 				degree={degree}
+				kinship={kinship}
 				showRelations={showRelations}
 			/>
 
@@ -124,7 +129,7 @@ export function TreeStage({
 								// 44px tall: this is a primary control on a touch screen.
 								"flex min-h-11 items-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
 								"font-mono text-[0.625rem] uppercase tracking-wider",
-								"transition-colors duration-[--duration-fast] ease-[--ease-out]",
+								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 								lod === value
 									? "bg-surface-raised text-accent"
 									: "text-ink-faint hover:bg-surface-raised hover:text-ink",
