@@ -31,7 +31,7 @@ import type { TreeCensus } from "@/lib/tree/census";
 import type { Lod } from "@/lib/tree/layout";
 import { RELATION_KINDS, type RelationCategory } from "@/lib/tree/relations";
 import { cn } from "@/lib/utils";
-import { PROVENANCE } from "./PersonNode";
+import { PROVENANCE, SEX_MARKS } from "./PersonNode";
 
 /**
  * How each relation category is presented, keyed so a new category is a type error
@@ -65,16 +65,22 @@ type Row = {
 	lods?: Lod[];
 };
 
-/** 28x8, the width a dash rhythm needs before it reads as a rhythm rather than a dash. */
+/**
+ * 28x8, the width a dash rhythm needs before it reads as a rhythm rather than a dash.
+ *
+ * Weights come from the `--kf-stroke-*` tokens for the same reason the dash patterns come
+ * from `--kf-dash-*`: two readers depend on each value, and a sample drawn at a hardcoded
+ * width is a key confidently describing a line the canvas no longer draws.
+ */
 function Line({
 	dash,
 	stroke = "var(--color-edge-soft)",
-	width = 1,
+	width = "var(--kf-stroke-faint)",
 	dot,
 }: {
 	dash?: string;
 	stroke?: string;
-	width?: number;
+	width?: string;
 	/** A union node, drawn mid-line: the junction children hang from. */
 	dot?: boolean;
 }) {
@@ -89,11 +95,12 @@ function Line({
 				x2="28"
 				y2="4"
 				stroke={stroke}
-				strokeWidth={width}
 				strokeLinecap="round"
-				// Inline, because a dasharray token has to resolve against this element's
-				// own cascade; a Tailwind class could not carry an arbitrary var() here.
-				style={dash ? { strokeDasharray: dash } : undefined}
+				// Both inline, because a token has to resolve against this element's own
+				// cascade; a Tailwind class could not carry an arbitrary var() here. Width
+				// moved from the `strokeWidth` prop for that reason -- React would render
+				// `stroke-width="var(...)"` as an attribute, which SVG does not resolve.
+				style={{ strokeWidth: width, ...(dash ? { strokeDasharray: dash } : {}) }}
 			/>
 			{dot && <circle cx="14" cy="4" r="1.75" fill={stroke} />}
 		</svg>
@@ -110,22 +117,23 @@ function Line({
 function Weights() {
 	return (
 		<svg aria-hidden="true" viewBox="0 0 28 12" className="h-3 w-7 shrink-0">
-			{[
-				{ y: 1.5, width: 0.75 },
-				{ y: 6, width: 1 },
-				{ y: 10.5, width: 1.4 },
-			].map(({ y, width }) => (
-				<line
-					key={y}
-					x1="0"
-					y1={y}
-					x2="28"
-					y2={y}
-					stroke="var(--color-edge-soft)"
-					strokeWidth={width}
-					strokeLinecap="round"
-				/>
-			))}
+			{["var(--kf-stroke-faint)", "var(--kf-stroke-soft)", "var(--kf-stroke-firm)"].map(
+				(width, index) => (
+					<line
+						key={width}
+						x1="0"
+						y1={1.5 + index * 4.5}
+						x2="28"
+						y2={1.5 + index * 4.5}
+						stroke="var(--color-edge-soft)"
+						strokeLinecap="round"
+						// The three steps of the closeness scale, read from the same tokens the
+						// edge rules use. Hardcoded, this sample claimed a 0.75/1/1.4 scale for
+						// months after those numbers changed.
+						style={{ strokeWidth: width }}
+					/>
+				),
+			)}
 		</svg>
 	);
 }
@@ -165,13 +173,13 @@ function Card({ className, style }: { className?: string; style?: CSSProperties 
 function lineRows(census: TreeCensus): Row[] {
 	const rows: Row[] = [
 		{
-			sample: <Line stroke="var(--color-edge)" width={1.5} />,
+			sample: <Line stroke="var(--color-edge)" width="var(--kf-stroke-skeleton)" />,
 			label: "Parent and child",
 			hint: "The skeleton. Solid, and the only thing that sets a generation.",
 			count: census.family,
 		},
 		{
-			sample: <Line stroke="var(--color-accent-dim)" width={1.5} dot />,
+			sample: <Line stroke="var(--color-accent-dim)" width="var(--kf-stroke-skeleton)" dot />,
 			label: "Partnership",
 			hint: "Children hang from the dot. Grey once the partnership has ended.",
 			count: census.partners,
@@ -193,6 +201,31 @@ function lineRows(census: TreeCensus): Row[] {
 	}
 
 	rows.push(
+		{
+			// The taper, drawn with the same gradient the canvas uses rather than an
+			// approximation of it. `Line` cannot express this: the sample needs its own
+			// stops, and a second gradient id would be a second thing to keep in sync -- so
+			// it references the one TreeCanvas defines, which is document-wide.
+			sample: (
+				<svg aria-hidden="true" viewBox="0 0 28 8" className="h-2 w-7 shrink-0">
+					<line
+						x1="0"
+						y1="4"
+						x2="28"
+						y2="4"
+						stroke="url(#kf-taper)"
+						strokeLinecap="round"
+						style={{
+							strokeWidth: "var(--kf-stroke-soft)",
+							strokeDasharray: "var(--kf-dash-professional)",
+						}}
+					/>
+				</svg>
+			),
+			label: "Has a direction",
+			hint: "Heavier where the role sits: A mentors B, not the other way round. Thins out towards the person it lands on.",
+			count: census.directed,
+		},
 		{
 			sample: <Weights />,
 			label: "How close",
@@ -304,6 +337,25 @@ function personRows(census: TreeCensus, lod: Lod, hasSelf: boolean): Row[] {
 			count: census.livingUnknown,
 		},
 	];
+
+	// The sex glyphs, derived from SEX_MARKS rather than restated, and using the SAME
+	// icon component the card renders. A hand-drawn approximation here would be a key
+	// describing a glyph the canvas does not use, which is the one failure a legend
+	// cannot survive.
+	//
+	// `unknown` gets a row like any other, and on most real graphs it will have the
+	// largest count. That is the honest reading: it says how much of this record is
+	// unfilled, where omitting it would imply the field is always known.
+	for (const [value, { Icon, title }] of Object.entries(SEX_MARKS)) {
+		rows.push({
+			sample: <Icon aria-hidden className="size-3 shrink-0 text-ink-faint" strokeWidth={1.5} />,
+			label: title.charAt(0).toUpperCase() + title.slice(1),
+			count: census.sex[value as keyof TreeCensus["sex"]],
+			// Not drawn at dot or compact level: the metadata line the glyph sits on only
+			// exists on a full card.
+			lods: ["full"],
+		});
+	}
 
 	// PROVENANCE is declared strongest evidence first, which is the order a scale
 	// should be read in. Filtered on the mark, so a level that draws nothing needs no

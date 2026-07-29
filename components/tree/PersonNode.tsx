@@ -20,8 +20,9 @@
  * separating nobody. Glyph plus tooltip, and never colour alone.
  */
 import { Handle, Position } from "@xyflow/react";
-import { ShieldQuestion, Users } from "lucide-react";
+import { CircleDashed, Mars, ShieldQuestion, Transgender, Users, Venus } from "lucide-react";
 import type { CSSProperties } from "react";
+import type { Person } from "@/lib/db/schema";
 import { type Degree, RING_MIN_RANK } from "@/lib/tree/density";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
@@ -86,6 +87,29 @@ export const PROVENANCE: Record<
 };
 
 /**
+ * The glyph for a person's recorded sex, and what makes it safe: it renders the STORED
+ * value and nothing else.
+ *
+ * `unknown` is the schema default and by far the most common value in a real genealogy,
+ * so it gets a mark of its own -- a dashed circle, which reads as "an outline nobody has
+ * filled in" -- rather than falling back to a male default the way most family-tree
+ * software does. That default is exactly the corruption `sexEnum` exists to avoid, and it
+ * is the reason the gender-required layout libraries were rejected.
+ *
+ * Nothing here consults the name. Inferring sex from "Alexandra" would write a guess into
+ * the one channel a reader trusts to be recorded fact, and unlike a kinship term (which is
+ * recomputed every render) a glyph looks equally confident whether or not anybody said so.
+ *
+ * Exported for the legend, which lists these marks and must not restate them.
+ */
+export const SEX_MARKS: Record<Person["sex"], { Icon: typeof Venus; title: string }> = {
+	female: { Icon: Venus, title: "recorded female" },
+	male: { Icon: Mars, title: "recorded male" },
+	other: { Icon: Transgender, title: "recorded as other" },
+	unknown: { Icon: CircleDashed, title: "sex not recorded" },
+};
+
+/**
  * Ring radius for how connected somebody is.
  *
  * A hub gets a visibly wider halo than a leaf; the floor is 0 so a person with
@@ -116,6 +140,7 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 	const trust = data.trust;
 	const provenance = PROVENANCE[trust.level];
 	const spread = ringSpread(data.degree?.rank ?? 0);
+	const sexMark = SEX_MARKS[person.sex];
 
 	/**
 	 * The second line: who this person is to the viewer.
@@ -300,6 +325,20 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 							)}
 
 							<div className="mt-1.5 flex items-center gap-1.5 text-ink-faint">
+								{/*
+								 * Leads the metadata line rather than sitting beside the name.
+								 *
+								 * The name line already carries the provenance tick and the conflict
+								 * glyph, and a third mark there would make the row a badge shelf --
+								 * the name is what a viewer scans for and every glyph beside it is
+								 * width taken from it. Down here it sits with the other recorded
+								 * facts, which is what it is.
+								 */}
+								<sexMark.Icon
+									aria-label={sexMark.title}
+									className="size-3 shrink-0"
+									strokeWidth={1.5}
+								/>
 								{dates && <span className="tabular font-mono text-[0.6875rem]">{dates}</span>}
 								{sharedBy > 1 && (
 									<span
@@ -322,17 +361,31 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 /**
  * The junction between partners. Deliberately tiny: a couple should read as two
  * cards joined by a point, not as three boxes in a row.
+ *
+ * It answers a hover, unlike before. This dot is the node the sibling bar drops from and
+ * every child edge originates at, so on a dense canvas "which junction does this family
+ * hang off" is a real question -- and a 6px mark that does not respond reads as decoration
+ * rather than as part of the graph. Scale only, because there is no room for anything
+ * else at this size and growth is the one channel that survives being zoomed out.
  */
 export function UnionNode({ data }: { data: { union: { status: string } } }) {
 	const dissolved = ["separated", "divorced"].includes(data.union.status);
 
 	return (
-		<div className="relative flex size-3 items-center justify-center">
+		<div className="group relative flex size-3 items-center justify-center">
 			<Handle type="target" position={Position.Top} />
 			<Handle type="source" position={Position.Bottom} />
 			<span
 				aria-hidden
-				className={cn("size-1.5 rounded-full", dissolved ? "bg-hairline-strong" : "bg-accent-dim")}
+				className={cn(
+					"size-1.5 rounded-full",
+					// Spring, matching the card's lift and the dot LOD's growth: all three are
+					// responses to a gesture the viewer just made, and a different curve on each
+					// would read as three different products.
+					"transition-transform duration-(--duration-base) ease-(--ease-spring)",
+					"group-hover:scale-200",
+					dissolved ? "bg-hairline-strong" : "bg-accent-dim",
+				)}
 			/>
 		</div>
 	);

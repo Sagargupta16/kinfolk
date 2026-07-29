@@ -4,7 +4,7 @@
  * does not use that encoding", never "we forgot to look".
  */
 import { describe, expect, it } from "vitest";
-import type { ContactDetail, RelationKind, Verification } from "../db/schema";
+import type { ContactDetail, RelationKind, Sex, Verification } from "../db/schema";
 import { censusOf } from "./census";
 import { degrees } from "./density";
 import type { FlowEdge, FlowNode, FusedPerson } from "./graph";
@@ -18,6 +18,8 @@ function personNode(
 		conflicted?: boolean;
 		trees?: number;
 		contacts?: ContactDetail["kind"][];
+		/** Left off deliberately by most callers, to pin the missing-value fallback. */
+		sex?: Sex;
 	} = {},
 ): FlowNode {
 	const trees = overrides.trees ?? 1;
@@ -26,7 +28,7 @@ function personNode(
 		type: "person",
 		data: {
 			id,
-			primary: { id, living: overrides.living ?? "living" },
+			primary: { id, living: overrides.living ?? "living", sex: overrides.sex },
 			sources: [],
 			contributingTreeIds: Array.from({ length: trees }, (_, i) => `t${i}`),
 			contacts: (overrides.contacts ?? []).map((kind) => ({ kind })),
@@ -56,7 +58,7 @@ function relationEdge(
 	source: string,
 	target: string,
 	kind: RelationKind,
-	extra: { closeness?: 1 | 2 | 3; ended?: boolean } = {},
+	extra: { closeness?: 1 | 2 | 3; ended?: boolean; directed?: boolean } = {},
 ): FlowEdge {
 	return {
 		id,
@@ -67,6 +69,7 @@ function relationEdge(
 		relationKind: kind,
 		closeness: extra.closeness ?? 2,
 		ended: extra.ended,
+		directed: extra.directed,
 	};
 }
 
@@ -246,5 +249,39 @@ describe("censusOf", () => {
 		const on = censusOf(nodes, visibleEdges(edges, true));
 		expect(on.categories.social).toBe(1);
 		expect(on.ended).toBe(1);
+	});
+
+	/**
+	 * The taper row exists to explain a mark, so it must count the marks that are DRAWN.
+	 * An ended directed relation is drawn in the past colour, which overrides the taper,
+	 * so counting it would put a row on the key for a gradient nobody can find.
+	 */
+	it("counts a live directed relation but not an ended one", () => {
+		const nodes = [personNode("a"), personNode("b"), personNode("c")];
+		const c = censusOf(nodes, [
+			relationEdge("r1", "a", "b", "mentor", { directed: true }),
+			relationEdge("r2", "a", "c", "teacher", { directed: true, ended: true }),
+			relationEdge("r3", "b", "c", "friend"),
+		]);
+
+		expect(c.directed).toBe(1);
+		// The ended one is still history, so it keeps its own row.
+		expect(c.ended).toBe(1);
+	});
+
+	it("counts recorded sex without inventing a key for a missing one", () => {
+		const nodes = [
+			personNode("a", { sex: "female" }),
+			personNode("b", { sex: "male" }),
+			personNode("c", { sex: "other" }),
+			personNode("d"),
+		];
+		const c = censusOf(nodes, []);
+
+		expect(c.sex).toEqual({ female: 1, male: 1, other: 1, unknown: 1 });
+		// The fourth person carries NO sex at all, and lands on `unknown` rather than
+		// adding an "undefined" key: `sex[undefined]++` does not throw, it silently
+		// widens the record with a NaN the legend would then try to render.
+		expect(Object.keys(c.sex)).toHaveLength(4);
 	});
 });

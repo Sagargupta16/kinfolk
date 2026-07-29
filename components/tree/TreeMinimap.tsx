@@ -200,9 +200,9 @@ export function TreeMinimap({ nodes, extent }: { nodes: OverviewNode[]; extent: 
 						if (event.buttons === 1) travel(event);
 					}}
 					role="img"
-					aria-label="Overview of the whole tree. Click to travel there."
+					aria-label="Overview of the whole graph. Click to travel there."
 				>
-					<title>Overview of the whole tree. Click to travel there.</title>
+					<title>Overview of the whole graph. Click to travel there.</title>
 					<OverviewShapes nodes={nodes} extent={extent} height={height} />
 					<ViewportRect extent={extent} height={height} />
 				</svg>

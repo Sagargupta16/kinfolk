@@ -151,7 +151,7 @@ export function TreeSearch({
 					onFocus={() => setOpen(true)}
 					onKeyDown={onKeyDown}
 					placeholder="Find a person"
-					aria-label="Find a person in this tree"
+					aria-label="Find a person in this graph"
 					aria-expanded={showList}
 					aria-controls={listId}
 					aria-autocomplete="list"

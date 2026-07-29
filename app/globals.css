@@ -50,7 +50,17 @@
 	 * without a visible change.
 	 */
 	--color-edge: #9aa0ac;
-	--color-edge-soft: #6b7180;
+	/*
+	 * Raised from #6b7180 (4.03:1) to 5.90:1, because the overlay was the half of this
+	 * graph that could not be read. Kinfolk is a contact graph as much as a pedigree, so
+	 * a friendship is CONTENT, not an annotation -- and at 4.03 with a 0.75px stroke it
+	 * was the faintest mark on the canvas carrying information nothing else carried.
+	 *
+	 * The gap to --color-edge (7.50:1) is still the hierarchy: 1.27x, and now both ends
+	 * of it are legible rather than one being sacrificed to make room for the other.
+	 * Weight carries the rest of the separation.
+	 */
+	--color-edge-soft: #868d9b;
 	/* A relation that has ended: dimmer than the overlay, still 3.32:1, and a fixed
 	   value rather than an opacity so the composite is predictable, not emergent. */
 	--color-edge-past: #5f6470;
@@ -100,6 +110,25 @@
 	--kf-dash-other: 1 4;
 	/* Not a category. "Over" outranks the kind, so this overrides the rhythm. */
 	--kf-dash-ended: 1 5;
+
+	/*
+	 * Stroke weights, as ONE scale.
+	 *
+	 * Four separate places used to name their own numbers -- the skeleton rule, the base
+	 * relation rule, three closeness rules, and the legend's sample lines -- and they
+	 * had drifted: the base relation rule said 1 while `is-close-1` said 0.75, so the
+	 * weight an edge got depended on whether its closeness class had matched. A reader
+	 * cannot learn a scale whose steps are not evenly spaced, and 0.75 is below the
+	 * width at which a dash rhythm survives at all once the canvas is zoomed out.
+	 *
+	 * So: four steps, each 0.4 apart, sharing one floor. The overlay's weakest tie is
+	 * now the same 1.1 the old scale used as its MIDDLE step, and the skeleton stays
+	 * heaviest so the hierarchy the layout establishes is never inverted.
+	 */
+	--kf-stroke-faint: 1.1;
+	--kf-stroke-soft: 1.5;
+	--kf-stroke-firm: 1.9;
+	--kf-stroke-skeleton: 2.3;
 }
 
 html {
@@ -193,9 +222,9 @@ body {
  */
 .react-flow .react-flow__edge-path {
 	stroke: var(--color-edge);
-	stroke-width: 1.5;
-	/* Rounded joins on the orthogonal skeleton: a mitred right angle at 1.5px reads
-	   as a printing artefact, and the corner is where the eye follows the line. */
+	stroke-width: var(--kf-stroke-skeleton);
+	/* Rounded joins on the orthogonal skeleton: a mitred right angle at this weight
+	   reads as a printing artefact, and the corner is where the eye follows the line. */
 	stroke-linejoin: round;
 	stroke-linecap: round;
 }
@@ -254,7 +283,10 @@ body {
  */
 .react-flow__edge.is-relation .react-flow__edge-path {
 	stroke: var(--color-edge-soft);
-	stroke-width: 1;
+	/* The scale's floor, so an edge whose closeness class did not match still lands ON
+	   the scale. Previously 1, which sat between `is-close-1`'s 0.75 and `is-close-2`'s
+	   1 and therefore belonged to neither. */
+	stroke-width: var(--kf-stroke-faint);
 	stroke-dasharray: var(--kf-dash-social);
 }
 
@@ -323,23 +355,28 @@ body {
  * is visible without reading a single label. Weight is pre-attentive, which is
  * exactly why it is driven by stored closeness rather than picked by eye.
  *
- * Kept under the 1.5px family skeleton at every step -- a relation that outweighs
- * a parentage would invert the hierarchy the layout just established.
+ * Kept under the skeleton at every step -- a relation that outweighed a parentage
+ * would invert the hierarchy the layout just established.
  *
- * Weight only, never opacity: a faded 0.75px line stops being findable at all
+ * Weight only, never opacity: a faded thin line stops being findable at all
  * (0.7 opacity took --color-edge-soft to 2.52:1, under the 3:1 a meaningful graphic
  * owes), and "less close" should read as finer rather than as half-erased.
+ *
+ * From the shared scale rather than three local numbers. The old floor was 0.75, which
+ * is thinner than a hairline and lost its dash rhythm entirely below about 0.8 zoom --
+ * so the channel that says "acquaintance" also destroyed the channel that says which
+ * KIND of acquaintance. Every step is now a rhythm you can still count.
  */
 .react-flow__edge.is-close-1 .react-flow__edge-path {
-	stroke-width: 0.75;
+	stroke-width: var(--kf-stroke-faint);
 }
 
 .react-flow__edge.is-close-2 .react-flow__edge-path {
-	stroke-width: 1;
+	stroke-width: var(--kf-stroke-soft);
 }
 
 .react-flow__edge.is-close-3 .react-flow__edge-path {
-	stroke-width: 1.4;
+	stroke-width: var(--kf-stroke-firm);
 }
 
 /*
@@ -395,13 +432,47 @@ body {
 }
 
 /*
- * No arrowhead rule here on purpose.
+ * Direction, drawn as a TAPER rather than an arrowhead.
  *
- * React Flow renders markers into one shared `<defs>` outside the edge groups, so a
- * selector scoped to `.react-flow__edge.is-relation` matches nothing -- and it then
- * writes the colour as an INLINE style on the polyline, which no stylesheet rule can
- * outrank anyway. The colour is passed through `markerEnd.color` in TreeCanvas.
+ * The arrowhead is gone, and it was the worst mark on the canvas. Three reasons, each
+ * on its own sufficient:
+ *
+ *   1. Scale. A 14px triangle terminating a 400px bezier is 3% of the line, and it
+ *      lands exactly where the line meets a card -- so it was read as part of the
+ *      card's border, not as a property of the edge. On a phone it sits under a
+ *      fingertip.
+ *   2. It could not be styled. React Flow hoists markers into one shared `<defs>`
+ *      outside the edge groups and writes the colour as an INLINE style, so the
+ *      arrowhead could not inherit the dimming, the active state, or the past colour.
+ *      A dimmed edge kept a full-contrast head; an ended relation kept a live one.
+ *   3. It was redundant. The dash flow already runs source -> target when active, and
+ *      that is legible along the WHOLE line rather than at one end of it.
+ *
+ * So a directed edge tapers: heavier where the role sits, lighter where it lands.
+ * `stroke-width` cannot be interpolated along a path, but a gradient CAN fade the
+ * stroke's own colour, and the eye reads "thins out towards" as direction. It costs
+ * nothing at the terminus, works at every zoom, and dims with the rest of the edge
+ * because it IS the stroke rather than a separate glyph.
+ *
+ * The gradient is defined once in TreeCanvas and referenced here, since a `<defs>`
+ * entry cannot come from a stylesheet.
  */
+.react-flow__edge.is-relation.is-directed .react-flow__edge-path {
+	stroke: url("#kf-taper");
+}
+
+/* Active wins: once an edge is lit it is drawn in the accent and the moving dashes
+   carry direction better than the taper does. Also, a gradient stroke cannot be
+   recoloured, so this has to override the reference rather than the colour. */
+.react-flow__edge.is-relation.is-directed.is-active .react-flow__edge-path {
+	stroke: var(--color-accent);
+}
+
+/* An ended directed relation is history first and directed second, so the past colour
+   outranks the taper for the same reason its dash rhythm outranks its category. */
+.react-flow__edge.is-relation.is-directed.is-ended .react-flow__edge-path {
+	stroke: var(--color-edge-past);
+}
 
 /**
  * An active relation lifts out of the background so you can trace it, and its
@@ -423,7 +494,10 @@ body {
 
 .react-flow__edge.is-relation.is-active .react-flow__edge-path {
 	stroke: var(--color-accent);
-	stroke-width: 1.5;
+	/* One step above the scale's top, so a lit relation is the heaviest overlay line on
+	   the canvas while still sitting under the skeleton. Reads as "this one" without the
+	   accent having to do the work alone. */
+	stroke-width: var(--kf-stroke-firm);
 	opacity: 1;
 	/*
 	 * A literal, and deliberately NOT `--kf-dash-social` despite matching it. This
@@ -748,7 +822,9 @@ body {
  */
 .react-flow__edge.is-active:not(.is-relation) .react-flow__edge-path {
 	stroke: var(--color-ink);
-	stroke-width: 2;
+	/* Half a step over the skeleton's own weight. Not a scale value: the scale describes
+	   how close a relation is, and this is the same edge lit, not a different edge. */
+	stroke-width: 2.8;
 }
 
 .react-flow .react-flow__handle {
