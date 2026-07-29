@@ -18,10 +18,42 @@
 
 	--color-ink: #f2f3f5;
 	--color-ink-muted: #a1a5ad;
-	--color-ink-faint: #6f747d;
+	/*
+	 * The floor for TEXT, so it is set by contrast rather than by taste: 5.31:1 on
+	 * canvas, 4.65:1 on the raised surface, both clear of WCAG SC 1.4.3's 4.5:1. The
+	 * previous #6f747d measured 4.19:1 and failed, which matters because this token
+	 * carries dates, "born <name>", stat labels and every placeholder -- the
+	 * metadata a genealogy UI is mostly made of.
+	 */
+	--color-ink-faint: #80858e;
 
 	--color-accent: #e0a33e;
 	--color-accent-dim: #8a6526;
+
+	/*
+	 * Edges, split from the hairline stack.
+	 *
+	 * A hairline is a border between surfaces and may be as quiet as it likes. An
+	 * edge is the CONTENT -- who descends from whom, and who knows whom -- so it is a
+	 * meaningful graphic under WCAG SC 1.4.11 and owes 3:1. Drawn in
+	 * --color-hairline-strong an edge managed 1.63:1, which is a line you can only
+	 * find if you already know it is there.
+	 *
+	 * Two values, because family and social are not the same kind of thing. The
+	 * skeleton is what the page is about and sits at 7.50:1; the relation overlay is
+	 * an annotation on it, at 4.03:1. Both clear the threshold, so the gap between
+	 * them is hierarchy rather than one of them being sacrificed to make room.
+	 *
+	 * `--color-edge` deliberately lands near React Flow's own #b1b1b7 (9.23:1), which
+	 * is what the skeleton rendered as while its rule was losing to React Flow's
+	 * stylesheet on source order. The look was right and unowned; this makes it ours
+	 * without a visible change.
+	 */
+	--color-edge: #9aa0ac;
+	--color-edge-soft: #6b7180;
+	/* A relation that has ended: dimmer than the overlay, still 3.32:1, and a fixed
+	   value rather than an opacity so the composite is predictable, not emergent. */
+	--color-edge-past: #5f6470;
 
 	/* Living vs deceased is the one semantic colour pair a tree needs. */
 	--color-living: #5fb47f;
@@ -55,13 +87,31 @@ body {
 	font-variant-numeric: tabular-nums;
 }
 
-/* React Flow's defaults are light-themed and heavy; quiet them down. */
-.react-flow__background {
+/*
+ * React Flow's defaults are light-themed and heavy; quiet them down.
+ *
+ * EVERY override in this file qualifies with `.react-flow`, and that is not style.
+ * React Flow's stylesheet is imported by TreeCanvas, so it lands after this file and
+ * wins any single-class tie on source order alone -- silently, since the rule is
+ * still there in the file and only the computed value gives it away. Three overrides
+ * had already lost that way before this was noticed. Read the computed style off a
+ * live element when adding another.
+ */
+.react-flow .react-flow__background {
 	background-color: var(--color-canvas);
 }
 
-.react-flow__edge-path {
-	stroke: var(--color-hairline-strong);
+/*
+ * The family skeleton.
+ *
+ * Two classes, not one, and that is load-bearing: React Flow ships its own
+ * `.react-flow__edge-path` rule and its stylesheet is imported AFTER this file, so
+ * at equal specificity theirs wins on source order and every edge silently rendered
+ * in their #b1b1b7 default. Qualifying with the container outranks it. The same trap
+ * is documented for the Controls buttons further down.
+ */
+.react-flow .react-flow__edge-path {
+	stroke: var(--color-edge);
 	stroke-width: 1.5;
 	/* Rounded joins on the orthogonal skeleton: a mitred right angle at 1.5px reads
 	   as a printing artefact, and the corner is where the eye follows the line. */
@@ -114,24 +164,58 @@ body {
 /**
  * Social, professional and extended-kin edges.
  *
- * Dashed and thinner than family edges on purpose: the solid orthogonal lines
- * are the skeleton of the tree, and these must read as an overlay rather than
- * competing with it. Category is carried by dash rhythm, not by colour, so the
- * one-accent rule survives.
+ * Dashed, thinner AND quieter than family edges on purpose: the solid orthogonal
+ * lines are the skeleton of the tree, and these must read as an overlay rather than
+ * competing with it. Three channels say the same thing, which is what lets the
+ * overlay stay legible (4.03:1) instead of being pushed under the threshold just to
+ * get out of the skeleton's way. Category is carried by dash rhythm, not by colour,
+ * so the one-accent rule survives.
  */
 .react-flow__edge.is-relation .react-flow__edge-path {
-	stroke: var(--color-hairline-strong);
+	stroke: var(--color-edge-soft);
 	stroke-width: 1;
 	stroke-dasharray: 5 4;
 }
+
+/**
+ * Dash rhythm per category, and EVERY category has one.
+ *
+ * The rhythm is the only channel that distinguishes them, colour being spoken for
+ * by the one-accent rule, so a category with no rule of its own is a category the
+ * canvas cannot express. Ordered tightest to sparsest, which maps onto how close
+ * the tie is to kinship -- the reading is then learnable from the graph itself
+ * rather than needing the legend memorised.
+ *
+ * Each rule sets ONLY `stroke-dasharray`. Weight belongs to closeness and colour to
+ * the token, and a category rule that touched either would silently outrank both,
+ * since these sit at the same specificity and later in the file.
+ */
 
 /* Extended kin: tightest dash, closest to a family edge. */
 .react-flow__edge.is-cousin .react-flow__edge-path,
 .react-flow__edge.is-in_law .react-flow__edge-path,
 .react-flow__edge.is-step_sibling .react-flow__edge-path,
 .react-flow__edge.is-godparent .react-flow__edge-path {
-	stroke: var(--color-ink-faint);
 	stroke-dasharray: 8 3;
+}
+
+/* Care: a long dash broken by a dot, the one rhythm with two marks in it. Reads as
+   sustained-but-punctuated, and it is deliberately the most distinctive of the
+   five: a caregiver tie is the one a reader is most likely to be looking for. */
+.react-flow__edge.is-caregiver .react-flow__edge-path {
+	stroke-dasharray: 9 3 1 3;
+}
+
+/* Social: the middle rhythm, inherited from the base rule above. Named here rather
+   than left implicit so the set of five is visible in one place, and so a new
+   social kind cannot land on the fallback by accident. */
+.react-flow__edge.is-friend .react-flow__edge-path,
+.react-flow__edge.is-close_friend .react-flow__edge-path,
+.react-flow__edge.is-family_friend .react-flow__edge-path,
+.react-flow__edge.is-neighbour .react-flow__edge-path,
+.react-flow__edge.is-classmate .react-flow__edge-path,
+.react-flow__edge.is-roommate .react-flow__edge-path {
+	stroke-dasharray: 5 4;
 }
 
 /* Professional: long dash with a gap, visually the furthest from kinship. */
@@ -141,6 +225,12 @@ body {
 .react-flow__edge.is-teacher .react-flow__edge-path,
 .react-flow__edge.is-employer .react-flow__edge-path {
 	stroke-dasharray: 2 4;
+}
+
+/* "connected to", the kind that records a tie whose nature nobody wrote down.
+   The sparsest rhythm, because the honest reading is "something, unspecified". */
+.react-flow__edge.is-other .react-flow__edge-path {
+	stroke-dasharray: 1 4;
 }
 
 /**
@@ -153,10 +243,13 @@ body {
  *
  * Kept under the 1.5px family skeleton at every step -- a relation that outweighs
  * a parentage would invert the hierarchy the layout just established.
+ *
+ * Weight only, never opacity: a faded 0.75px line stops being findable at all
+ * (0.7 opacity took --color-edge-soft to 2.52:1, under the 3:1 a meaningful graphic
+ * owes), and "less close" should read as finer rather than as half-erased.
  */
 .react-flow__edge.is-close-1 .react-flow__edge-path {
 	stroke-width: 0.75;
-	opacity: 0.7;
 }
 
 .react-flow__edge.is-close-2 .react-flow__edge-path {
@@ -165,17 +258,19 @@ body {
 
 .react-flow__edge.is-close-3 .react-flow__edge-path {
 	stroke-width: 1.4;
-	stroke: var(--color-ink-faint);
 }
 
 /*
- * A relation that has ended. Halved opacity and a sparse dash: it is history, and
- * a former colleague drawn as firmly as a current one overstates the graph. The
- * dash overrides the category rhythm on purpose -- "over" outranks "professional"
- * as the thing you need to know.
+ * A relation that has ended. Dimmer colour and a sparse dash: it is history, and a
+ * former colleague drawn as firmly as a current one overstates the graph. The dash
+ * overrides the category rhythm on purpose -- "over" outranks "professional" as the
+ * thing you need to know.
+ *
+ * A dimmer TOKEN rather than opacity, so the result is a value that can be checked
+ * (3.32:1) instead of a composite that depends on whatever it is drawn over.
  */
 .react-flow__edge.is-ended .react-flow__edge-path {
-	opacity: 0.4;
+	stroke: var(--color-edge-past);
 	stroke-dasharray: 1 5;
 }
 
@@ -217,12 +312,14 @@ body {
 	fill: var(--color-canvas);
 }
 
-/* Arrowheads on directed relations (mentor, teacher, godparent). */
-.react-flow__edge.is-relation .react-flow__arrowhead polyline,
-.react-flow__edge.is-relation marker path {
-	stroke: var(--color-hairline-strong);
-	fill: var(--color-hairline-strong);
-}
+/*
+ * No arrowhead rule here on purpose.
+ *
+ * React Flow renders markers into one shared `<defs>` outside the edge groups, so a
+ * selector scoped to `.react-flow__edge.is-relation` matches nothing -- and it then
+ * writes the colour as an INLINE style on the polyline, which no stylesheet rule can
+ * outrank anyway. The colour is passed through `markerEnd.color` in TreeCanvas.
+ */
 
 /**
  * An active relation lifts out of the background so you can trace it, and its
@@ -297,12 +394,22 @@ body {
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.14em;
 	color: var(--color-ink-faint);
-	/* Quiet by default; the tree is the content, this is an index mark. */
-	opacity: 0.55;
+	/*
+	 * No opacity. This is 9px text and the rails are the answer to "which generation
+	 * am I looking at" on a canvas ten thousand pixels wide, so it has to be readable
+	 * -- and 0.55 opacity took it to 2.36:1, well under the 4.5:1 that small text
+	 * owes. Quietness comes from the size, the letter-spacing and the mono face
+	 * instead, which cost nothing legible.
+	 */
 }
 
 .kf-rail__numeral {
-	color: var(--color-accent-dim);
+	/*
+	 * Was accent-dim, which measured 3.72:1 -- fine for a graphic, short of the 4.5:1
+	 * this text needs, and it also spent the accent on a wayfinding mark. Amber has to
+	 * keep meaning "you" and "this relation" or it means nothing.
+	 */
+	color: var(--color-ink-muted);
 }
 
 /**
@@ -394,7 +501,14 @@ body {
 	 * Spread only, no blur radius offset: a blurred glow at these sizes reads as a
 	 * drop shadow and the design uses hairlines rather than shadows.
 	 */
-	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-hairline) 60%, transparent);
+	/*
+	 * In the edge colour, not hairline: this ring is the only thing on the card that
+	 * says how connected somebody is, and at 60% hairline it measured 1.16:1 -- a mark
+	 * nobody could see, carrying information nothing else carries. 80% of --color-edge
+	 * is 5.10:1, which is a ring you can read at a glance and still quieter than the
+	 * ink it sits beside.
+	 */
+	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-edge) 80%, transparent);
 	pointer-events: none;
 	/* Animates when the level of detail changes, since the box changes with it. */
 	transition: box-shadow var(--duration-base) var(--ease-out);
@@ -419,14 +533,31 @@ body {
  * Dimming the rest rather than brightening the line, because the lit path is
  * already at full contrast -- and on a large tree "which of these is highlighted"
  * is a harder question than "which of these faded".
+ *
+ * 0.5, not the 0.28 this started at. Dimmed cards are still cards: the tree they
+ * form is the context that makes the lit path mean anything, and at 0.28 a name
+ * came out at 2.29:1 -- unreadable, which turns "recede" into "delete" and leaves a
+ * hover looking like the rest of the family was never there. At 0.5 a name is
+ * 4.91:1 and the separation from the undimmed 17.7:1 is still emphatic.
  */
 .react-flow__node.kf-dim {
-	opacity: 0.28;
+	opacity: 0.5;
 	transition: opacity var(--duration-base) var(--ease-out);
 }
 
+/*
+ * 0.6 keeps the dimmed SKELETON at 3.32:1, still a legible line. That is the number
+ * that mattered: the lit path is only meaningful against the pedigree it runs
+ * through, so the family structure has to survive dimming even while it recedes.
+ *
+ * The relation overlay falls to 2.15:1 at the same opacity and that is accepted
+ * rather than fixed. It is the one thing on screen that a hover explicitly says you
+ * are not looking at, it is transient, and it is reversible by moving the pointer --
+ * and buying it 3:1 would need roughly 0.85, at which point nothing is dimmed and
+ * the focus mode does not work at all.
+ */
 .react-flow__edge.kf-dim .react-flow__edge-path {
-	opacity: 0.25;
+	opacity: 0.6;
 	transition: opacity var(--duration-base) var(--ease-out);
 }
 
@@ -436,12 +567,15 @@ body {
 	stroke: var(--color-ink-muted);
 }
 
-.react-flow__handle {
+.react-flow .react-flow__handle {
 	opacity: 0;
 	pointer-events: none;
 }
 
-.react-flow__attribution {
+/* `background: none` lost the tie and left React Flow's rgba(255,255,255,0.5) plate
+   sitting on a near-black canvas -- a white smear in the corner of every screenshot.
+   Transparent, and a colour that actually resolves against the canvas behind it. */
+.react-flow .react-flow__attribution {
 	background: transparent;
 	color: var(--color-ink-faint);
 }

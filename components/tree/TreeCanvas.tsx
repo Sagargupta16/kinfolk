@@ -304,7 +304,26 @@ function Canvas({
 						// label stays hidden until hover or tap (see globals.css).
 						zIndex: 1001,
 						...(edge.directed
-							? { markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 } }
+							? {
+									markerEnd: {
+										type: MarkerType.ArrowClosed,
+										width: 14,
+										height: 14,
+										// Passed here, not styled in CSS. React Flow hoists markers
+										// into one shared <defs> outside the edge groups and writes
+										// the colour as an inline style on the polyline, so a rule
+										// scoped to `.is-relation` matches nothing AND an unscoped
+										// one still loses to the inline value. Left unset the
+										// arrowhead keeps React Flow's #b1b1b7, which is the family
+										// skeleton's weight on an overlay glyph.
+										//
+										// A `var()` rather than a hex so the token stays the single
+										// source of truth: it lands in an inline style, and inline
+										// custom properties resolve against the element's own
+										// cascade, which inherits from :root like anything else.
+										color: "var(--color-edge-soft)",
+									},
+								}
 							: {}),
 					};
 				}
