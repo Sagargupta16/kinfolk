@@ -23,7 +23,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Crosshair } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
-import { degrees } from "@/lib/tree/density";
+import type { Degree } from "@/lib/tree/density";
 import type { FlowEdge, FlowNode } from "@/lib/tree/graph";
 import { type GenerationBand, type Lod, layoutGraph, NODE_METRICS } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
@@ -125,9 +125,30 @@ type Props = {
 	selfId?: string;
 	/** How much of each person to draw. Changes node size, so it re-runs layout. */
 	lod?: Lod;
+	/**
+	 * A person to travel to, set by search. An object rather than a bare id so
+	 * asking for the SAME person twice still moves: after panning away, searching
+	 * the name you just searched has to bring you back, and a plain string would
+	 * compare equal and do nothing.
+	 */
+	goTo?: { id: string } | null;
+	/**
+	 * How connected each person is, keyed by fused node id.
+	 *
+	 * Passed in rather than computed here because search ranks by it too, and two
+	 * memos over 151 nodes would be the same work for the same answer.
+	 */
+	degree: Map<string, Degree>;
 };
 
-function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }: Props) {
+function Canvas({
+	nodes: sourceNodes,
+	edges: sourceEdges,
+	selfId,
+	lod = "full",
+	goTo,
+	degree,
+}: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 	const [bands, setBands] = useState<GenerationBand[]>([]);
@@ -143,7 +164,7 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 	const [layoutEpoch, setLayoutEpoch] = useState(0);
 	// `getNodesBounds` from the hook, not the standalone export: the bare function
 	// has no node lookup and warns on every call.
-	const { fitView, getNodesBounds, getNodes, setCenter } = useReactFlow();
+	const { fitView, getNodesBounds, getNodes, setCenter, getZoom } = useReactFlow();
 
 	// True only once React Flow has measured every node, which it cannot do while
 	// the container is 0x0 (hidden tab, pane not yet laid out). Framing on rAF
@@ -166,10 +187,6 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 	// dragging is an editing gesture with nowhere to save to yet, where panning is
 	// the only way to read a tree wider than the screen.
 	const coarsePointer = useCoarsePointer();
-
-	// How connected each person is, so a hub can be drawn as one. Derived from the
-	// same nodes and edges the layout sees, never stored.
-	const degree = useMemo(() => degrees(sourceNodes, sourceEdges), [sourceNodes, sourceEdges]);
 
 	/**
 	 * The viewer's immediate family, for framing when the tree cannot fit legibly.
@@ -402,6 +419,44 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 		getNodesBounds,
 		getNodes,
 	]);
+
+	/**
+	 * Travel to a searched person: centre them, select them, light their links.
+	 *
+	 * All three, because arriving is not the same as finding. A viewport that has
+	 * moved leaves you looking at a wall of cards with no idea which one you asked
+	 * for, so the card is selected (an accent ring) and its relations are focused --
+	 * exactly the state hovering it would produce.
+	 *
+	 * `setCenter` rather than `fitView` on one node: fitting a single card zooms it
+	 * to fill the viewport and throws away the relatives that answer "who is this".
+	 * The zoom is only raised to the legibility floor, never lowered, so arriving
+	 * never undoes a viewer's deliberate zoom-in.
+	 */
+	useEffect(() => {
+		if (!goTo || !measured) return;
+
+		const target = getNodes().find((node) => node.id === goTo.id);
+		if (!target) return;
+
+		// The zoom is READ here rather than subscribed to. Depending on the live value
+		// would re-run this effect on every wheel tick and yank the viewport back to
+		// the last search hit.
+		const metrics = NODE_METRICS[lod];
+		void setCenter(
+			target.position.x + (target.measured?.width ?? metrics.width) / 2,
+			target.position.y + (target.measured?.height ?? metrics.height) / 2,
+			{ zoom: Math.max(getZoom(), LEGIBLE_ZOOM[lod]), duration: 400 },
+		);
+
+		setFocusedId(goTo.id);
+		setNodes((current) =>
+			current.map((node) => {
+				const selected = node.id === goTo.id;
+				return node.selected === selected ? node : { ...node, selected };
+			}),
+		);
+	}, [goTo, measured, lod, getNodes, getZoom, setCenter, setNodes]);
 
 	// Who lights up when somebody is focused. Traverses through union dots, so
 	// hovering a parent reaches their partner and children rather than stopping at
