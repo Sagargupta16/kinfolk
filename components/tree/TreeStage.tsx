@@ -16,11 +16,13 @@
  */
 import { Rows3, Square, SquareDot } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
 import { type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 import { TreeCanvas } from "./TreeCanvas";
+import { TreeLegend } from "./TreeLegend";
 import { TreeSearch } from "./TreeSearch";
 
 /**
@@ -62,10 +64,16 @@ export function TreeStage({
 	//
 	// From the VISIBLE edges, so a ring never claims a connection whose line the
 	// viewer has switched off.
-	const degree = useMemo(
-		() => degrees(nodes, visibleEdges(edges, showRelations)),
-		[nodes, edges, showRelations],
-	);
+	const drawn = useMemo(() => visibleEdges(edges, showRelations), [edges, showRelations]);
+
+	const degree = useMemo(() => degrees(nodes, drawn), [nodes, drawn]);
+
+	// What the legend is allowed to explain: only encodings actually on this canvas.
+	// Over the DRAWN edges and after `degree`, since the presence-ring row depends on
+	// how many people clear the ring floor -- which is itself computed from the visible
+	// edges. A census over every projected edge would list a dash rhythm for lines the
+	// viewer has switched off.
+	const census = useMemo(() => censusOf(nodes, drawn, degree), [nodes, drawn, degree]);
 
 	return (
 		<div className="relative size-full">
@@ -89,42 +97,58 @@ export function TreeStage({
 
 			{/* Top-right: React Flow puts its own zoom controls bottom-left, and the
 			    two must not share an edge on a phone. Above the canvas, so it needs a
-			    z-index that clears React Flow's own panes. */}
-			{/* A fieldset rather than role="group": same semantics, and the native
-			    element carries them without an ARIA attribute to keep in sync. The
-			    label lives in aria-label because a visible <legend> would cost a line
-			    of canvas to say something the three icons already say. */}
-			<fieldset
-				aria-label="Level of detail"
-				className={cn(
-					"absolute right-3 top-3 z-10 flex overflow-hidden rounded-md",
-					"border border-hairline bg-surface/90 backdrop-blur-sm",
-				)}
-			>
-				{LEVELS.map(({ value, label, hint, Icon }) => (
-					<button
-						key={value}
-						type="button"
-						onClick={() => setLod(value)}
-						aria-pressed={lod === value}
-						title={hint}
-						className={cn(
-							// 44px tall: this is a primary control on a touch screen.
-							"flex min-h-11 items-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
-							"font-mono text-[0.625rem] uppercase tracking-wider",
-							"transition-colors duration-[--duration-fast] ease-[--ease-out]",
-							lod === value
-								? "bg-surface-raised text-accent"
-								: "text-ink-faint hover:bg-surface-raised hover:text-ink",
-						)}
-					>
-						<Icon aria-hidden className="size-3.5" strokeWidth={1.5} />
-						{/* The icon carries it on a phone; the word is what makes it
-						    unambiguous once there is room for it. */}
-						<span className="hidden sm:inline">{label}</span>
-					</button>
-				))}
-			</fieldset>
+			    z-index that clears React Flow's own panes.
+			    z-30 beats the search dropdown's z-20. Both can be open at once on a
+			    phone, where the legend panel is nearly full width, and the one just
+			    clicked has to be the one on top. */}
+			<div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5">
+				{/* A fieldset rather than role="group": same semantics, and the native
+				    element carries them without an ARIA attribute to keep in sync. The
+				    label lives in aria-label because a visible <legend> would cost a line
+				    of canvas to say something the three icons already say. */}
+				<fieldset
+					aria-label="Level of detail"
+					className={cn(
+						"flex overflow-hidden rounded-md",
+						"border border-hairline bg-surface/90 backdrop-blur-sm",
+					)}
+				>
+					{LEVELS.map(({ value, label, hint, Icon }) => (
+						<button
+							key={value}
+							type="button"
+							onClick={() => setLod(value)}
+							aria-pressed={lod === value}
+							title={hint}
+							className={cn(
+								// 44px tall: this is a primary control on a touch screen.
+								"flex min-h-11 items-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
+								"font-mono text-[0.625rem] uppercase tracking-wider",
+								"transition-colors duration-[--duration-fast] ease-[--ease-out]",
+								lod === value
+									? "bg-surface-raised text-accent"
+									: "text-ink-faint hover:bg-surface-raised hover:text-ink",
+							)}
+						>
+							<Icon aria-hidden className="size-3.5" strokeWidth={1.5} />
+							{/* The icon carries it on a phone; the word is what makes it
+							    unambiguous once there is room for it. */}
+							<span className="hidden sm:inline">{label}</span>
+						</button>
+					))}
+				</fieldset>
+
+				{/* UNDER the detail control, not beside it. A phone's top row already
+				    holds search and three detail buttons; a fourth control on that line
+				    would take its width from the search box, which is the one thing up
+				    here that needs to be typed into. Stacked, it costs nothing
+				    horizontal, and the panel it opens drops from the same corner.
+
+				    It also has to sit below the control it partly describes: the legend
+				    changes with the detail level, since a dot encodes living/dead in its
+				    fill where a card uses the rail. */}
+				<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} />
+			</div>
 		</div>
 	);
 }

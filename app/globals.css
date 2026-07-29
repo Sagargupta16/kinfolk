@@ -71,6 +71,29 @@
 	--font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
+/*
+ * Dash rhythms, as tokens.
+ *
+ * Two readers have to agree on these: the edge rules below, and the sample lines in
+ * the legend. Hardcode the pattern in both and the next rhythm change gets made in
+ * one of them, leaving the key confidently describing a line the canvas no longer
+ * draws -- the one failure a legend cannot survive, because its whole value is being
+ * trusted without checking.
+ *
+ * A plain `:root` rather than `@theme`: there is no `stroke-dasharray-*` utility
+ * namespace for Tailwind to generate from these, so putting them in the theme block
+ * would imply a class that does not exist.
+ */
+:root {
+	--kf-dash-kin: 8 3;
+	--kf-dash-care: 9 3 1 3;
+	--kf-dash-social: 5 4;
+	--kf-dash-professional: 2 4;
+	--kf-dash-other: 1 4;
+	/* Not a category. "Over" outranks the kind, so this overrides the rhythm. */
+	--kf-dash-ended: 1 5;
+}
+
 html {
 	color-scheme: dark;
 }
@@ -174,7 +197,7 @@ body {
 .react-flow__edge.is-relation .react-flow__edge-path {
 	stroke: var(--color-edge-soft);
 	stroke-width: 1;
-	stroke-dasharray: 5 4;
+	stroke-dasharray: var(--kf-dash-social);
 }
 
 /**
@@ -186,9 +209,10 @@ body {
  * the tie is to kinship -- the reading is then learnable from the graph itself
  * rather than needing the legend memorised.
  *
- * Each rule sets ONLY `stroke-dasharray`. Weight belongs to closeness and colour to
- * the token, and a category rule that touched either would silently outrank both,
- * since these sit at the same specificity and later in the file.
+ * Each rule sets ONLY `stroke-dasharray`, and every value comes from a `--kf-dash-*`
+ * token so the legend's sample lines cannot drift from these. Weight belongs to
+ * closeness and colour to the colour token; a category rule that touched either would
+ * silently outrank both, since these sit at the same specificity and later in the file.
  */
 
 /* Extended kin: tightest dash, closest to a family edge. */
@@ -196,14 +220,14 @@ body {
 .react-flow__edge.is-in_law .react-flow__edge-path,
 .react-flow__edge.is-step_sibling .react-flow__edge-path,
 .react-flow__edge.is-godparent .react-flow__edge-path {
-	stroke-dasharray: 8 3;
+	stroke-dasharray: var(--kf-dash-kin);
 }
 
 /* Care: a long dash broken by a dot, the one rhythm with two marks in it. Reads as
    sustained-but-punctuated, and it is deliberately the most distinctive of the
    five: a caregiver tie is the one a reader is most likely to be looking for. */
 .react-flow__edge.is-caregiver .react-flow__edge-path {
-	stroke-dasharray: 9 3 1 3;
+	stroke-dasharray: var(--kf-dash-care);
 }
 
 /* Social: the middle rhythm, inherited from the base rule above. Named here rather
@@ -215,7 +239,7 @@ body {
 .react-flow__edge.is-neighbour .react-flow__edge-path,
 .react-flow__edge.is-classmate .react-flow__edge-path,
 .react-flow__edge.is-roommate .react-flow__edge-path {
-	stroke-dasharray: 5 4;
+	stroke-dasharray: var(--kf-dash-social);
 }
 
 /* Professional: long dash with a gap, visually the furthest from kinship. */
@@ -224,13 +248,13 @@ body {
 .react-flow__edge.is-mentor .react-flow__edge-path,
 .react-flow__edge.is-teacher .react-flow__edge-path,
 .react-flow__edge.is-employer .react-flow__edge-path {
-	stroke-dasharray: 2 4;
+	stroke-dasharray: var(--kf-dash-professional);
 }
 
 /* "connected to", the kind that records a tie whose nature nobody wrote down.
    The sparsest rhythm, because the honest reading is "something, unspecified". */
 .react-flow__edge.is-other .react-flow__edge-path {
-	stroke-dasharray: 1 4;
+	stroke-dasharray: var(--kf-dash-other);
 }
 
 /**
@@ -271,7 +295,7 @@ body {
  */
 .react-flow__edge.is-ended .react-flow__edge-path {
 	stroke: var(--color-edge-past);
-	stroke-dasharray: 1 5;
+	stroke-dasharray: var(--kf-dash-ended);
 }
 
 /*
@@ -343,6 +367,14 @@ body {
 	stroke: var(--color-accent);
 	stroke-width: 1.5;
 	opacity: 1;
+	/*
+	 * A literal, and deliberately NOT `--kf-dash-social` despite matching it. This
+	 * value is coupled to the -18 above: 5 + 4 divides it exactly, so the loop is
+	 * seamless. Pointed at a category token, a later rhythm change (say 5 -> 6) would
+	 * silently make every active edge visibly jump each cycle. Every category
+	 * normalises to one rhythm while active anyway -- once an edge is lit, its label
+	 * is showing and the dash no longer has to carry the category.
+	 */
 	stroke-dasharray: 5 4;
 	animation: kf-flow 700ms linear infinite;
 }
