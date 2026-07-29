@@ -23,6 +23,30 @@ export type PositionedNode = FlowNode & {
 	height: number;
 };
 
+/**
+ * A horizontal band holding one generation.
+ *
+ * Derived from the laid-out person rows rather than from a depth counter, because
+ * after ELK runs the y coordinate IS the generation -- and a counter would have to
+ * re-answer the question ELK just solved, differently, for cousin marriages and
+ * cross-generation adoptions.
+ */
+export type GenerationBand = {
+	/** Row centre, for placing the label. */
+	y: number;
+	top: number;
+	bottom: number;
+	left: number;
+	right: number;
+	/** How many people sit in this band. */
+	count: number;
+};
+
+export type LayoutResult = {
+	nodes: PositionedNode[];
+	bands: GenerationBand[];
+};
+
 type Box = { x: number; y: number; width: number; height: number };
 
 /**
@@ -34,8 +58,8 @@ async function loadElk() {
 	return new ELK();
 }
 
-export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise<PositionedNode[]> {
-	if (nodes.length === 0) return [];
+export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise<LayoutResult> {
+	if (nodes.length === 0) return { nodes: [], bands: [] };
 
 	const elk = await loadElk();
 
@@ -81,7 +105,7 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 
 	anchorFamilylessNodes(nodes, edges, positions);
 
-	return nodes.map((node) => {
+	const positioned = nodes.map((node) => {
 		const box = positions.get(node.id);
 		return {
 			...node,
@@ -90,6 +114,37 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 			height: box?.height ?? PERSON_HEIGHT,
 		};
 	});
+
+	return { nodes: positioned, bands: generationBands(positioned) };
+}
+
+/**
+ * Group the laid-out people into horizontal bands, one per generation.
+ *
+ * Person nodes only: union dots sit BETWEEN rows, so including them would invent
+ * half-generations. Rows are keyed on the y ELK assigned, which is already
+ * uniform within a layer.
+ */
+function generationBands(nodes: PositionedNode[]): GenerationBand[] {
+	const rows = new Map<number, PositionedNode[]>();
+
+	for (const node of nodes) {
+		if (node.type !== "person") continue;
+		const existing = rows.get(node.position.y);
+		if (existing) existing.push(node);
+		else rows.set(node.position.y, [node]);
+	}
+
+	return [...rows.entries()]
+		.sort(([a], [b]) => a - b)
+		.map(([y, members]) => ({
+			y: y + PERSON_HEIGHT / 2,
+			top: y,
+			bottom: y + Math.max(...members.map((m) => m.height)),
+			left: Math.min(...members.map((m) => m.position.x)),
+			right: Math.max(...members.map((m) => m.position.x + m.width)),
+			count: members.length,
+		}));
 }
 
 /**

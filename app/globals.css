@@ -156,6 +156,154 @@ body {
 	stroke-width: 1.5;
 }
 
+/**
+ * Generation rails.
+ *
+ * A banded row per generation, drawn under everything. Two jobs: make a row read
+ * as a row (so the graph reads as a pedigree rather than a node soup), and give
+ * the eye a horizontal to scan along on a wide tree.
+ *
+ * Alternating fills instead of lines: a stack of hairlines at these lengths
+ * turns into a ruled ledger and starts competing with the family skeleton.
+ */
+.kf-rails {
+	position: absolute;
+	inset: 0;
+	/*
+	 * Negative, not 0. The portal is the LAST child of the viewport, so at z-index
+	 * 0 these would paint over the edge SVG (which is z-index auto and earlier in
+	 * the DOM). Negative drops them to the bottom of the viewport's stacking
+	 * context, which is where ground belongs.
+	 */
+	z-index: -1;
+	/* Inert, so the pane still receives the drag that pans the canvas. */
+	pointer-events: none;
+}
+
+.kf-rail {
+	position: absolute;
+	border-top: 1px solid color-mix(in oklab, var(--color-hairline) 55%, transparent);
+	border-bottom: 1px solid color-mix(in oklab, var(--color-hairline) 55%, transparent);
+}
+
+.kf-rail--alt {
+	background: color-mix(in oklab, var(--color-surface) 45%, transparent);
+}
+
+.kf-rail__label {
+	position: absolute;
+	top: 50%;
+	left: 8px;
+	display: flex;
+	translate: 0 -50%;
+	align-items: baseline;
+	gap: 0.375rem;
+	font-family: var(--font-mono);
+	font-size: 0.5625rem;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.14em;
+	color: var(--color-ink-faint);
+	/* Quiet by default; the tree is the content, this is an index mark. */
+	opacity: 0.55;
+}
+
+.kf-rail__numeral {
+	color: var(--color-accent-dim);
+}
+
+/**
+ * Card entrance, staggered by generation.
+ *
+ * Only the inner card moves. React Flow owns the node wrapper's `transform` for
+ * positioning, so animating the wrapper would fight it and the node would land
+ * in the wrong place.
+ */
+@keyframes kf-enter {
+	from {
+		opacity: 0;
+		transform: translateY(6px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+.kf-enter > * {
+	animation: kf-enter var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms);
+}
+
+/**
+ * Fusion reveal.
+ *
+ * One offset sheet behind a card per extra family that recorded the same person.
+ * The combined view's entire claim is "two records, one human, neither side lost
+ * anything", and until now the only evidence on screen was a footer count.
+ *
+ * The sheets slide in from further out and settle, so the merge is something you
+ * WATCH happen; the resting offset then persists, so a card still reads as merged
+ * once the animation is over. Stroke only, no fill, so nothing competes with the
+ * card's own surface.
+ */
+.kf-stack {
+	position: absolute;
+	inset: 0;
+	border: 1px solid color-mix(in oklab, var(--color-hairline-strong) 70%, transparent);
+	border-radius: var(--radius-node);
+	background: var(--color-canvas);
+	/* Each sheet steps further out; --kf-stack is 1 for the nearest. */
+	translate: calc(var(--kf-stack) * 4px) calc(var(--kf-stack) * -4px);
+	/*
+	 * No z-index. The sheets and the card are all positioned with z-index auto, so
+	 * they paint in tree order and the card -- which comes last -- lands on top.
+	 * A negative z-index would work too, but only until something upstream gains a
+	 * stacking context, at which point the sheets would vanish behind it.
+	 */
+}
+
+@keyframes kf-fuse {
+	from {
+		translate: calc(var(--kf-stack) * 15px) calc(var(--kf-stack) * -15px);
+		opacity: 0;
+	}
+	to {
+		translate: calc(var(--kf-stack) * 4px) calc(var(--kf-stack) * -4px);
+		opacity: 1;
+	}
+}
+
+.kf-stack--fuse {
+	/* Later than the card's own entrance, so the card lands first and the records
+	   visibly gather behind it rather than everything arriving at once. */
+	animation: kf-fuse var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: calc(var(--kf-delay, 0ms) + 160ms + var(--kf-stack) * 60ms);
+}
+
+/**
+ * Focus depth: hovering or tapping a person recedes everyone they are not
+ * connected to.
+ *
+ * Dimming the rest rather than brightening the line, because the lit path is
+ * already at full contrast -- and on a large tree "which of these is highlighted"
+ * is a harder question than "which of these faded".
+ */
+.react-flow__node.kf-dim {
+	opacity: 0.28;
+	transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.react-flow__edge.kf-dim .react-flow__edge-path {
+	opacity: 0.25;
+	transition: opacity var(--duration-base) var(--ease-out);
+}
+
+/* A lit family edge brightens rather than recolours: the skeleton stays neutral
+   so the accent keeps meaning "you" and "this relation". */
+.react-flow__edge.is-active:not(.is-relation) .react-flow__edge-path {
+	stroke: var(--color-ink-muted);
+}
+
 .react-flow__handle {
 	opacity: 0;
 	pointer-events: none;
@@ -164,4 +312,40 @@ body {
 .react-flow__attribution {
 	background: transparent;
 	color: var(--color-ink-faint);
+}
+
+/**
+ * Zoom controls. React Flow ships them light-themed and 26px square, which is
+ * both wrong for a near-black canvas and under the 44px minimum a thumb needs.
+ *
+ * Selectors are deliberately two classes deep. React Flow's stylesheet is
+ * imported by TreeCanvas and therefore lands AFTER this file in the cascade, so
+ * a single-class rule loses the tie on source order alone.
+ */
+.react-flow .react-flow__controls {
+	box-shadow: none;
+}
+
+.react-flow .react-flow__controls-button {
+	width: 2.75rem;
+	height: 2.75rem;
+	background: var(--color-surface);
+	border: none;
+	border-bottom: 1px solid var(--color-hairline);
+	fill: var(--color-ink-muted);
+	transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.react-flow .react-flow__controls-button:last-child {
+	border-bottom: none;
+}
+
+.react-flow .react-flow__controls-button:hover {
+	background: var(--color-surface-raised);
+	fill: var(--color-ink);
+}
+
+.react-flow .react-flow__controls-button svg {
+	width: 0.875rem;
+	height: 0.875rem;
 }
