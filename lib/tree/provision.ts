@@ -14,9 +14,9 @@
  * Called from the `createUser` event in auth.ts, so it runs once per account inside
  * Auth.js's own sign-in flow.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNotNull, or } from "drizzle-orm";
 import { db } from "../db/client";
-import { people, trees } from "../db/schema";
+import { people, treeInvites, treeMembers, trees } from "../db/schema";
 
 /**
  * A url-safe slug from a display name.
@@ -96,5 +96,68 @@ export async function provisionGraph(userId: string, name: string | null): Promi
 		await db.update(trees).set({ rootPersonId: self.id }).where(eq(trees.id, tree.id));
 	} catch {
 		// Left to the empty state, which is a correct screen for "no graph yet".
+	}
+}
+
+/**
+ * Turn pending invites addressed to this person into real access.
+ *
+ * Invites are addressed by email or GitHub login rather than by user id, because the
+ * invitee usually has no account when they are invited -- so this is where the address
+ * becomes a grant. It runs on every SIGN IN, not only on account creation: somebody may
+ * be invited long after they first signed in, and a grant that only ever landed for brand
+ * new accounts would silently never arrive for everybody else.
+ *
+ * Matching is on a lowercased email or a de-@'d login. Both are stored as given, so
+ * comparing raw values would miss `Ada@Example.com` against `ada@example.com` -- and a
+ * missed invite looks to the user like the owner never sent one.
+ */
+export async function claimInvites(
+	userId: string,
+	email: string | null,
+	githubLogin: string | null,
+): Promise<number> {
+	try {
+		const address = email?.trim().toLowerCase() ?? null;
+		const login = githubLogin?.trim().replace(/^@/, "") ?? null;
+		if (!address && !login) return 0;
+
+		const matchers = [
+			address ? eq(treeInvites.email, address) : undefined,
+			login ? eq(treeInvites.githubLogin, login) : undefined,
+		].filter((clause) => clause !== undefined);
+
+		const pending = await db
+			.select({ id: treeInvites.id, treeId: treeInvites.treeId, role: treeInvites.role })
+			.from(treeInvites)
+			.where(
+				and(
+					eq(treeInvites.status, "pending"),
+					// Expiry is checked in SQL rather than in JS, so a stale invite cannot be
+					// claimed by a request that happened to be slow.
+					gt(treeInvites.expiresAt, new Date()),
+					isNotNull(treeInvites.treeId),
+					or(...matchers),
+				),
+			);
+
+		for (const row of pending) {
+			await db
+				.insert(treeMembers)
+				.values({ treeId: row.treeId, userId, role: row.role })
+				// Already a member: the invite is still consumed below, so a second invite to
+				// somebody who already has access is not left dangling as pending forever.
+				.onConflictDoNothing();
+			await db
+				.update(treeInvites)
+				.set({ status: "accepted", asPersonId: null })
+				.where(eq(treeInvites.id, row.id));
+		}
+
+		return pending.length;
+	} catch {
+		// Same reasoning as provisionGraph: this runs inside the sign-in flow, and a failed
+		// grant must not cost somebody their session. They can sign in again to retry.
+		return 0;
 	}
 }

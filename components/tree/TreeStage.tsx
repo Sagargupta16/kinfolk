@@ -197,18 +197,22 @@ export function TreeStage({
 			</div>
 
 			{/*
-			 * Bottom-LEFT, and only when there is something to write to.
+			 * TOP-LEFT, under search, and only when there is something to write to.
 			 *
-			 * Not bottom-right: that corner already holds the overview map and the "You"
-			 * button, and the editor sheet is 20rem wide -- stacking it there would bury
-			 * both. Left is React Flow's zoom stack, which is hidden on a touch screen and
-			 * only 44px wide otherwise, so the sheet clears it with the bottom offset.
+			 * It started bottom-left and that was wrong: it sat beside React Flow's zoom
+			 * stack, below the fold of a short viewport, in the corner a reader scans last.
+			 * Adding a person is the primary action of an editor, so it belongs where the eye
+			 * starts -- and it pairs with search, since both answer "which person" and the
+			 * two share the same left column.
+			 *
+			 * z-20 matches the search dropdown rather than beating it: search results drop
+			 * DOWN over this button, and the list you are reading has to win.
 			 *
 			 * Rendered as nothing at all for a read-only viewer rather than as a disabled
 			 * button, because a disabled Add advertises an action that will never work here.
 			 */}
 			{editableTreeId && (
-				<div className="pointer-events-none absolute bottom-3 left-3 z-30 flex flex-col items-start gap-1.5 sm:bottom-3 sm:left-16">
+				<div className="pointer-events-none absolute left-3 top-16 z-20 flex flex-col items-start gap-1.5">
 					<EditorPanel
 						treeId={editableTreeId}
 						people={pickable}

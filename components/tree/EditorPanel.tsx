@@ -124,13 +124,21 @@ export function EditorPanel({
 				onClick={() => setOpen(true)}
 				className={cn(
 					"pointer-events-auto flex min-h-11 items-center gap-2 rounded-md px-3.5",
-					"border border-hairline bg-surface/90 text-sm font-medium text-ink",
-					"backdrop-blur-sm transition-colors duration-(--duration-fast) ease-(--ease-out)",
-					"hover:border-hairline-strong hover:bg-surface-raised",
+					// Solid ink on the canvas, unlike every other control up here.
+					//
+					// The rest of the chrome is a hairline on a translucent surface, which is
+					// correct for things that modify the VIEW -- they should recede behind the
+					// graph. This is the one control that changes the DATA, and a canvas with
+					// nothing on it needs the way in to be findable rather than tasteful. Ink
+					// rather than the accent: amber is spoken for by "you" and "this relation",
+					// and spending it here would cost it its meaning.
+					"bg-ink text-sm font-medium text-canvas shadow-[0_2px_8px_rgba(0,0,0,0.4)]",
+					"transition-transform duration-(--duration-fast) ease-(--ease-out)",
+					"hover:-translate-y-px active:translate-y-0",
 				)}
 			>
-				<Plus aria-hidden className="size-4 shrink-0" strokeWidth={1.5} />
-				Add
+				<Plus aria-hidden className="size-4 shrink-0" strokeWidth={2} />
+				Add person
 			</button>
 		);
 	}
