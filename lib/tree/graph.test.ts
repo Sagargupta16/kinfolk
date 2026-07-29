@@ -161,8 +161,14 @@ describe("fuseTrees", () => {
 	});
 
 	it("falls back to the most recently updated row when neither tree is primary", () => {
-		const older = person("older", "t1", { givenName: "Old", updatedAt: new Date("2026-01-01") });
-		const newer = person("newer", "t2", { givenName: "New", updatedAt: new Date("2026-06-01") });
+		const older = person("older", "t1", {
+			givenName: "Old",
+			updatedAt: new Date("2026-01-01"),
+		});
+		const newer = person("newer", "t2", {
+			givenName: "New",
+			updatedAt: new Date("2026-06-01"),
+		});
 
 		const graph = fuseTrees(
 			[slice("t1", [older], []), slice("t2", [newer], [])],
@@ -231,6 +237,71 @@ describe("fuseTrees", () => {
 		expect(graph.unions).toHaveLength(1);
 	});
 
+	it("keeps half-siblings apart when both mothers are unrecorded", () => {
+		// One father, two children by mothers nobody recorded. Coercing the null
+		// partner to a comparable key would merge these into one union and turn
+		// half-siblings into full siblings.
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("dad", "t1"), person("kid1", "t1"), person("kid2", "t1")],
+					[union("u1", "t1", "dad", null, ["kid1"]), union("u2", "t1", "dad", null, ["kid2"])],
+				),
+			],
+			[],
+		);
+
+		expect(graph.unions).toHaveLength(2);
+		expect(graph.unions.map((u) => u.childIds)).toEqual([["kid1"], ["kid2"]]);
+	});
+
+	it("keeps two parentless couples apart", () => {
+		// Two unrelated families whose parents are both unknown. They share no
+		// endpoint and no child, so nothing justifies merging them.
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("a1", "t1"), person("a2", "t1"), person("b1", "t1"), person("b2", "t1")],
+					[
+						union("u1", "t1", null, null, ["a1", "a2"]),
+						union("u2", "t1", null, null, ["b1", "b2"]),
+					],
+				),
+			],
+			[],
+		);
+
+		expect(graph.unions).toHaveLength(2);
+	});
+
+	it("still merges one single-parent family recorded by two trees", () => {
+		// A shared child is what says "same family": half-siblings never share one.
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("mum1", "t1"), person("kid1", "t1")],
+					[union("u1", "t1", "mum1", null, ["kid1"])],
+				),
+				slice(
+					"t2",
+					[person("mum2", "t2"), person("kid2", "t2"), person("kid3", "t2")],
+					[union("u2", "t2", "mum2", null, ["kid2", "kid3"])],
+				),
+			],
+			[
+				{ personAId: "mum1", personBId: "mum2" },
+				{ personAId: "kid1", personBId: "kid2" },
+			],
+		);
+
+		expect(graph.unions).toHaveLength(1);
+		// The linked child counts once; the second tree's other child is kept.
+		expect(graph.unions[0]?.childIds).toHaveLength(2);
+	});
+
 	it("produces the same fused ids regardless of input order", () => {
 		const links = [{ personAId: "a", personBId: "b" }];
 		const forward = fuseTrees(
@@ -291,12 +362,21 @@ describe("toFlowGraph", () => {
 
 describe("relation kinds", () => {
 	it("sorts the pair for symmetric kinds so a friendship cannot be stored twice", () => {
-		expect(canonicalPair("friend", "z", "a")).toEqual({ personAId: "a", personBId: "z" });
-		expect(canonicalPair("friend", "a", "z")).toEqual({ personAId: "a", personBId: "z" });
+		expect(canonicalPair("friend", "z", "a")).toEqual({
+			personAId: "a",
+			personBId: "z",
+		});
+		expect(canonicalPair("friend", "a", "z")).toEqual({
+			personAId: "a",
+			personBId: "z",
+		});
 	});
 
 	it("preserves order for directed kinds, since A holds the role", () => {
-		expect(canonicalPair("mentor", "z", "a")).toEqual({ personAId: "z", personBId: "a" });
+		expect(canonicalPair("mentor", "z", "a")).toEqual({
+			personAId: "z",
+			personBId: "a",
+		});
 	});
 
 	it("reads a directed relation from either end", () => {
@@ -487,7 +567,9 @@ describe("contact details", () => {
 					contacts: { a1: [contact("c1", "a1", "phone", "+91 111")] },
 				}),
 				slice("t2", [person("a2", "t2")], [], {
-					contacts: { a2: [contact("c2", "a2", "phone", "+91 111", { isPrimary: true })] },
+					contacts: {
+						a2: [contact("c2", "a2", "phone", "+91 111", { isPrimary: true })],
+					},
 				}),
 			],
 			[{ personAId: "a1", personBId: "a2" }],
