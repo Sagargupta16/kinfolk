@@ -226,14 +226,34 @@ function pickPrimary(members: Person[], primaryTreeId?: string): Person {
  * After fusion, two trees that both recorded the same marriage produce two
  * union rows with identical endpoints. Collapse them, keeping the union of
  * their children so neither family's records are dropped.
+ *
+ * An unknown partner is NOT a matchable value, which is the subtle half of this.
+ * Two children of one father by different unrecorded mothers are half-siblings,
+ * and two grandparent couples with no recorded parents are not the same couple.
+ * Coercing null to a comparable key merges those into one family and invents
+ * sibling relationships nobody recorded -- exactly the half-sibling and
+ * single-parent cases the union model exists to get right.
+ *
+ * But two trees CAN both record the same single-parent family, and that should
+ * still collapse to one node. A shared child is what separates the two cases:
+ * half-siblings by definition never share one. So a union with an unknown
+ * partner merges only into a union with the same known partner AND a child in
+ * common.
  */
 function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 	const byKey = new Map<string, UnionWithChildren>();
+	/** Unions with an unknown partner, which cannot be keyed on endpoints alone. */
+	const partial: UnionWithChildren[] = [];
 
 	for (const union of unions) {
+		if (!union.partnerAId || !union.partnerBId) {
+			partial.push(union);
+			continue;
+		}
+
 		// Sort endpoints: partner order is not meaningful, so (A,B) and (B,A)
 		// describe the same partnership.
-		const key = [union.partnerAId ?? "", union.partnerBId ?? ""].sort().join("::");
+		const key = [union.partnerAId, union.partnerBId].sort().join("::");
 		const existing = byKey.get(key);
 		if (!existing) {
 			byKey.set(key, union);
@@ -242,7 +262,23 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 		existing.childIds = [...new Set([...existing.childIds, ...union.childIds])];
 	}
 
-	return [...byKey.values()];
+	const merged: UnionWithChildren[] = [];
+	for (const union of partial) {
+		const knownPartner = union.partnerAId ?? union.partnerBId;
+		const sameFamily = merged.find(
+			(candidate) =>
+				(candidate.partnerAId ?? candidate.partnerBId) === knownPartner &&
+				candidate.childIds.some((id) => union.childIds.includes(id)),
+		);
+
+		if (sameFamily) {
+			sameFamily.childIds = [...new Set([...sameFamily.childIds, ...union.childIds])];
+			continue;
+		}
+		merged.push({ ...union });
+	}
+
+	return [...byKey.values(), ...merged];
 }
 
 /* -------------------------------------------------------------------------- */
