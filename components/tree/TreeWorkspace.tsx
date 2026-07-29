@@ -9,6 +9,7 @@
 import Link from "next/link";
 import type { TreeView } from "@/lib/tree/view";
 import { cn } from "@/lib/utils";
+import { AccountBar } from "./AccountBar";
 import { DemoBanner } from "./DemoBanner";
 import { TreeStage } from "./TreeStage";
 
@@ -107,6 +108,16 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 						short={view.isCombined ? "Both" : "Mine"}
 						long={view.isCombined ? "Showing combined graph" : "Showing my graph only"}
 					/>
+
+					{/* Only for a real session. In demo mode there is nobody to sign out and
+					    nothing to share, so the control is absent rather than disabled. */}
+					{view.viewer && (
+						<AccountBar
+							name={view.viewer.name}
+							email={view.viewer.email}
+							editableTreeId={view.editableTreeId}
+						/>
+					)}
 				</div>
 			</header>
 

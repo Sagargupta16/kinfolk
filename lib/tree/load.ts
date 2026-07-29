@@ -35,6 +35,14 @@ export type LoadOptions = {
 	combined?: boolean;
 	/** False hides the social overlay. */
 	showRelations?: boolean;
+	/**
+	 * Who is signed in, passed through onto the view for the account menu.
+	 *
+	 * Threaded in by the page rather than looked up here: the caller already has the
+	 * session, and a second query for a name this function was handed would be work for
+	 * an answer it was given.
+	 */
+	viewer?: { name: string | null; email: string | null } | null;
 };
 
 /**
@@ -151,7 +159,7 @@ async function acceptedLinks(personIds: string[]) {
  */
 export async function loadTreeView(
 	userId: string,
-	{ combined = true, showRelations = true }: LoadOptions = {},
+	{ combined = true, showRelations = true, viewer = null }: LoadOptions = {},
 ): Promise<TreeView | null> {
 	const access = await accessibleTrees(userId);
 	if (access.size === 0) return null;
@@ -221,6 +229,7 @@ export async function loadTreeView(
 		treeNames: filtered.map((slice) => slice.treeName),
 		isDemo: false,
 		editableTreeId,
+		viewer,
 		isCombined: combined,
 		showRelations,
 		stats: {

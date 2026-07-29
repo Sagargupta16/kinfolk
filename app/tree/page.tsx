@@ -35,7 +35,12 @@ export default async function TreePage({ searchParams }: { searchParams: SearchP
 	let view: TreeView | null = null;
 
 	if (userId) {
-		view = await loadTreeView(userId, options);
+		view = await loadTreeView(userId, {
+			...options,
+			// Passed down rather than re-queried in load.ts: the session is already here, and
+			// the account menu needs a name to show whose graph this is.
+			viewer: { name: session?.user?.name ?? null, email: session?.user?.email ?? null },
+		});
 		// Signed in with no tree yet: a new account, not an error.
 		if (!view) return <EmptyTree name={session?.user?.name ?? null} />;
 	} else {

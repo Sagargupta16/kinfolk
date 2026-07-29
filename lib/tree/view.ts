@@ -60,6 +60,16 @@ export type TreeView = {
 	 * is a value the client can change.
 	 */
 	editableTreeId: string | null;
+	/**
+	 * Who is signed in, for the account menu.
+	 *
+	 * Name and email only. The header needs to say WHOSE graph this is -- the product is
+	 * several people's records joined, so "signed in as" is not decoration -- and nothing
+	 * beyond those two fields belongs in a client bundle.
+	 *
+	 * Null in demo mode, which is what hides the menu: there is nobody to sign out.
+	 */
+	viewer: { name: string | null; email: string | null } | null;
 	/** Echoed back so the header can render toggles without re-reading searchParams. */
 	isCombined: boolean;
 	showRelations: boolean;

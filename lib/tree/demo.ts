@@ -53,6 +53,8 @@ export function buildDemoView({
 		// so the editor is not rendered at all. `edit-actions.ts` refuses a demo request
 		// server-side as well -- this only avoids offering a button that would be refused.
 		editableTreeId: null,
+		// Nobody is signed in, so there is nothing to sign out of and no account to name.
+		viewer: null,
 		kinship: kinshipMap(fused, fusedSelfId(fused, sampleSelfId)),
 		treeNames: slices.map((slice) => slice.treeName),
 		isDemo: true,

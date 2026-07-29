@@ -7,12 +7,13 @@
  * invites also accept a plain email address.
  */
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import { eq } from "drizzle-orm";
 import type { Session } from "next-auth";
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { db, hasDatabase } from "@/lib/db/client";
 import { accounts, sessions, users } from "@/lib/db/schema";
-import { provisionGraph } from "@/lib/tree/provision";
+import { claimInvites, provisionGraph } from "@/lib/tree/provision";
 
 /**
  * Our own cookie name, and it is a bug fix rather than a preference.
@@ -71,6 +72,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 		async createUser({ user }) {
 			if (!user.id) return;
 			await provisionGraph(user.id, user.name ?? null);
+		},
+		/**
+		 * Cache the GitHub handle, and turn any invites addressed to this person into
+		 * access.
+		 *
+		 * On `signIn` rather than `createUser`, because both jobs recur. Somebody can be
+		 * invited long after their first sign-in, so a claim that only ran at account
+		 * creation would silently never arrive for anybody but brand new users -- and the
+		 * owner would see a pending invite they had definitely sent.
+		 *
+		 * The handle is stored because invites are addressed by GitHub login, and the
+		 * OAuth profile is the only place it appears. Without caching it, an invite sent
+		 * to `@someone` could never be matched to the account that owns that name.
+		 */
+		async signIn({ user, profile }) {
+			if (!user.id) return;
+			const login = typeof profile?.login === "string" ? profile.login : null;
+			if (login) {
+				await db.update(users).set({ githubLogin: login }).where(eq(users.id, user.id));
+			}
+			await claimInvites(user.id, user.email ?? null, login);
 		},
 	},
 	pages: {
