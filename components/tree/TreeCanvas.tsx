@@ -11,6 +11,7 @@ import {
 	type Edge,
 	MarkerType,
 	type Node,
+	Panel,
 	ReactFlow,
 	ReactFlowProvider,
 	useEdgesState,
@@ -20,11 +21,13 @@ import {
 	useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Crosshair } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { degrees } from "@/lib/tree/density";
 import type { FlowEdge, FlowNode } from "@/lib/tree/graph";
 import { type GenerationBand, type Lod, layoutGraph, NODE_METRICS } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
+import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
 import { PersonNode, UnionNode } from "./PersonNode";
@@ -83,6 +86,31 @@ function rowFor(y: number, bands: GenerationBand[]): number {
 	return best;
 }
 
+/**
+ * Is the pointer a finger?
+ *
+ * Read in an effect rather than during render: the server has no `matchMedia`, and
+ * guessing would make the first client paint disagree with the markup it hydrates.
+ * Starting false is the safe default -- a mouse gets the richer behaviour, and a
+ * phone loses it for one frame.
+ */
+function useCoarsePointer(): boolean {
+	const [coarse, setCoarse] = useState(false);
+
+	useEffect(() => {
+		const query = window.matchMedia("(pointer: coarse)");
+		setCoarse(query.matches);
+
+		// Subscribed, not sampled once: a tablet with a keyboard attached switches
+		// pointer type without a reload.
+		const onChange = (event: MediaQueryListEvent) => setCoarse(event.matches);
+		query.addEventListener("change", onChange);
+		return () => query.removeEventListener("change", onChange);
+	}, []);
+
+	return coarse;
+}
+
 /** Add or remove one class, preserving whatever else is on the element. */
 function withFlag(flag: string, className: string | undefined, on: boolean): string {
 	const classes = (className ?? "").split(" ").filter((c) => c && c !== flag);
@@ -132,6 +160,12 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 	// themselves: they render above the cards so their labels stay readable, which
 	// means they must not intercept pointer events.
 	const [focusedId, setFocusedId] = useState<string | null>(null);
+
+	// Cards are draggable with a mouse and not with a finger. On a phone a card is
+	// most of the screen, so a swipe that starts on one has to pan the canvas -- and
+	// dragging is an editing gesture with nowhere to save to yet, where panning is
+	// the only way to read a tree wider than the screen.
+	const coarsePointer = useCoarsePointer();
 
 	// How connected each person is, so a hub can be drawn as one. Derived from the
 	// same nodes and edges the layout sees, never stored.
@@ -232,8 +266,9 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 								}
 							: node.data,
 					// Union dots are structural, not content; dragging them would
-					// desync the layout from the data.
-					draggable: node.type === "person",
+					// desync the layout from the data. Nothing is draggable by
+					// finger, so a swipe from anywhere pans.
+					draggable: node.type === "person" && !coarsePointer,
 					// The animation itself is CSS (see globals.css); React Flow owns
 					// the node's transform, so a JS-driven entrance would fight it.
 					className: "kf-enter",
@@ -263,7 +298,69 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 		return () => {
 			cancelled = true;
 		};
-	}, [sourceNodes, sourceEdges, flowEdges, selfId, lod, degree, setNodes, setEdges]);
+	}, [sourceNodes, sourceEdges, flowEdges, selfId, lod, degree, coarsePointer, setNodes, setEdges]);
+
+	/**
+	 * Put the viewer's own household on screen at a readable zoom.
+	 *
+	 * Extracted from the framing effect so the "find me" button can re-run exactly
+	 * what the first frame did. Two implementations of "where am I" would drift, and
+	 * the whole value of the button is that it returns you to a known view.
+	 */
+	const frameSelf = useCallback(() => {
+		const nodes = getNodes();
+		const anchor = nodes.find((node) => (node.data as { isSelf?: boolean }).isSelf) ?? nodes[0];
+		if (!anchor) return;
+
+		// Their household rather than their card alone -- a single card centred in an
+		// empty viewport says nothing about where you are in the tree, whereas
+		// parents, partner and children are the answer to "who is this".
+		//
+		// But fitting the household's BOUNDS is not the same as showing the
+		// household. ELK places a large sibship above its own descendant subtrees, so
+		// the box round a person's parents and siblings can span most of the canvas:
+		// measured on the sample data, 52 of 117 people have a household wider than a
+		// phone can render legibly. Fitting that box just reproduces the unreadable
+		// zoom this branch exists to avoid.
+		//
+		// So centre on the PERSON at a fixed legible zoom and let the household fill
+		// whatever the viewport holds. Guarantees legibility for everyone, where
+		// fitting bounds only guarantees it for people with small families.
+		const household = nodes.filter((node) => homeIds?.has(node.id));
+		if (household.length > 1) {
+			const bounds = getNodesBounds(household);
+			const householdZoom = Math.min(
+				viewportWidth / (bounds.width || 1),
+				viewportHeight / (bounds.height || 1),
+			);
+
+			if (householdZoom >= LEGIBLE_ZOOM[lod]) {
+				// Capped at 1:1. `fitView` scales UP to fill, so a household of five on a
+				// 1440px screen opened at 1.72x -- five cards magnified past the size they
+				// were designed at, with 146 relatives off screen. At 1:1 the same five
+				// are centred and the leftover room fills with the family around them,
+				// which is what a wider screen should buy.
+				void fitView({ padding: 0.3, duration: 400, nodes: household, maxZoom: 1 });
+				return;
+			}
+
+			// The metrics rather than 0 as the fallback: `measured` should be set by
+			// now (the framing effect waits on useNodesInitialized), but an unmeasured
+			// node would otherwise centre on the card's top-left corner and put the
+			// person half a card off-centre, which on a phone is most of the screen.
+			const metrics = NODE_METRICS[lod];
+			void setCenter(
+				anchor.position.x + (anchor.measured?.width ?? metrics.width) / 2,
+				anchor.position.y + (anchor.measured?.height ?? metrics.height) / 2,
+				{ zoom: LEGIBLE_ZOOM[lod], duration: 400 },
+			);
+			return;
+		}
+
+		// Nobody to show them with, so keep them at their designed size rather than
+		// blowing one card up to fill the viewport.
+		void fitView({ padding: 1.6, duration: 400, nodes: [anchor], maxZoom: 1 });
+	}, [homeIds, lod, viewportWidth, viewportHeight, fitView, getNodes, getNodesBounds, setCenter]);
 
 	// Frame the graph once the nodes it contains have actually been measured. Keyed
 	// on layoutEpoch, so switching between combined and mine-only refits but a
@@ -293,61 +390,17 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 
 		// Too big to fit legibly: open on the viewer instead and let them pan or
 		// collapse to dots.
-		const anchor = nodes.find((node) => (node.data as { isSelf?: boolean }).isSelf) ?? nodes[0];
-		if (!anchor) return;
-
-		// Their household rather than their card alone -- a single card centred in an
-		// empty viewport says nothing about where you are in the tree, whereas
-		// parents, partner and children are the answer to "who is this".
-		//
-		// But fitting the household's BOUNDS is not the same as showing the
-		// household. ELK places a large sibship above its own descendant subtrees, so
-		// the box round a person's parents and siblings can span most of the canvas:
-		// measured on the sample data, 52 of 117 people have a household wider than a
-		// phone can render legibly. Fitting that box just reproduces the unreadable
-		// zoom this branch exists to avoid.
-		//
-		// So centre on the PERSON at a fixed legible zoom and let the household fill
-		// whatever the viewport holds. Guarantees legibility for everyone, where
-		// fitting bounds only guarantees it for people with small families.
-		const household = nodes.filter((node) => homeIds?.has(node.id));
-		if (household.length > 1) {
-			const bounds = getNodesBounds(household);
-			const householdZoom = Math.min(
-				viewportWidth / (bounds.width || 1),
-				viewportHeight / (bounds.height || 1),
-			);
-
-			if (householdZoom >= LEGIBLE_ZOOM[lod]) {
-				void fitView({ padding: 0.3, duration: 400, nodes: household });
-				return;
-			}
-
-			// The metrics rather than 0 as the fallback: `measured` should be set by
-			// now (this whole effect waits on useNodesInitialized), but an unmeasured
-			// node would otherwise centre on the card's top-left corner and put the
-			// person half a card off-centre, which on a phone is most of the screen.
-			const metrics = NODE_METRICS[lod];
-			void setCenter(
-				anchor.position.x + (anchor.measured?.width ?? metrics.width) / 2,
-				anchor.position.y + (anchor.measured?.height ?? metrics.height) / 2,
-				{ zoom: LEGIBLE_ZOOM[lod], duration: 400 },
-			);
-			return;
-		}
-
-		void fitView({ padding: 1.6, duration: 400, nodes: [anchor] });
+		frameSelf();
 	}, [
 		measured,
 		layoutEpoch,
 		viewportWidth,
 		viewportHeight,
 		lod,
-		homeIds,
+		frameSelf,
 		fitView,
 		getNodesBounds,
 		getNodes,
-		setCenter,
 	]);
 
 	// Who lights up when somebody is focused. Traverses through union dots, so
@@ -410,11 +463,51 @@ function Canvas({ nodes: sourceNodes, edges: sourceEdges, selfId, lod = "full" }
 		>
 			<Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1c1e23" />
 			<GenerationRails bands={bands} />
-			{/* Styled in globals.css, which has to out-specify React Flow's own sheet. */}
+
+			{/*
+			 * Zoom buttons on a pointer device only.
+			 *
+			 * On a phone they are 133px of vertical canvas spent on a gesture the
+			 * platform already provides better: pinch zooms about the point you are
+			 * looking at, where a + button zooms about the viewport centre and moves
+			 * whatever you were reading. Hidden with CSS rather than a media-query hook
+			 * so the server renders the same markup either way.
+			 */}
 			<Controls
 				showInteractive={false}
-				className="overflow-hidden rounded-md border border-hairline"
+				className="kf-zoom-controls overflow-hidden rounded-md border border-hairline"
 			/>
+
+			{/*
+			 * Back to yourself. The single most valuable control on a canvas 10760px
+			 * wide, and the one thing a viewer cannot recover by gesture: pan far enough
+			 * on a phone and every direction looks the same.
+			 *
+			 * Bottom-RIGHT at every size, opposite React Flow's zoom stack. Flipping
+			 * sides by media query needs a rule that beats `.react-flow__panel.left`,
+			 * and React Flow's stylesheet is imported below this file so an equally
+			 * specific `left: auto` loses on source order -- leaving both edges pinned
+			 * and stretching the panel into a full-width invisible strip across the
+			 * bottom of the tree, which then eats the drag that should pan it.
+			 */}
+			{selfId && (
+				<Panel position="bottom-right" className="kf-locate">
+					<button
+						type="button"
+						onClick={frameSelf}
+						title="Back to your family"
+						className={cn(
+							"flex min-h-11 items-center gap-2 rounded-md border border-hairline px-3",
+							"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider text-ink-muted",
+							"backdrop-blur-sm transition-colors duration-[--duration-fast] ease-[--ease-out]",
+							"hover:border-hairline-strong hover:text-ink",
+						)}
+					>
+						<Crosshair aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
+						You
+					</button>
+				</Panel>
+			)}
 		</ReactFlow>
 	);
 }
