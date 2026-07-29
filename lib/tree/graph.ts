@@ -13,8 +13,15 @@
  * Layout itself is ELK's problem (see layout.ts). This file stays pure so it is
  * testable without a browser or a database.
  */
-import type { ContactDetail, Person, PersonRelation, RelationKind, Union } from "../db/schema";
-import { RELATION_KINDS } from "./relations";
+import type {
+	ContactDetail,
+	Person,
+	PersonRelation,
+	RelationKind,
+	Union,
+	Verification,
+} from "../db/schema";
+import { type Closeness, closenessOf, RELATION_KINDS } from "./relations";
 
 /** A union plus its children, as loaded from `unions` + `union_children`. */
 export type UnionWithChildren = Union & {
@@ -52,6 +59,24 @@ export type FusedPerson = {
 	 * number should show it once, not twice.
 	 */
 	contacts: ContactDetail[];
+	/**
+	 * The strongest verification any contributing row claims, plus whether the rows
+	 * agree. Derived at fusion time rather than stored, because corroboration is a
+	 * property of the link graph and goes stale the moment a link is withdrawn.
+	 */
+	trust: Trust;
+};
+
+export type Trust = {
+	/** Strongest claim among the sources; `disputed` wins outright when present. */
+	level: Verification;
+	/** How many distinct families independently assert this person. */
+	corroborators: number;
+	/**
+	 * True when two sources give conflicting vital dates. Surfaced so the card can
+	 * say "families disagree" instead of silently rendering whichever row won.
+	 */
+	conflicted: boolean;
 };
 
 export type FusedGraph = {
@@ -141,6 +166,7 @@ export function fuseTrees(
 			sources: members,
 			contributingTreeIds: [...new Set(members.map((m) => m.treeId))],
 			contacts: dedupeContacts(members.flatMap((m) => contactsByPersonId.get(m.id) ?? [])),
+			trust: trustOf(members),
 		});
 	}
 
@@ -212,6 +238,56 @@ function dedupeRelations(relations: PersonRelation[]): PersonRelation[] {
 	}
 
 	return [...byKey.values()];
+}
+
+/**
+ * Weakest to strongest. `disputed` is absent on purpose: it is not a rung on this
+ * ladder but an override, handled separately in `trustOf`.
+ */
+const VERIFICATION_RANK: Record<Verification, number> = {
+	unverified: 0,
+	family_recalled: 1,
+	self_confirmed: 2,
+	documented: 3,
+	disputed: -1,
+};
+
+/**
+ * How much a fused person is trusted, derived from its contributing rows.
+ *
+ * Two rules, and the order matters. A single source claiming `disputed` makes the
+ * whole person disputed -- a conflict cannot be outvoted by confidence elsewhere.
+ * Otherwise the STRONGEST claim wins, because a documented birth certificate in
+ * one family is not weakened by another family merely remembering the person.
+ *
+ * Conflict detection compares only vital dates, not names. Spelling varies
+ * legitimately across families ("Katharina" / "Catherine") and flagging that as a
+ * disagreement would mark most merged rows as suspect.
+ */
+export function trustOf(members: Person[]): Trust {
+	const corroborators = new Set(members.map((m) => m.treeId)).size;
+	const conflicted = hasDateConflict(members);
+
+	if (members.some((m) => m.verification === "disputed") || conflicted) {
+		return { level: "disputed", corroborators, conflicted };
+	}
+
+	const level = members.reduce<Verification>(
+		(best, m) =>
+			VERIFICATION_RANK[m.verification] > VERIFICATION_RANK[best] ? m.verification : best,
+		"unverified",
+	);
+
+	return { level, corroborators, conflicted };
+}
+
+/** Two sources giving different birth or death dates for one human. */
+function hasDateConflict(members: Person[]): boolean {
+	for (const field of ["birthDate", "deathDate"] as const) {
+		const values = new Set(members.map((m) => m[field]).filter((v): v is string => Boolean(v)));
+		if (values.size > 1) return true;
+	}
+	return false;
 }
 
 function pickPrimary(members: Person[], primaryTreeId?: string): Person {
@@ -308,6 +384,14 @@ export type FlowEdge = {
 	label?: string;
 	/** Symmetric relations draw no arrowhead. */
 	directed?: boolean;
+	/**
+	 * 1..3, how heavily to draw this connection. Only set for relation edges:
+	 * family edges are skeleton and all carry the same weight, so varying them
+	 * would imply one parentage is firmer than another.
+	 */
+	closeness?: Closeness;
+	/** True once the relation has an end date. Drawn fainter: it is history. */
+	ended?: boolean;
 };
 
 /**
@@ -372,6 +456,8 @@ export function toFlowGraph(
 				relationKind: relation.kind,
 				label: relation.label ?? spec.label,
 				directed: !spec.symmetric,
+				closeness: closenessOf(relation.kind, relation),
+				ended: Boolean(relation.endDate),
 			});
 		}
 	}
