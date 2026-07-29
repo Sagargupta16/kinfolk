@@ -16,7 +16,7 @@ import { buildDemoView, DEMO_COOKIE } from "@/lib/tree/demo";
 import { loadTreeView } from "@/lib/tree/load";
 import type { TreeView } from "@/lib/tree/view";
 
-export const metadata = { title: "Your tree -- Kinfolk" };
+export const metadata = { title: "Your graph -- Kinfolk" };
 
 type SearchParams = Promise<{ combined?: string; relations?: string }>;
 

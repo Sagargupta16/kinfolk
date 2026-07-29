@@ -9,7 +9,6 @@ import {
 	BackgroundVariant,
 	Controls,
 	type Edge,
-	MarkerType,
 	type Node,
 	Panel,
 	ReactFlow,
@@ -343,37 +342,21 @@ function Canvas({
 							`is-${edge.relationKind}`,
 							`is-close-${edge.closeness ?? 1}`,
 							edge.ended ? "is-ended" : "",
+							// Direction is a TAPERED stroke now, not an arrowhead -- see the
+							// `.is-directed` rules in globals.css for why the marker was removed.
+							// A class rather than a `markerEnd` so the state stays in the cascade
+							// with the edge's other five, and so it composes with is-active and
+							// is-ended instead of being an inline style neither can reach.
+							edge.directed ? "is-directed" : "",
 						]
 							.filter(Boolean)
 							.join(" "),
 						// Above the cards, because a label pinned to a curve's midpoint
 						// otherwise gets painted over by whatever card it passes behind.
-						// Safe only because the line itself is a faint 1px dash: it reads
+						// Safe only because the line itself is a thin dash: it reads
 						// as an overlay and never competes with the family skeleton. The
 						// label stays hidden until hover or tap (see globals.css).
 						zIndex: 1001,
-						...(edge.directed
-							? {
-									markerEnd: {
-										type: MarkerType.ArrowClosed,
-										width: 14,
-										height: 14,
-										// Passed here, not styled in CSS. React Flow hoists markers
-										// into one shared <defs> outside the edge groups and writes
-										// the colour as an inline style on the polyline, so a rule
-										// scoped to `.is-relation` matches nothing AND an unscoped
-										// one still loses to the inline value. Left unset the
-										// arrowhead keeps React Flow's #b1b1b7, which is the family
-										// skeleton's weight on an overlay glyph.
-										//
-										// A `var()` rather than a hex so the token stays the single
-										// source of truth: it lands in an inline style, and inline
-										// custom properties resolve against the element's own
-										// cascade, which inherits from :root like anything else.
-										color: "var(--color-edge-soft)",
-									},
-								}
-							: {}),
 					};
 				}
 
@@ -741,6 +724,51 @@ function Canvas({
 			proOptions={{ hideAttribution: false }}
 			className="size-full"
 		>
+			{/*
+			 * The taper gradient, referenced by `.is-directed` in globals.css.
+			 *
+			 * A `<defs>` entry cannot be written in a stylesheet, and it has to live in the
+			 * document rather than inside React Flow's edge SVG -- `url(#id)` resolves
+			 * against the whole document, so one definition serves every edge instead of
+			 * one per edge group.
+			 *
+			 * `gradientUnits="objectBoundingBox"` is what makes ONE definition work for
+			 * paths running in every direction: the gradient is expressed in the path's own
+			 * box, so x1=0 is always the source end. A userSpaceOnUse gradient would need
+			 * per-edge coordinates and therefore per-edge defs.
+			 *
+			 * Fading to 68%, not to 0, and the number is a measurement rather than a taste
+			 * call. A stroke that reaches transparent stops being a line that arrives
+			 * somewhere and reads as one that was cut off -- and the terminus is precisely
+			 * where a reader looks to see WHO the relation lands on.
+			 *
+			 * An edge owes 3:1 under WCAG SC 1.4.11, and because this end is drawn with an
+			 * alpha it has to be scored on the COMPOSITE (fg*a + bg*(1-a)) rather than on
+			 * the token. The first attempt faded to 35%, which composites to 1.69:1 against
+			 * the canvas -- a line only findable if you already knew it was there, which is
+			 * the exact defect this repo's contrast rule exists to catch. 0.68 measures
+			 * 3.28:1, so the taper is still clearly a taper (5.90 -> 3.28 is a 1.8x drop the
+			 * eye reads as direction) with both ends legible.
+			 */}
+			{/* `aria-hidden="true"` spelled out rather than as the JSX shorthand: Biome's
+			    noSvgWithoutTitle only recognises the string form, and this svg holds a
+			    definition with nothing to announce. Same trap as TreeLegend's samples. */}
+			<svg aria-hidden="true" className="pointer-events-none absolute size-0" focusable="false">
+				<defs>
+					<linearGradient
+						id="kf-taper"
+						gradientUnits="objectBoundingBox"
+						x1="0"
+						y1="0"
+						x2="1"
+						y2="0"
+					>
+						<stop offset="0%" stopColor="var(--color-edge-soft)" stopOpacity="1" />
+						<stop offset="100%" stopColor="var(--color-edge-soft)" stopOpacity="0.68" />
+					</linearGradient>
+				</defs>
+			</svg>
+
 			{/* No `color`: the dot fill and its edge fade are tokens in globals.css
 			    (`.react-flow__background-pattern`), so the lattice restyles with the rest
 			    of the surface stack instead of holding the one hardcoded colour on the

@@ -17,7 +17,7 @@
  *
  * Pure, like everything in lib/tree: no React, no DB.
  */
-import type { RelationKind, Verification } from "../db/schema";
+import type { RelationKind, Sex, Verification } from "../db/schema";
 import { type Degree, RING_MIN_RANK } from "./density";
 import type { FlowEdge, FlowNode } from "./graph";
 import { RELATION_KINDS, type RelationCategory } from "./relations";
@@ -32,6 +32,14 @@ export type TreeCensus = {
 	kinds: Record<RelationCategory, RelationKind[]>;
 	/** Relation edges with an end date, drawn in the past colour. */
 	ended: number;
+	/**
+	 * Relation edges that carry a role, so one end is the mentor/teacher/godparent.
+	 *
+	 * Drawn as a tapered stroke, so the legend needs its own count: a graph of nothing
+	 * but friendships and cousinhoods has no tapered line on it, and a row explaining
+	 * one would send a reader hunting for a mark that is not there.
+	 */
+	directed: number;
 	/** How many distinct closeness weights occur. One weight is not a scale. */
 	closenessLevels: number;
 	/** People by living status, which drives the rail and the dot fill. */
@@ -40,6 +48,14 @@ export type TreeCensus = {
 	livingUnknown: number;
 	/** People per verification level, so a mark with nobody behind it is not listed. */
 	provenance: Record<Verification, number>;
+	/**
+	 * People per recorded sex, which drives the card's glyph.
+	 *
+	 * Counted so the legend can list only the marks present. On most real graphs that
+	 * means `unknown` has the largest count by far, which is worth showing rather than
+	 * hiding: it tells a reader how much of this record is actually unfilled.
+	 */
+	sex: Record<Sex, number>;
 	/** People whose families disagree about a date. */
 	conflicted: number;
 	/** People described by more than one family, which draws the offset sheets. */
@@ -67,6 +83,7 @@ export function censusOf(
 	let family = 0;
 	let partners = 0;
 	let ended = 0;
+	let directed = 0;
 
 	for (const edge of edges) {
 		if (edge.kind === "partner") {
@@ -86,6 +103,11 @@ export function censusOf(
 		// weight is not what the closeness scale is showing.
 		if (edge.ended) ended++;
 		else weights.add(edge.closeness ?? 1);
+
+		// Not `else`: an ended mentorship is still a directed edge. But an ended one is
+		// drawn in the past colour, which overrides the taper, so only live ones are
+		// counted -- the row has to describe a taper that is actually on screen.
+		if (edge.directed && !edge.ended) directed++;
 	}
 
 	const provenance: Record<Verification, number> = {
@@ -95,6 +117,8 @@ export function censusOf(
 		unverified: 0,
 		disputed: 0,
 	};
+
+	const sex: Record<Sex, number> = { female: 0, male: 0, other: 0, unknown: 0 };
 
 	let livingCount = 0;
 	let deceased = 0;
@@ -119,6 +143,13 @@ export function censusOf(
 			default:
 				livingCount++;
 		}
+
+		// The stored value, never inferred, and falling back to the column's own default
+		// rather than indexing blind. `sex` is notNull in the schema, but this function is
+		// pure and counts whatever it is handed -- and `sex[undefined]++` does not throw,
+		// it quietly ADDS an "undefined" key holding NaN, which the legend would then try
+		// to render as a row for a mark that does not exist.
+		sex[person.primary.sex ?? "unknown"]++;
 
 		provenance[person.trust.level]++;
 		if (person.trust.conflicted) conflicted++;
@@ -145,11 +176,13 @@ export function censusOf(
 			other: [...kindSets.other],
 		},
 		ended,
+		directed,
 		closenessLevels: weights.size,
 		living: livingCount,
 		deceased,
 		livingUnknown,
 		provenance,
+		sex,
 		conflicted,
 		merged,
 		withPhone,

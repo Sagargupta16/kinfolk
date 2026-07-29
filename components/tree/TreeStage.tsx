@@ -36,7 +36,7 @@ import { TreeSearch } from "./TreeSearch";
 const LEVELS: { value: Lod; label: string; hint: string; Icon: typeof Square }[] = [
 	{ value: "full", label: "Cards", hint: "Full cards: dates, provenance, channels", Icon: Square },
 	{ value: "compact", label: "Rows", hint: "Names and dates only", Icon: Rows3 },
-	{ value: "dot", label: "Dots", hint: "Shape of the whole family", Icon: SquareDot },
+	{ value: "dot", label: "Dots", hint: "Shape of the whole graph", Icon: SquareDot },
 ];
 
 export function TreeStage({

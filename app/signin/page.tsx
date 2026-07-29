@@ -2,9 +2,9 @@
  * Sign-in. Referenced by `pages.signIn` in auth.ts, so Auth.js redirects here
  * whenever an unauthenticated request hits a protected route.
  *
- * The demo link is as prominent as the sign-in button on purpose: a family tree
- * app has nothing to show a first-time visitor, and asking someone to authorise
- * a GitHub app before they know what they are getting is the wrong order.
+ * The demo link is as prominent as the sign-in button on purpose: a graph of your
+ * own people has nothing to show a first-time visitor, and asking someone to
+ * authorise a GitHub app before they know what they are getting is the wrong order.
  */
 
 import Link from "next/link";
@@ -36,11 +36,11 @@ export default async function SignInPage({
 					Kinfolk
 				</Link>
 				<h1 className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-ink">
-					Sign in to your tree
+					Sign in to your graph
 				</h1>
 				<p className="text-sm leading-relaxed text-ink-muted">
-					Your records stay yours. Linking to a relative's tree needs both sides to agree, and
-					unlinking puts everything back.
+					Your records stay yours. Joining to someone else's graph needs both sides to agree, and
+					unjoining puts everything back.
 				</p>
 			</div>
 

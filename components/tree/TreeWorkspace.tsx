@@ -69,13 +69,13 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 			<header className="flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-2.5 sm:gap-6 sm:px-6 sm:py-3">
 				<div className="min-w-0 flex-1">
 					<h1 className="truncate text-sm font-medium tracking-[-0.01em] text-ink">
-						{view.treeNames[0] ?? "Your tree"}
+						{view.treeNames[0] ?? "Your graph"}
 					</h1>
 					<p className="truncate font-mono text-[0.6875rem] text-ink-faint">
 						{view.isDemo
 							? "sample data, no database"
 							: stats.trees > 1
-								? `${stats.trees} trees joined`
+								? `${stats.trees} graphs joined`
 								: "your records"}
 					</p>
 				</div>
@@ -105,7 +105,7 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 						href={combinedHref}
 						active={view.isCombined}
 						short={view.isCombined ? "Both" : "Mine"}
-						long={view.isCombined ? "Showing combined tree" : "Showing my tree only"}
+						long={view.isCombined ? "Showing combined graph" : "Showing my graph only"}
 					/>
 				</div>
 			</header>

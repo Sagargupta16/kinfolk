@@ -20,16 +20,18 @@ export default function HomePage() {
 					className="kf-rise text-4xl font-semibold leading-[1.08] tracking-[-0.03em] text-ink sm:text-5xl"
 					style={{ "--kf-delay": "70ms" } as CSSProperties}
 				>
-					Build your branch.
+					Map your people.
 					<br />
-					Connect it to theirs.
+					Join it to theirs.
 				</h1>
 				<p
 					className="kf-rise max-w-prose text-[0.9375rem] leading-relaxed text-ink-muted"
 					style={{ "--kf-delay": "140ms" } as CSSProperties}
 				>
-					Everyone keeps their own records. When two relatives agree that a person in each of their
-					trees is the same human, the trees join at that point, and both sides keep their copy.
+					Not a pedigree chart -- a graph. Anyone can be a node: a grandmother, a neighbour, the
+					colleague who introduced your parents. Everyone keeps their own records, and when two
+					people agree that a person in each of their graphs is the same human, the graphs join at
+					that point without either side losing a thing.
 				</p>
 			</div>
 
@@ -45,7 +47,7 @@ export default function HomePage() {
 						type="submit"
 						className="flex min-h-11 w-full items-center justify-center rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-(--duration-fast) ease-(--ease-out) hover:-translate-y-px active:translate-y-0 sm:w-auto"
 					>
-						See the sample tree
+						See the sample graph
 					</button>
 				</form>
 				<Link
