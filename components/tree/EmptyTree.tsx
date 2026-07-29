@@ -33,7 +33,7 @@ export function EmptyTree({ name }: { name: string | null }) {
 				<form action={enterDemo}>
 					<button
 						type="submit"
-						className="flex min-h-11 w-full items-center justify-center rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-[--duration-fast] ease-[--ease-out] hover:-translate-y-px active:translate-y-0"
+						className="flex min-h-11 w-full items-center justify-center rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-(--duration-fast) ease-(--ease-out) hover:-translate-y-px active:translate-y-0"
 					>
 						See a sample tree first
 					</button>

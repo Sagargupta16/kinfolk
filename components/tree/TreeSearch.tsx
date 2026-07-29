@@ -134,7 +134,7 @@ export function TreeSearch({
 			<div
 				className={cn(
 					"flex items-center gap-2 rounded-md border bg-surface/90 pl-2.5 pr-1 backdrop-blur-sm",
-					"transition-colors duration-[--duration-fast] ease-[--ease-out]",
+					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					showList ? "border-hairline-strong" : "border-hairline",
 				)}
 			>
@@ -173,7 +173,7 @@ export function TreeSearch({
 						aria-label="Clear search"
 						className={cn(
 							"flex size-11 shrink-0 items-center justify-center rounded text-ink-faint",
-							"transition-colors duration-[--duration-fast] ease-[--ease-out] hover:text-ink",
+							"transition-colors duration-(--duration-fast) ease-(--ease-out) hover:text-ink",
 						)}
 					>
 						<X aria-hidden className="size-3.5" strokeWidth={1.5} />
@@ -211,7 +211,7 @@ export function TreeSearch({
 								onMouseEnter={() => setCursor({ query, index })}
 								className={cn(
 									"flex min-h-11 w-full items-baseline gap-2 border-b border-hairline px-3",
-									"text-left last:border-b-0 transition-colors duration-[--duration-fast]",
+									"text-left last:border-b-0 transition-colors duration-(--duration-fast)",
 									index === active ? "bg-surface-raised" : "hover:bg-surface-raised",
 								)}
 							>

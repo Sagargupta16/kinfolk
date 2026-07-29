@@ -216,7 +216,7 @@ export function TreeMinimap({ nodes, extent }: { nodes: OverviewNode[]; extent: 
 				className={cn(
 					"flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
 					"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider backdrop-blur-sm",
-					"transition-colors duration-[--duration-fast] ease-[--ease-out]",
+					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					open
 						? "border-hairline-strong text-accent"
 						: "border-hairline text-ink-faint hover:border-hairline-strong hover:text-ink",

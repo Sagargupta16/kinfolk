@@ -62,7 +62,7 @@ export default async function SignInPage({
 				>
 					<button
 						type="submit"
-						className="flex min-h-11 w-full items-center justify-center gap-2.5 rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-[--duration-fast] ease-[--ease-out] hover:-translate-y-px active:translate-y-0"
+						className="flex min-h-11 w-full items-center justify-center gap-2.5 rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-(--duration-fast) ease-(--ease-out) hover:-translate-y-px active:translate-y-0"
 					>
 						<GitHubIcon className="size-4" />
 						Continue with GitHub
@@ -72,7 +72,7 @@ export default async function SignInPage({
 				<form action={enterDemo}>
 					<button
 						type="submit"
-						className="flex min-h-11 w-full items-center justify-center rounded-md border border-hairline px-4 text-sm font-medium text-ink transition-colors duration-[--duration-fast] ease-[--ease-out] hover:border-hairline-strong hover:bg-surface-raised"
+						className="flex min-h-11 w-full items-center justify-center rounded-md border border-hairline px-4 text-sm font-medium text-ink transition-colors duration-(--duration-fast) ease-(--ease-out) hover:border-hairline-strong hover:bg-surface-raised"
 					>
 						Explore with sample data
 					</button>
