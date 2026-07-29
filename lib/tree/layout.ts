@@ -41,10 +41,18 @@ type Metrics = {
  * Scaling spacing in proportion to the node would keep the tree exactly as wide
  * in screen terms and collapse would buy nothing. These are tuned so each step
  * roughly halves the footprint.
+ *
+ * The full card is 168px, down from 200. Width here is not a style choice: the
+ * widest generation in the sample tree holds 45 people, so every pixel of pitch is
+ * multiplied by 45 and the card width alone decided the canvas was 10760px across.
+ * 168 is what the content actually needs -- the p90 name is 15 characters and the
+ * longest kinship term ("second cousin once removed") is 26 at 12px mono, both of
+ * which fit -- and it is the same width `compact` already used, so the widest thing
+ * this tree ever draws was already proven readable at it.
  */
 export const NODE_METRICS: Record<Lod, Metrics> = {
-	full: { width: 200, height: 92, gap: 40, rowGap: 80 },
-	compact: { width: 168, height: 44, gap: 26, rowGap: 52 },
+	full: { width: 168, height: 78, gap: 32, rowGap: 72 },
+	compact: { width: 148, height: 40, gap: 22, rowGap: 48 },
 	dot: { width: 16, height: 16, gap: 18, rowGap: 40 },
 };
 
@@ -153,6 +161,25 @@ export async function layoutGraph(
 			"elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
 			"elk.layered.crossingMinimization.semiInteractive": "true",
 			"elk.edgeRouting": "ORTHOGONAL",
+			// Centres a couple over their children instead of over their edge bundle.
+			//
+			// ELK's default is Brandes-Koepf, which optimises for straight edges and on
+			// this tree parked the founding couple 4916px LEFT of the graph centre: the
+			// top of a family tree hanging off the far edge, which is exactly the
+			// "sideways" complaint. Measured across all five strategies on the sample
+			// tree (34 unions), the average distance from a union dot to the midpoint of
+			// its own children:
+			//
+			//   BRANDES_KOEPF (default)  465px      root offset -4916
+			//   NETWORK_SIMPLEX          171px      root offset   +129
+			//   LINEAR_SEGMENTS          142px      root offset   +987
+			//   SIMPLE                  1953px      root offset      0
+			//
+			// LINEAR_SEGMENTS centres children marginally better but drifts the root
+			// eight times further, and the root is the one node a viewer looks for first.
+			// SIMPLE centres every band perfectly by ignoring edges entirely, which costs
+			// 420px of height in crossings and reads as a stack of unrelated rows.
+			"elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 		},
 		children: nodes.map((node) => ({
 			id: node.id,

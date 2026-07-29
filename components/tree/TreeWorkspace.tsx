@@ -40,7 +40,7 @@ function Toggle({
 			aria-pressed={active}
 			className={cn(
 				"flex min-h-11 items-center rounded-md border px-3.5 text-xs font-medium",
-				"transition-colors duration-[--duration-fast] ease-[--ease-out]",
+				"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 				active
 					? "border-hairline-strong bg-surface-raised text-ink"
 					: "border-hairline text-ink-muted hover:border-hairline-strong hover:text-ink",
@@ -121,6 +121,7 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 					nodes={view.nodes}
 					edges={view.edges}
 					selfId={view.selfId}
+					kinship={view.kinship}
 					showRelations={view.showRelations}
 				/>
 			</div>

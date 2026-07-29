@@ -12,6 +12,7 @@
  * cannot fail is a screenshot, not a proof.
  */
 import { fuseTrees, toFlowGraph } from "./graph";
+import { fusedSelfId, kinshipMap } from "./kinship";
 import { sampleLinks, samplePrimaryTreeId, sampleSelfId, sampleSlices } from "./sample";
 import type { TreeView } from "./view";
 
@@ -48,6 +49,7 @@ export function buildDemoView({
 		nodes,
 		edges,
 		selfId: sampleSelfId,
+		kinship: kinshipMap(fused, fusedSelfId(fused, sampleSelfId)),
 		treeNames: slices.map((slice) => slice.treeName),
 		isDemo: true,
 		isCombined: combined,
