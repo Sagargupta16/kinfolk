@@ -11,11 +11,46 @@
  */
 import type { FlowEdge, FlowNode } from "./graph";
 
-export const PERSON_WIDTH = 200;
-export const PERSON_HEIGHT = 92;
+/**
+ * How much of a person is drawn.
+ *
+ * Progressive disclosure, and the reason it reaches the LAYOUT rather than only
+ * the card: shrinking a card in CSS alone leaves ELK reserving the full 200x92,
+ * so a tree of dots would keep card-sized gaps and none of the promised overview.
+ * The whole point of collapsing to a dot is that the shape of the family fits on
+ * one screen, which only happens if the spacing collapses with it.
+ *
+ *   full    -- the archive card: name, dates, provenance, channels
+ *   compact -- name and dates, for reading a wide tree
+ *   dot     -- a node, for seeing the shape of a large one
+ */
+export type Lod = "full" | "compact" | "dot";
+
+type Metrics = {
+	width: number;
+	height: number;
+	/** elk.spacing.nodeNode: horizontal gap within a generation. */
+	gap: number;
+	/** elk.layered.spacing.nodeNodeBetweenLayers: gap between generations. */
+	rowGap: number;
+};
+
+/**
+ * Gaps shrink faster than the cards do.
+ *
+ * Scaling spacing in proportion to the node would keep the tree exactly as wide
+ * in screen terms and collapse would buy nothing. These are tuned so each step
+ * roughly halves the footprint.
+ */
+export const NODE_METRICS: Record<Lod, Metrics> = {
+	full: { width: 200, height: 92, gap: 40, rowGap: 80 },
+	compact: { width: 168, height: 44, gap: 26, rowGap: 52 },
+	dot: { width: 16, height: 16, gap: 18, rowGap: 40 },
+};
+
+export const PERSON_WIDTH = NODE_METRICS.full.width;
+export const PERSON_HEIGHT = NODE_METRICS.full.height;
 const UNION_SIZE = 12;
-/** Matches elk.spacing.nodeNode, so anchored nodes sit on the same rhythm. */
-const NODE_GAP = 40;
 
 export type PositionedNode = FlowNode & {
 	position: { x: number; y: number };
@@ -58,10 +93,15 @@ async function loadElk() {
 	return new ELK();
 }
 
-export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise<LayoutResult> {
+export async function layoutGraph(
+	nodes: FlowNode[],
+	edges: FlowEdge[],
+	lod: Lod = "full",
+): Promise<LayoutResult> {
 	if (nodes.length === 0) return { nodes: [], bands: [] };
 
 	const elk = await loadElk();
+	const metrics = NODE_METRICS[lod];
 
 	const graph = {
 		id: "root",
@@ -69,8 +109,8 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 			"elk.algorithm": "layered",
 			// Generations read top-to-bottom, the convention every family tree uses.
 			"elk.direction": "DOWN",
-			"elk.layered.spacing.nodeNodeBetweenLayers": "80",
-			"elk.spacing.nodeNode": "40",
+			"elk.layered.spacing.nodeNodeBetweenLayers": String(metrics.rowGap),
+			"elk.spacing.nodeNode": String(metrics.gap),
 			// Keeps siblings in the order they were entered rather than reshuffling
 			// them on every reload.
 			"elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
@@ -79,8 +119,8 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 		},
 		children: nodes.map((node) => ({
 			id: node.id,
-			width: node.type === "union" ? UNION_SIZE : PERSON_WIDTH,
-			height: node.type === "union" ? UNION_SIZE : PERSON_HEIGHT,
+			width: node.type === "union" ? UNION_SIZE : metrics.width,
+			height: node.type === "union" ? UNION_SIZE : metrics.height,
 		})),
 		// Only hierarchical edges. A friendship or a cousinhood carries no
 		// generation, so including it here would pull that person into a lower
@@ -103,19 +143,19 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
 		]),
 	);
 
-	anchorFamilylessNodes(nodes, edges, positions);
+	anchorFamilylessNodes(nodes, edges, positions, metrics.gap);
 
 	const positioned = nodes.map((node) => {
 		const box = positions.get(node.id);
 		return {
 			...node,
 			position: { x: box?.x ?? 0, y: box?.y ?? 0 },
-			width: box?.width ?? PERSON_WIDTH,
-			height: box?.height ?? PERSON_HEIGHT,
+			width: box?.width ?? metrics.width,
+			height: box?.height ?? metrics.height,
 		};
 	});
 
-	return { nodes: positioned, bands: generationBands(positioned) };
+	return { nodes: positioned, bands: generationBands(positioned, metrics.height) };
 }
 
 /**
@@ -125,7 +165,7 @@ export async function layoutGraph(nodes: FlowNode[], edges: FlowEdge[]): Promise
  * half-generations. Rows are keyed on the y ELK assigned, which is already
  * uniform within a layer.
  */
-function generationBands(nodes: PositionedNode[]): GenerationBand[] {
+function generationBands(nodes: PositionedNode[], personHeight: number): GenerationBand[] {
 	const rows = new Map<number, PositionedNode[]>();
 
 	for (const node of nodes) {
@@ -138,7 +178,7 @@ function generationBands(nodes: PositionedNode[]): GenerationBand[] {
 	return [...rows.entries()]
 		.sort(([a], [b]) => a - b)
 		.map(([y, members]) => ({
-			y: y + PERSON_HEIGHT / 2,
+			y: y + personHeight / 2,
 			top: y,
 			bottom: y + Math.max(...members.map((m) => m.height)),
 			left: Math.min(...members.map((m) => m.position.x)),
@@ -164,6 +204,8 @@ function anchorFamilylessNodes(
 	nodes: FlowNode[],
 	edges: FlowEdge[],
 	positions: Map<string, Box>,
+	/** Matches elk.spacing.nodeNode, so anchored nodes sit on the same rhythm. */
+	gap: number,
 ): void {
 	const inFamily = new Set<string>();
 	for (const edge of edges) {
@@ -204,7 +246,7 @@ function anchorFamilylessNodes(
 			if (!anchor || !box) continue;
 
 			const rowEnd = occupied.get(anchor.y) ?? anchor.x + anchor.width;
-			box.x = rowEnd + NODE_GAP;
+			box.x = rowEnd + gap;
 			box.y = anchor.y;
 			occupied.set(anchor.y, box.x + box.width);
 			pending.delete(id);
