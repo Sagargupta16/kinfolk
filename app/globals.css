@@ -150,6 +150,60 @@ html {
 	color-scheme: dark;
 }
 
+/**
+ * The dot-lattice spotlight, from brand/portfolio-react's `.grid-bg`.
+ *
+ * Its hero sits on a faint dot texture masked to a soft ellipse, so the page has a centre
+ * of gravity instead of being type floating on a void -- which is exactly what Kinfolk's
+ * landing page was. The same technique already runs on the CANVAS (React Flow's dot
+ * pattern with a radial mask), so bringing it here makes the two screens read as one
+ * product: you meet the lattice on the landing page and then pan across it in the graph.
+ *
+ * Geometry differs from theirs on purpose. 22px there, 24px here to match the canvas's own
+ * `<Background gap={24}>` -- a visitor who lands and then opens the graph should not see
+ * the texture change pitch under them.
+ *
+ * Contrast is deliberately BELOW the canvas lattice's 1.14:1 (this sits on a page with
+ * running text over it, where that one sits behind cards), and no 3:1 floor applies
+ * because a texture carrying meaning would be a texture competing with the words.
+ */
+.kf-lattice {
+	position: absolute;
+	inset: 0;
+	background-image: radial-gradient(
+		color-mix(in oklab, var(--color-hairline) 70%, var(--color-canvas)) 1px,
+		transparent 1px
+	);
+	background-size: 24px 24px;
+	/* Off-centre towards the top, where the headline is, so the brightest part of the
+	   texture sits under the thing being read rather than in the empty lower half. */
+	mask-image: radial-gradient(ellipse 70% 60% at 50% 38%, black 25%, transparent 76%);
+	pointer-events: none;
+}
+
+/**
+ * The pill chip that opens a section, from portfolio-react's `.badge-pill`.
+ *
+ * Their section rhythm is: chip, then headline. It gives a block of text somewhere to
+ * start, and it is the one piece of chrome that says "this is a designed page" rather than
+ * "this is a document". Ours is mono and uppercase rather than their sentence case,
+ * matching the metadata voice already used across the canvas.
+ */
+.kf-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	border: 1px solid var(--color-hairline);
+	border-radius: 9999px;
+	background: color-mix(in oklab, var(--color-surface) 70%, transparent);
+	padding: 0.3125rem 0.75rem;
+	font-family: var(--font-mono);
+	font-size: 0.625rem;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--color-ink-muted);
+}
+
 body {
 	background-color: var(--color-canvas);
 	color: var(--color-ink);
