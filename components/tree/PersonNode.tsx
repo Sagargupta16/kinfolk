@@ -21,7 +21,7 @@
  */
 import { Handle, Position } from "@xyflow/react";
 import { CircleDashed, Mars, ShieldQuestion, Transgender, Users, Venus } from "lucide-react";
-import type { CSSProperties } from "react";
+import { type CSSProperties, type PointerEvent, useCallback, useRef } from "react";
 import type { Person } from "@/lib/db/schema";
 import { type Degree, RING_MIN_RANK } from "@/lib/tree/density";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
@@ -123,10 +123,54 @@ export const SEX_MARKS: Record<Person["sex"], { Icon: typeof Venus; title: strin
  */
 function ringSpread(rank: number): number {
 	if (rank <= RING_MIN_RANK) return 0;
-	return Math.round(2 + rank * 8);
+	// Caps at 6px rather than 10. A 10px halo on a 92px card is a ninth of its height on
+	// each side, and 96 of the sample tree's 117 people clear the floor -- so the widest
+	// setting was being spent on most of the canvas at once, which is the opposite of a
+	// scale. 6px still separates a hub from a leaf, measured against a 168px card.
+	return Math.round(2 + rank * 4);
+}
+
+/**
+ * Point the card's wash at the cursor.
+ *
+ * Writes two custom properties on the element and nothing else -- no state, no re-render.
+ * That is the whole reason this is a hook rather than the `useState` + rAF pair
+ * portfolio-react's `GlassCard` uses: on a canvas of 117 nodes, a state write per
+ * pointermove re-renders the node, and React Flow re-measures nodes on render. The
+ * property write stays on the compositor.
+ *
+ * Coalesced with a rAF flag, because pointermove fires faster than a frame and only the
+ * last position in a frame is the one that gets painted.
+ */
+function usePointerWash() {
+	const ref = useRef<HTMLDivElement>(null);
+	const queued = useRef(false);
+
+	return {
+		ref,
+		onPointerMove: useCallback((event: PointerEvent<HTMLDivElement>) => {
+			const element = ref.current;
+			if (!element || queued.current) return;
+
+			// Read the coordinates NOW: the event is pooled, so touching it inside the
+			// callback below can see a different position than the one that fired.
+			const { clientX, clientY } = event;
+			queued.current = true;
+
+			requestAnimationFrame(() => {
+				queued.current = false;
+				const node = ref.current;
+				if (!node) return;
+				const box = node.getBoundingClientRect();
+				node.style.setProperty("--kf-mx", `${((clientX - box.left) / box.width) * 100}%`);
+				node.style.setProperty("--kf-my", `${((clientY - box.top) / box.height) * 100}%`);
+			});
+		}, []),
+	};
 }
 
 export function PersonNode({ data, selected }: { data: PersonNodeData; selected?: boolean }) {
+	const wash = usePointerWash();
 	const person = data.primary;
 	const lod = data.lod ?? "full";
 	const name = displayName(person);
@@ -233,7 +277,15 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 		// already reserved a box of exactly this size, so a card that disagrees either
 		// overlaps its neighbour or leaves a gap ELK is holding open for nothing -- and
 		// two numbers that must match are one number.
-		<div className="relative" style={{ width: NODE_METRICS[lod].width }}>
+		// HEIGHT as well as width, and that is a fix rather than a tidy-up. ELK reserves a box
+		// of exactly these dimensions, and setting only the width let the card size itself to
+		// its content -- so raising the reserved height to fit a two-line kinship term bought
+		// nothing on screen, and the card and the layout disagreed by 16px. Measured on a live
+		// element: reserved 92, rendered 78.
+		<div
+			className="relative"
+			style={{ width: NODE_METRICS[lod].width, height: NODE_METRICS[lod].height }}
+		>
 			{ring}
 
 			{/* The fusion reveal: sheets slide in from further out and settle onto the
@@ -250,8 +302,12 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 			))}
 
 			<div
+				ref={wash.ref}
+				onPointerMove={wash.onPointerMove}
 				className={cn(
-					"group relative flex overflow-hidden rounded-(--radius-node) border bg-surface",
+					// `size-full` so the card fills the box ELK reserved rather than shrinking to
+					// its own content, which is what let the two disagree.
+					"kf-card group relative flex size-full overflow-hidden rounded-(--radius-node) border bg-surface",
 					// Spring, and a 2px lift rather than 1. The card is the thing under the
 					// pointer, so the overshoot reads as it responding; at 1px with a plain
 					// ease-out the lift was below the threshold where a hover feels answered at
@@ -274,6 +330,16 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 
 				<div className={cn("min-w-0 flex-1", lod === "compact" ? "px-2.5 py-1.5" : "px-3 py-2.5")}>
 					<div className="flex items-baseline gap-1.5">
+						{/*
+						 * No sex glyph on this line, and that was measured rather than assumed.
+						 *
+						 * It was tried here on the reasoning that the p90 name needs 109px of a 142px
+						 * column, so there was slack. There was not: the glyph plus its gap takes the
+						 * column to 105px, and 9 of 117 names went from fitting to truncating. The
+						 * name is the one thing on a card that must never be clipped -- it is what a
+						 * viewer is scanning for -- so the glyph lives on the metadata row below,
+						 * where the only competition is a date.
+						 */}
 						<p className="truncate text-[0.9375rem] font-medium leading-tight tracking-[-0.01em] text-ink">
 							{name}
 						</p>
@@ -310,7 +376,20 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 							{relation && (
 								<p
 									className={cn(
-										"truncate text-xs leading-tight",
+										"text-xs leading-[1.25]",
+										// Wraps to two lines instead of truncating, and that was a
+										// measurement rather than a preference: the kinship term is the
+										// widest thing on the card, and 31 of 117 people in the sample
+										// tree (26%) had theirs cut off. "great-great-uncle by marriage"
+										// needs 164px in a 142px column.
+										//
+										// Truncation is worse here than anywhere else on the card,
+										// because these terms share long prefixes -- "great-great-gran…"
+										// could be a grandmother or a grandfather, so the clipped half
+										// is the half that identifies the person. The name line has
+										// 33px of slack at p90 and never wraps, so the second line is
+										// where the room has to come from.
+										"kf-relation",
 										// An in-law rung is inferred from a partner's line rather than
 										// read off the graph, so it is drawn a step fainter than a term
 										// the ancestor walk proved. Same hierarchy the provenance tick
@@ -325,15 +404,10 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 							)}
 
 							<div className="mt-1.5 flex items-center gap-1.5 text-ink-faint">
-								{/*
-								 * Leads the metadata line rather than sitting beside the name.
-								 *
-								 * The name line already carries the provenance tick and the conflict
-								 * glyph, and a third mark there would make the row a badge shelf --
-								 * the name is what a viewer scans for and every glyph beside it is
-								 * width taken from it. Down here it sits with the other recorded
-								 * facts, which is what it is.
-								 */}
+								{/* The sex glyph belongs here, not beside the name: on the name line it
+								    cost 37px of column and pushed 9 of 117 names into truncation. Here
+								    its only neighbour is a date, and both are recorded facts rather
+								    than identity. */}
 								<sexMark.Icon
 									aria-label={sexMark.title}
 									className="size-3 shrink-0"
