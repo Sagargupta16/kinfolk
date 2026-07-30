@@ -112,11 +112,18 @@ export function TreeStage({
 
 	const degree = useMemo(() => degrees(nodes, drawn), [nodes, drawn]);
 
-	// What the legend is allowed to explain: only encodings actually on this canvas.
-	// Over the DRAWN edges and after `degree`, since the presence-ring row depends on
-	// how many people clear the ring floor -- which is itself computed from the visible
-	// edges. A census over every projected edge would list a dash rhythm for lines the
-	// viewer has switched off.
+	// What the legend is allowed to explain: only encodings this canvas can produce.
+	// Over the ENABLED edges and after `degree`, since the presence-ring row depends on
+	// how many people clear the ring floor -- which is itself computed from the same set.
+	// A census over every projected edge would list a dash rhythm for lines the viewer has
+	// switched off.
+	//
+	// Deliberately the enabled set rather than the momentarily-rendered one. The canvas
+	// now reveals relations for one person at a time (see `revealedRelations` in
+	// TreeCanvas), so a census over what is literally on screen would drop every relation
+	// row to zero the instant the pointer left a card -- a key that empties itself while
+	// you read it. The counts answer "what is in this graph", which is the question a
+	// census asks; the section's note answers "when will I see it".
 	const census = useMemo(() => censusOf(nodes, drawn, degree), [nodes, drawn, degree]);
 
 	return (

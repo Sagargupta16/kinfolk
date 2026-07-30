@@ -62,20 +62,13 @@
 	 */
 	--color-edge-soft: #868d9b;
 	/*
-	 * A relation whose two people sit far apart on the canvas.
+	 * `--color-edge-far` was deleted here.
 	 *
-	 * Measured: the median relation edge spans 2214px where the median family edge spans
-	 * 69px, so 52 of these cross most of the canvas and, drawn at one weight, they are the
-	 * haze the cards sit in. Drawing distance is also more honest -- a friendship between
-	 * neighbours should not look identical to one spanning four generations.
-	 *
-	 * A TOKEN rather than an opacity, and that was forced rather than preferred: a far
-	 * edge is still content and owes 3:1 under SC 1.4.11, and fading --color-edge-soft
-	 * composites to 2.29:1 at 0.5 and 1.86:1 at 0.4 -- both under the floor. This is
-	 * 4.03:1, clear of it, and a value that can be checked rather than a composite that
-	 * has to be recomputed whenever the backdrop moves.
+	 * It existed to fade a relation whose two people sat far apart, because 52 permanent
+	 * overlay lines at a median span of 2214px were the haze the cards sat in. Relations
+	 * are now revealed per person instead, so the problem it mitigated no longer exists --
+	 * and fading a line the viewer explicitly asked for would be the wrong answer anyway.
 	 */
-	--color-edge-far: #6b7180;
 	/* A relation that has ended: dimmer than the overlay, still 3.32:1, and a fixed
 	   value rather than an opacity so the composite is predictable, not emergent. */
 	--color-edge-past: #5f6470;
@@ -144,6 +137,16 @@
 	--kf-stroke-soft: 1.5;
 	--kf-stroke-firm: 1.9;
 	--kf-stroke-skeleton: 2.3;
+	/*
+	 * The top of the scale, for the closest revealed tie.
+	 *
+	 * Above the skeleton, which the old scale never allowed: every relation weight used to
+	 * be capped under 2.3 so an always-on overlay could not outweigh a parentage. A
+	 * REVEALED relation is the one thing the viewer explicitly asked to see, so being the
+	 * heaviest line on screen while it is up is correct -- and the skeleton is only ever
+	 * outweighed by the handful of lines belonging to the person under the pointer.
+	 */
+	--kf-stroke-close: 3;
 }
 
 html {
@@ -298,8 +301,25 @@ body {
 	stroke-linecap: round;
 }
 
+/*
+ * A partnership, drawn in the SAME neutral as the rest of the skeleton.
+ *
+ * It used to be `--color-accent-dim`, and that was measured as the single worst use of
+ * colour on the canvas: 68 of the 150 family edges rendered amber, so nearly half the
+ * skeleton was wearing the one accent this design reserves for "you" and "this
+ * relation". An accent spent on the most common structural element on screen is not an
+ * accent, and it left the canvas reading as an amber lattice with grey cards in it.
+ *
+ * A partnership does not need a colour anyway. It is the one family edge that runs
+ * HORIZONTALLY, between two people on the same row, where every parentage edge runs
+ * vertically between rows -- so its geometry already distinguishes it completely, for
+ * free, at every zoom, and without spending a channel. The rule stays (rather than being
+ * deleted) so the marker for "this is a partnership" has somewhere to live, and because
+ * the cap change below is a real difference: a butt cap makes the horizontal run meet the
+ * two drop lines squarely, where the round cap the skeleton uses bulges past the join.
+ */
 .react-flow__edge.is-partner .react-flow__edge-path {
-	stroke: var(--color-accent-dim);
+	stroke-linecap: butt;
 }
 
 .react-flow__edge.is-inferred .react-flow__edge-path {
@@ -341,22 +361,34 @@ body {
 }
 
 /**
- * Social, professional and extended-kin edges.
+ * Social, professional and extended-kin edges -- REVEALED, never resting.
  *
- * Dashed, thinner AND quieter than family edges on purpose: the solid orthogonal
- * lines are the skeleton of the tree, and these must read as an overlay rather than
- * competing with it. Three channels say the same thing, which is what lets the
- * overlay stay legible (4.03:1) instead of being pushed under the threshold just to
- * get out of the skeleton's way. Category is carried by dash rhythm, not by colour,
- * so the one-accent rule survives.
+ * These are only ever on screen for the person the viewer is pointing at (see
+ * `revealedRelations` in TreeCanvas), which changes what they have to be. Drawn
+ * permanently they had to stay out of the skeleton's way, so they were quieter AND
+ * thinner AND dashed -- three channels all saying "ignore me", on the half of the graph
+ * that carries information nothing else carries.
+ *
+ * Now that a relation appears because somebody ASKED for it, it can be drawn as the
+ * answer to a question instead of as background: the accent, at the skeleton's own
+ * weight. That is the reveal doing the work three faded channels were failing to do.
+ *
+ * The accent is correct here rather than extravagant -- this is exactly the "this
+ * relation" meaning it is reserved for, and it is now spent on at most a handful of
+ * lines at a time instead of on 68 partner edges permanently.
+ *
+ * Dash rhythm survives because it is the only thing carrying WHICH KIND, and the
+ * categories are still distinguished by rhythm rather than colour.
  */
 .react-flow__edge.is-relation .react-flow__edge-path {
-	stroke: var(--color-edge-soft);
-	/* The scale's floor, so an edge whose closeness class did not match still lands ON
-	   the scale. Previously 1, which sat between `is-close-1`'s 0.75 and `is-close-2`'s
-	   1 and therefore belonged to neither. */
-	stroke-width: var(--kf-stroke-faint);
+	stroke: var(--color-accent);
+	/* At the skeleton's weight, not under it. The old scale kept every relation thinner
+	   than every parentage so the hierarchy could not invert -- but that hierarchy is
+	   established by the resting canvas now, and a line the viewer explicitly asked for
+	   should not be the faintest thing on screen. */
+	stroke-width: var(--kf-stroke-skeleton);
 	stroke-dasharray: var(--kf-dash-social);
+	stroke-linecap: round;
 }
 
 /**
@@ -417,60 +449,66 @@ body {
 }
 
 /**
- * Closeness, as stroke weight.
+ * Closeness, as a WIDTH MULTIPLIER on the revealed weight.
  *
- * The "show immediate connections more densely" half of the graph: a close friend
- * draws a firmer line than an acquaintance, so the dense core of somebody's world
- * is visible without reading a single label. Weight is pre-attentive, which is
- * exactly why it is driven by stored closeness rather than picked by eye.
+ * The "show immediate connections more densely" half of the graph: a close friend draws
+ * a firmer line than an acquaintance, so the dense core of somebody's world is visible
+ * without reading a single label. Weight is pre-attentive, which is exactly why it is
+ * driven by stored closeness rather than picked by eye.
  *
- * Kept under the skeleton at every step -- a relation that outweighed a parentage
- * would invert the hierarchy the layout just established.
+ * Three steps around the revealed weight rather than three absolute values off the old
+ * scale, and the change follows from the reveal. The old scale ran 1.1 / 1.5 / 1.9, every
+ * step deliberately UNDER the 2.3 skeleton so an always-on relation could never outweigh
+ * a parentage. A revealed relation is not competing with the skeleton -- it is the answer
+ * to a question the viewer just asked -- so the scale is now centred ON the skeleton
+ * weight instead of hiding beneath it.
  *
- * Weight only, never opacity: a faded thin line stops being findable at all
- * (0.7 opacity took --color-edge-soft to 2.52:1, under the 3:1 a meaningful graphic
- * owes), and "less close" should read as finer rather than as half-erased.
- *
- * From the shared scale rather than three local numbers. The old floor was 0.75, which
- * is thinner than a hairline and lost its dash rhythm entirely below about 0.8 zoom --
- * so the channel that says "acquaintance" also destroyed the channel that says which
- * KIND of acquaintance. Every step is now a rhythm you can still count.
+ * Weight only, never opacity: a faded thin line stops being findable at all (0.7 opacity
+ * took the old token to 2.52:1, under the 3:1 a meaningful graphic owes), and "less
+ * close" should read as finer rather than as half-erased.
  */
-.react-flow__edge.is-close-1 .react-flow__edge-path {
-	stroke-width: var(--kf-stroke-faint);
-}
-
-.react-flow__edge.is-close-2 .react-flow__edge-path {
+.react-flow__edge.is-relation.is-close-1 .react-flow__edge-path {
 	stroke-width: var(--kf-stroke-soft);
 }
 
-.react-flow__edge.is-close-3 .react-flow__edge-path {
-	stroke-width: var(--kf-stroke-firm);
+.react-flow__edge.is-relation.is-close-2 .react-flow__edge-path {
+	stroke-width: var(--kf-stroke-skeleton);
+}
+
+.react-flow__edge.is-relation.is-close-3 .react-flow__edge-path {
+	stroke-width: var(--kf-stroke-close);
 }
 
 /**
- * A relation reaching right across the canvas.
+ * A revealed relation draws itself on, from the person you are pointing at outwards.
  *
- * Quieter colour AND the scale's thinnest weight, so distance reads as distance. Placed
- * before the closeness rules would be wrong -- it has to override them, because a "very
- * close" friend on the far side of the graph is still a line the eye should not follow
- * across four generations at full weight. Closeness survives on the short edges, where it
- * can actually be compared.
+ * The line GROWING towards the other person is what makes a relation crossing four
+ * generations followable: the motion tells you which end you are at and where it is
+ * heading, which is the job the arrowhead failed at and the reason the taper was
+ * introduced. Now the reveal carries it and the taper is a refinement rather than the
+ * only cue.
  *
- * `is-active` and `is-ended` both still win, since they come later in the file: pointing
- * at somebody must always be able to bring their far ties back to full contrast, which is
- * exactly the question a long edge exists to answer.
+ * Affordable only because of the reveal: as an always-on overlay this would have been 52
+ * simultaneous animations on every layout. At most a handful run now, once, on demand.
+ *
+ * `stroke-dasharray` lives inside the keyframes for the same reason `kf-draw`'s does --
+ * see that comment. `pathLength` is NOT normalised on these (they are React Flow's own
+ * bezier paths, not our FamilyEdge), so the dash values are in user units and the
+ * animation is length-proportional: a longer relation takes longer to arrive, which is
+ * the honest reading of distance and replaces what `is-far` was trying to say with
+ * colour.
  */
-.react-flow__edge.is-relation.is-far .react-flow__edge-path {
-	stroke: var(--color-edge-far);
-	stroke-width: var(--kf-stroke-faint);
+@keyframes kf-reveal {
+	from {
+		stroke-dasharray: 0 4000;
+	}
+	to {
+		stroke-dasharray: 4000 0;
+	}
 }
 
-/* A far DIRECTED edge keeps its taper, but tapers from the quieter token. Without this
-   the gradient reference would outrank the colour above and a far mentorship would render
-   at full overlay contrast. */
-.react-flow__edge.is-relation.is-far.is-directed .react-flow__edge-path {
-	stroke: url("#kf-taper-far");
+.react-flow__edge.is-relation.kf-reveal .react-flow__edge-path {
+	animation: kf-reveal var(--duration-slow) var(--ease-out);
 }
 
 /*
@@ -506,13 +544,32 @@ body {
 	pointer-events: none;
 }
 
+/*
+ * Labels are visible the moment the relation is, and fade IN with it.
+ *
+ * They used to start at `opacity: 0` and wait for `is-active`, which was the right
+ * default when all 52 relations were permanently drawn -- fifty-two labels would have
+ * been unreadable text over every card on the canvas. But a revealed relation is already
+ * the answer to "who is this person connected to", and half of that answer is HOW: a line
+ * appearing with no word on it says a connection exists while withholding the one thing
+ * that makes it meaningful, and there is no second gesture left to ask with, since the
+ * reveal already consumed the hover and the tap.
+ *
+ * Delayed by the draw-on, so the word arrives as the line lands on the far card rather
+ * than floating in space ahead of it.
+ */
 .react-flow__edge.is-relation .react-flow__edge-textwrapper {
-	opacity: 0;
-	transition: opacity var(--duration-fast) var(--ease-out);
+	animation: kf-fade var(--duration-base) var(--ease-out) backwards;
+	animation-delay: var(--duration-slow);
 }
 
-.react-flow__edge.is-relation.is-active .react-flow__edge-textwrapper {
-	opacity: 1;
+@keyframes kf-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 
 .react-flow__edge.is-relation .react-flow__edge-text {
@@ -555,55 +612,31 @@ body {
 	stroke: url("#kf-taper");
 }
 
-/* Active wins: once an edge is lit it is drawn in the accent and the moving dashes
-   carry direction better than the taper does. Also, a gradient stroke cannot be
-   recoloured, so this has to override the reference rather than the colour. */
-.react-flow__edge.is-relation.is-directed.is-active .react-flow__edge-path {
-	stroke: var(--color-accent);
-}
-
 /* An ended directed relation is history first and directed second, so the past colour
    outranks the taper for the same reason its dash rhythm outranks its category. */
 .react-flow__edge.is-relation.is-directed.is-ended .react-flow__edge-path {
 	stroke: var(--color-edge-past);
 }
 
-/**
- * An active relation lifts out of the background so you can trace it, and its
- * dashes travel from A towards B.
+/*
+ * There is deliberately NO `.is-relation.is-active` rule any more, and its removal is
+ * the point rather than an omission.
  *
- * The motion is what makes a DIRECTION legible on a curve that crosses three
- * generations: an arrowhead at one end is a 14px mark on a 400px line, and on a
- * phone it lands under a fingertip. Running only while active keeps the canvas
- * still at rest -- a tree with fifty animated edges is a screensaver.
+ * It used to recolour a lit relation to the accent, raise its weight, and run a looping
+ * dash flow at 700ms -- all to pick ONE line out of an always-on overlay of fifty-two.
+ * With relations revealed on demand, every relation on screen is already the lit one:
+ * `is-active` now matches every single one of them, so keeping the rule would apply "this
+ * one" to all of them, which says nothing.
  *
- * Negative offset, so the dashes move source -> target. Positive would run the
- * flow backwards and quietly reverse the meaning of "A mentors B".
+ * It would also actively destroy two channels it used to sit alongside. Its literal
+ * `stroke-dasharray: 5 4` overrode whichever category rhythm the edge had, so the one
+ * thing distinguishing a mentorship from a friendship would vanish exactly when the
+ * viewer had asked to see it -- and the infinite `kf-flow` animation would put every
+ * revealed line into perpetual motion, which is the "tree with fifty animated edges is a
+ * screensaver" failure that comment warned about, arrived at from the other direction.
+ *
+ * Direction is carried by the taper plus the draw-on reveal, both of which run once.
  */
-@keyframes kf-flow {
-	to {
-		stroke-dashoffset: -18;
-	}
-}
-
-.react-flow__edge.is-relation.is-active .react-flow__edge-path {
-	stroke: var(--color-accent);
-	/* One step above the scale's top, so a lit relation is the heaviest overlay line on
-	   the canvas while still sitting under the skeleton. Reads as "this one" without the
-	   accent having to do the work alone. */
-	stroke-width: var(--kf-stroke-firm);
-	opacity: 1;
-	/*
-	 * A literal, and deliberately NOT `--kf-dash-social` despite matching it. This
-	 * value is coupled to the -18 above: 5 + 4 divides it exactly, so the loop is
-	 * seamless. Pointed at a category token, a later rhythm change (say 5 -> 6) would
-	 * silently make every active edge visibly jump each cycle. Every category
-	 * normalises to one rhythm while active anyway -- once an edge is lit, its label
-	 * is showing and the dash no longer has to carry the category.
-	 */
-	stroke-dasharray: 5 4;
-	animation: kf-flow 700ms linear infinite;
-}
 
 /**
  * Generation rails.

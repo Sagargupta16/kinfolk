@@ -235,7 +235,15 @@ function Canvas({
 	onPick,
 }: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+	/**
+	 * The laid-out family skeleton, written once per layout.
+	 *
+	 * Held apart from the revealed relations because the two change on completely
+	 * different clocks: this one when the DATA or the detail level changes (which re-runs
+	 * ELK), the relations on every hover. One array for both would mean either re-running
+	 * layout on mouse move or rebuilding 150 skeleton edges to add three.
+	 */
+	const [familyEdges, setFamilyEdges, onEdgesChange] = useEdgesState<Edge>([]);
 	const [bands, setBands] = useState<GenerationBand[]>([]);
 	/**
 	 * The box the laid-out tree occupies, for the minimap to shape itself to.
@@ -294,7 +302,23 @@ function Canvas({
 	// The person whose social links are lit up. Relation edges cannot be hovered
 	// themselves: they render above the cards so their labels stay readable, which
 	// means they must not intercept pointer events.
+	//
+	// It is also what DRAWS the relation overlay at all -- see `revealedIds`. Focus used
+	// to only change the styling of lines that were already on screen; now it decides
+	// whether they are on screen.
 	const [focusedId, setFocusedId] = useState<string | null>(null);
+	/**
+	 * The person whose relations are pinned open, set by clicking a card.
+	 *
+	 * Separate from `focusedId` because hover is a glance and a click is a decision: a
+	 * hover reveal vanishes the moment you move towards the line you wanted to read,
+	 * which on a canvas this wide makes a long relation impossible to follow. A pinned
+	 * person survives the pointer leaving, so you can trace the edge to its other end.
+	 *
+	 * On a phone there is no hover at all, so this is the ONLY way relations appear --
+	 * which is why it rides the existing tap handler rather than adding a gesture.
+	 */
+	const [pinnedId, setPinnedId] = useState<string | null>(null);
 
 	// Cards are draggable with a mouse and not with a finger. On a phone a card is
 	// most of the screen, so a swipe that starts on one has to pan the canvas -- and
@@ -317,60 +341,73 @@ function Canvas({
 	}, [selfId, sourceNodes, sourceEdges]);
 
 	/**
-	 * The edges to DRAW, which is not the same set the layout gets.
+	 * The edges the viewer has ENABLED, which is not the same set the layout gets and
+	 * not the same set that gets drawn.
 	 *
-	 * Everything downstream of here -- what is rendered, and who lights up on hover --
-	 * reads this one. `layoutGraph` keeps reading `sourceEdges`, so turning the
-	 * overlay off changes what you see without moving a single card.
+	 * `layoutGraph` keeps reading `sourceEdges`, so toggling the overlay changes what
+	 * you see without moving a single card. What is actually rendered is narrower still
+	 * -- see `revealedRelations` below.
 	 */
-	const drawnEdges = useMemo(
+	const enabledEdges = useMemo(
 		() => visibleEdges(sourceEdges, showRelations),
 		[sourceEdges, showRelations],
 	);
 
-	// Edges are a pure projection of the source data, so derive rather than store.
-	const flowEdges = useMemo<Edge[]>(
-		() =>
-			drawnEdges.map((edge) => {
-				if (edge.kind === "relation") {
-					return {
-						id: edge.id,
-						source: edge.source,
-						target: edge.target,
-						// Curved, not orthogonal: social edges cut across the generation
-						// grid, and a curve reads as "not part of the skeleton".
-						// "default" IS React Flow's bezier renderer -- there is no edge type
-						// named "bezier", and asking for one silently falls back to this
-						// same renderer while logging a warning on every edge.
-						type: "default",
-						label: edge.label,
-						// Otherwise React Flow announces the literal "Edge from <id> to
-						// <id>", reading fused ids aloud. The label is the fact.
-						ariaLabel: edge.label,
-						className: [
-							"is-relation",
-							`is-${edge.relationKind}`,
-							`is-close-${edge.closeness ?? 1}`,
-							edge.ended ? "is-ended" : "",
-							// Direction is a TAPERED stroke now, not an arrowhead -- see the
-							// `.is-directed` rules in globals.css for why the marker was removed.
-							// A class rather than a `markerEnd` so the state stays in the cascade
-							// with the edge's other five, and so it composes with is-active and
-							// is-ended instead of being an inline style neither can reach.
-							edge.directed ? "is-directed" : "",
-						]
-							.filter(Boolean)
-							.join(" "),
-						// Above the cards, because a label pinned to a curve's midpoint
-						// otherwise gets painted over by whatever card it passes behind.
-						// Safe only because the line itself is a thin dash: it reads
-						// as an overlay and never competes with the family skeleton. The
-						// label stays hidden until hover or tap (see globals.css).
-						zIndex: 1001,
-					};
-				}
+	/**
+	 * Whose relations are currently revealed: the pinned person, else the hovered one.
+	 *
+	 * Pin wins over hover so that moving the pointer towards a revealed line does not
+	 * destroy the thing you were reaching for.
+	 */
+	const revealedId = pinnedId ?? focusedId;
 
-				return {
+	/**
+	 * The relation edges to actually DRAW -- only those touching the revealed person.
+	 *
+	 * This is the rework, and it is a deletion rather than a restyling. Measured on the
+	 * sample graph before it: the 52 relation edges accounted for 73% of all edge ink at
+	 * a median span of 2214px, against the family skeleton's median of 69px -- a 32x
+	 * ratio. Fifty-two lines crossing the entire canvas is the haze the cards sat in, and
+	 * no colour or weight could fix it, because the problem was never how the lines were
+	 * drawn. It was that they were drawn at all, permanently, for a property almost
+	 * nobody has: the median person has ONE relation and 56 of 120 have none.
+	 *
+	 * A relation is a per-person fact, so it is answered per person. At rest the canvas
+	 * is the family skeleton, which is the structure the layout actually encodes; focus
+	 * somebody and their world appears around them. Nothing is lost -- every edge is
+	 * still reachable, and now legible when it arrives instead of being one of fifty-two
+	 * identical diagonals.
+	 *
+	 * This also retires `is-far`: distance-fading existed solely to mitigate the
+	 * always-on overlay, and a revealed edge should be drawn at full strength however
+	 * far it reaches, because the viewer just asked for exactly that line.
+	 */
+	const revealedRelations = useMemo(() => {
+		if (!revealedId) return [];
+		return enabledEdges.filter(
+			(edge) =>
+				edge.kind === "relation" && (edge.source === revealedId || edge.target === revealedId),
+		);
+	}, [enabledEdges, revealedId]);
+
+	/**
+	 * The FAMILY skeleton as React Flow edges, and the only edge memo layout may depend on.
+	 *
+	 * Split from the relations deliberately. The layout effect depends on this memo, so
+	 * anything in it re-runs ELK when it changes -- and revealing relations changes with
+	 * every hover. Folding the two together would re-lay out the entire graph on each
+	 * mouse move, which is the same trap documented for the focus effect below.
+	 */
+	const familyFlowEdges = useMemo<Edge[]>(
+		() =>
+			// From `enabledEdges`, NOT `drawnEdges`: the latter narrows with the hovered
+			// person, so depending on it here would give this memo a new identity on every
+			// mouse move -- and the layout effect depends on this memo, so ELK would re-run
+			// for the entire graph each time the pointer crossed a card. The family skeleton
+			// does not change with focus anyway, which is the whole reason it is split out.
+			enabledEdges
+				.filter((edge) => edge.kind !== "relation")
+				.map((edge) => ({
 					id: edge.id,
 					source: edge.source,
 					target: edge.target,
@@ -378,9 +415,58 @@ function Canvas({
 					// draw-on animation. Same route smoothstep produces.
 					type: "family",
 					className: edge.kind === "partner" ? "is-partner" : undefined,
-				};
-			}),
-		[drawnEdges],
+				})),
+		[enabledEdges],
+	);
+
+	/**
+	 * The revealed relations as React Flow edges.
+	 *
+	 * Already narrowed to the revealed person, so this is at most a handful of lines
+	 * rather than the whole overlay -- the p90 person has three.
+	 */
+	const relationFlowEdges = useMemo<Edge[]>(
+		() =>
+			revealedRelations.map((edge) => ({
+				id: edge.id,
+				source: edge.source,
+				target: edge.target,
+				// Curved, not orthogonal: social edges cut across the generation
+				// grid, and a curve reads as "not part of the skeleton".
+				// "default" IS React Flow's bezier renderer -- there is no edge type
+				// named "bezier", and asking for one silently falls back to this
+				// same renderer while logging a warning on every edge.
+				type: "default",
+				label: edge.label,
+				// Otherwise React Flow announces the literal "Edge from <id> to
+				// <id>", reading fused ids aloud. The label is the fact.
+				ariaLabel: edge.label,
+				className: [
+					"is-relation",
+					`is-${edge.relationKind}`,
+					`is-close-${edge.closeness ?? 1}`,
+					edge.ended ? "is-ended" : "",
+					// Direction is a TAPERED stroke now, not an arrowhead -- see the
+					// `.is-directed` rules in globals.css for why the marker was removed.
+					// A class rather than a `markerEnd` so the state stays in the cascade
+					// with the edge's other five, and so it composes with is-active and
+					// is-ended instead of being an inline style neither can reach.
+					edge.directed ? "is-directed" : "",
+					// Every revealed relation draws itself on. Cheap now that there are at
+					// most a handful: as an always-on overlay this would have been 52
+					// simultaneous animations, so the reveal is what makes the motion
+					// affordable as well as legible.
+					"kf-reveal",
+				]
+					.filter(Boolean)
+					.join(" "),
+				// Above the cards, because a label pinned to a curve's midpoint
+				// otherwise gets painted over by whatever card it passes behind.
+				// Safe only because the line itself is a thin dash: it reads
+				// as an overlay and never competes with the family skeleton.
+				zIndex: 1001,
+			})),
+		[revealedRelations],
 	);
 
 	useEffect(() => {
@@ -452,7 +538,7 @@ function Canvas({
 				 */
 				const bars = siblingBars(unionsOf(sourceNodes), positioned);
 				const barDrawer = new Map<string, string>();
-				for (const edge of flowEdges) {
+				for (const edge of familyFlowEdges) {
 					if (!bars.has(edge.source)) continue;
 					const current = barDrawer.get(edge.source);
 					if (!current || edge.id < current) barDrawer.set(edge.source, edge.id);
@@ -460,46 +546,12 @@ function Canvas({
 
 				// Each family edge draws itself on just after the node it descends FROM has
 				// landed, so the skeleton grows downwards with the cards rather than being
-				// there waiting for them. Relation edges are excluded: they are an overlay,
-				// and animating them in would read as part of the structure.
-				/**
-				 * How far each node sits from every other, so a relation edge can be drawn
-				 * according to how far it reaches.
-				 *
-				 * Measured on the sample tree, this is the canvas's worst remaining problem: the
-				 * median relation edge spans 2214px where the median FAMILY edge spans 69px --
-				 * 32x, and the p90 is 61x. Fifty-two lines crossing the whole canvas at one
-				 * weight is the haze the cards sit in, and it is also a lie about the data,
-				 * because a friendship between neighbours reads exactly like one across four
-				 * generations.
-				 *
-				 * Done here rather than in the `flowEdges` memo because it needs POSITIONS,
-				 * which only exist after ELK has run. And as a class rather than an inline
-				 * opacity, so the cascade can still dim, light and taper the same edge.
-				 */
-				const centres = new Map(
-					positioned.map((node) => [
-						node.id,
-						{ x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 },
-					]),
-				);
-				/** Beyond this the line is mostly transit rather than connection. */
-				const FAR_SPAN = 1200;
-
-				setEdges(
-					flowEdges.map((edge) => {
-						if (edge.className?.includes("is-relation")) {
-							const from = centres.get(edge.source);
-							const to = centres.get(edge.target);
-							if (!from || !to) return edge;
-							const span = Math.hypot(to.x - from.x, to.y - from.y);
-							// Only the long ones recede. A short social edge is as legible as a family
-							// one and carries the same weight of meaning, so nothing is gained by
-							// fading it -- the problem is specifically the canvas-spanning kind.
-							return span > FAR_SPAN
-								? { ...edge, className: withFlag("is-far", edge.className, true) }
-								: edge;
-						}
+				// there waiting for them.
+				//
+				// Only family edges are set here. Relations are appended by their own effect
+				// below, because they change on hover and this one runs ELK.
+				setFamilyEdges(
+					familyFlowEdges.map((edge) => {
 						const delay = (delays.get(edge.source) ?? 0) + ROW_STAGGER_MS;
 						const bar = bars.get(edge.source);
 						return {
@@ -532,14 +584,16 @@ function Canvas({
 	}, [
 		sourceNodes,
 		sourceEdges,
-		flowEdges,
+		// The FAMILY edges only. Depending on the relation memo here would re-run ELK on
+		// every hover, since revealing a person's relations changes it.
+		familyFlowEdges,
 		selfId,
 		lod,
 		degree,
 		kinship,
 		coarsePointer,
 		setNodes,
-		setEdges,
+		setFamilyEdges,
 	]);
 
 	/**
@@ -685,6 +739,10 @@ function Canvas({
 		);
 
 		setFocusedId(goTo.id);
+		// Pinned as well as focused: there is no pointer on the card you just travelled to,
+		// so without the pin a searched person would arrive with their relations hidden --
+		// and "who is this person connected to" is usually why you searched them.
+		setPinnedId(goTo.id);
 		setNodes((current) =>
 			current.map((node) => {
 				const selected = node.id === goTo.id;
@@ -697,17 +755,28 @@ function Canvas({
 	// hovering a parent reaches their partner and children rather than stopping at
 	// the junction between them.
 	//
-	// Over the DRAWN edges: with the overlay off, lighting a friend whose connecting
-	// line is not on screen would highlight them for no visible reason.
+	// Over the ENABLED edges, not the drawn ones. `drawnEdges` is now itself derived from
+	// the focus, so traversing it would make the highlight depend on its own output: the
+	// relations revealed BY focusing somebody are exactly the ones that then need lighting.
+	// The toggle is still respected, since switching the overlay off empties it here too.
+	//
+	// Keyed on `revealedId`, the same value the reveal uses -- not on `focusedId`. Once a
+	// person is pinned and the pointer moves away, their lines are still on screen, and
+	// lighting keyed on hover alone would leave those lines drawn with nothing lit and
+	// every card dimmed around them.
 	const lit = useMemo(() => {
-		if (!focusedId) return null;
+		if (!revealedId) return null;
 		const unionIds = new Set(sourceNodes.filter((n) => n.type === "union").map((n) => n.id));
-		return neighbourhood(drawnEdges, focusedId, (id) => unionIds.has(id));
-	}, [focusedId, sourceNodes, drawnEdges]);
+		return neighbourhood(enabledEdges, revealedId, (id) => unionIds.has(id));
+	}, [revealedId, sourceNodes, enabledEdges]);
 
 	// Apply focus by rewriting className only. Deliberately its own effect:
-	// folding focus into the flowEdges memo would re-run ELK on every hover, since
+	// folding focus into the layout's edge memo would re-run ELK on every hover, since
 	// the layout effect depends on that memo.
+	//
+	// Nodes only. Edge focus used to be applied here too, by rewriting the class on every
+	// edge in state; now the rendered edge array is DERIVED (see `edges` below), so
+	// pushing focus into state as well would be the same fact stored twice.
 	useEffect(() => {
 		setNodes((current) =>
 			current.map((node) => {
@@ -722,18 +791,32 @@ function Canvas({
 				return next === node.className ? node : { ...node, className: next };
 			}),
 		);
+	}, [lit, focusedId, setNodes]);
 
-		setEdges((current) =>
-			current.map((edge) => {
-				// Two flags, because an edge has three states: lit, untouched, and
-				// dimmed because attention is elsewhere.
-				const active = Boolean(lit?.edgeIds.has(edge.id));
-				let next = withFlag("is-active", edge.className, active);
-				next = withFlag("kf-dim", next, Boolean(lit) && !active);
-				return next === edge.className ? edge : { ...edge, className: next };
-			}),
-		);
-	}, [lit, focusedId, setNodes, setEdges]);
+	/**
+	 * What React Flow actually renders: the laid-out skeleton, plus the revealed
+	 * relations, with focus applied.
+	 *
+	 * Derived rather than stored, and that is the point of the split. The skeleton keeps
+	 * the positions and draw-on delays ELK gave it, the relations come and go with the
+	 * pointer, and neither has to write to the other. Focus is applied here too, so a
+	 * hover costs one array rebuild instead of a state write per edge.
+	 *
+	 * Relations come SECOND so they paint over the skeleton, which is what their
+	 * `zIndex: 1001` already asks for -- and DOM order is the tiebreak React Flow
+	 * actually uses within a z-index.
+	 */
+	const edges = useMemo<Edge[]>(() => {
+		const focusApplied = (edge: Edge): Edge => {
+			// Two flags, because an edge has three states: lit, untouched, and dimmed
+			// because attention is elsewhere.
+			const active = Boolean(lit?.edgeIds.has(edge.id));
+			let next = withFlag("is-active", edge.className, active);
+			next = withFlag("kf-dim", next, Boolean(lit) && !active);
+			return next === edge.className ? edge : { ...edge, className: next };
+		};
+		return [...familyEdges.map(focusApplied), ...relationFlowEdges.map(focusApplied)];
+	}, [familyEdges, relationFlowEdges, lit]);
 
 	// Tap counts as well as hover: on a phone there is no hover, and a tap that
 	// only selects a card would leave the labels unreachable.
@@ -741,15 +824,32 @@ function Canvas({
 	const blur = useCallback(() => setFocusedId(null), []);
 
 	/**
-	 * A click both focuses and NAMES the person, for the editor's "from" field.
+	 * Clicking the empty canvas clears both the hover and the pin.
 	 *
-	 * Union dots are skipped: a junction is not somebody you can relate to, and reporting
-	 * one would put "Unknown" in a picker. The name is read off the node's own data rather
-	 * than looked up, since the card already holds the fused person.
+	 * The pin has to be clearable by a gesture a viewer will find without being told, and
+	 * "click away to stop looking at this" is the one every canvas already uses.
+	 */
+	const clear = useCallback(() => {
+		setFocusedId(null);
+		setPinnedId(null);
+	}, []);
+
+	/**
+	 * A click focuses, PINS, and NAMES the person.
+	 *
+	 * Pinning is what makes a revealed relation followable: without it the lines vanish
+	 * the moment the pointer leaves the card, so a relation crossing the canvas could
+	 * never be traced to its far end. Clicking the same card again unpins, so the gesture
+	 * is its own undo.
+	 *
+	 * Union dots are skipped for the NAMING only: a junction is not somebody you can
+	 * relate to, and reporting one would put "Unknown" in a picker. It still focuses,
+	 * since hovering a dot lighting up the couple it joins is useful.
 	 */
 	const pick = useCallback(
 		(event: unknown, node: Node) => {
 			focus(event, node);
+			setPinnedId((current) => (current === node.id ? null : node.id));
 			if (node.type !== "person") return;
 			const person = node.data as { primary?: Parameters<typeof displayName>[0] };
 			if (person.primary) onPick?.({ id: node.id, name: displayName(person.primary) });
@@ -766,7 +866,7 @@ function Canvas({
 			onNodeMouseEnter={focus}
 			onNodeMouseLeave={blur}
 			onNodeClick={pick}
-			onPaneClick={blur}
+			onPaneClick={clear}
 			nodeTypes={nodeTypes}
 			edgeTypes={edgeTypes}
 			// Connecting nodes by dragging would imply a relationship kind we
@@ -825,29 +925,24 @@ function Canvas({
 						x2="1"
 						y2="0"
 					>
-						<stop offset="0%" stopColor="var(--color-edge-soft)" stopOpacity="1" />
-						<stop offset="100%" stopColor="var(--color-edge-soft)" stopOpacity="0.68" />
+						{/* The ACCENT, matching the revealed relation's own stroke. It was
+						    `--color-edge-soft` while relations were a permanent grey overlay; a
+						    revealed relation is drawn in the accent, and a taper that faded to a
+						    different hue than the line it belongs to would read as two marks. */}
+						<stop offset="0%" stopColor="var(--color-accent)" stopOpacity="1" />
+						<stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0.68" />
 					</linearGradient>
 
 					{/*
-					 * The same taper in the far-edge colour.
+					 * The `#kf-taper-far` definition was deleted along with `is-far` itself.
 					 *
-					 * A second definition rather than a recoloured one, because a gradient's stops
-					 * cannot be reached by a rule targeting the path -- so a far DIRECTED edge would
-					 * otherwise keep the full-contrast taper and escape the distance treatment
-					 * entirely, which is the bug the `.is-far.is-directed` rule exists to close.
+					 * It existed only because a gradient's stops cannot be reached by a rule
+					 * targeting the path, so a far DIRECTED edge needed a second def to receive the
+					 * distance treatment. Nothing fades by distance any more -- a revealed relation
+					 * is drawn at full strength however far it reaches, because the viewer asked
+					 * for precisely that line -- so both the def and its `--color-edge-far` token
+					 * are gone rather than left behind unreferenced.
 					 */}
-					<linearGradient
-						id="kf-taper-far"
-						gradientUnits="objectBoundingBox"
-						x1="0"
-						y1="0"
-						x2="1"
-						y2="0"
-					>
-						<stop offset="0%" stopColor="var(--color-edge-far)" stopOpacity="1" />
-						<stop offset="100%" stopColor="var(--color-edge-far)" stopOpacity="0.68" />
-					</linearGradient>
 				</defs>
 			</svg>
 
