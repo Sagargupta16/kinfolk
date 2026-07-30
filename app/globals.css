@@ -918,10 +918,25 @@ body {
  *
  * One shot, not a pulse. A tree with a throbbing card is the screensaver the active
  * relation flow already refuses to be; the glow arrives, then holds while you read.
+ *
+ * BRIGHTENS IN PLACE -- it does not grow. The ring used to widen by 7px on top of the
+ * resting spread, so a hub at spread 5 jumped to 12px (measured live) and a 12px halo
+ * around a 168px card is not a highlight, it is a second border thicker than the card's
+ * own 0.67px hairline. It also moved the card's apparent edge outward, which on a canvas
+ * where distance between cards is meaningful reads as the card growing.
+ *
+ * So the spread is left exactly where it was and only the colour changes: same geometry,
+ * more light. +1px is the entire size change, enough that a person at spread 0 still gets
+ * a visible mark rather than nothing at all.
+ *
+ * The contrast reasoning above still holds and is what makes brightness sufficient on its
+ * own: --color-ink at 65% composites to 7.63:1 against the canvas versus the resting
+ * ring's 5.10:1, a 1.50 step. That step was always doing the work; the 7px was doing the
+ * damage.
  */
 .react-flow__node.kf-lit .kf-presence {
 	box-shadow:
-		0 0 0 calc(var(--kf-spread, 0px) + 7px)
+		0 0 0 calc(var(--kf-spread, 0px) + 1px)
 		color-mix(in oklab, var(--color-ink) 65%, transparent);
 }
 
@@ -1043,6 +1058,59 @@ body {
 	/* Half a step over the skeleton's own weight. Not a scale value: the scale describes
 	   how close a relation is, and this is the same edge lit, not a different edge. */
 	stroke-width: 2.8;
+}
+
+/**
+ * The travelling pulse on a lit family edge.
+ *
+ * Invisible until its edge is active, and drawn as a SHORT dash chasing a long gap: the
+ * dasharray is 12% of a normalised path with 88% empty, so what travels is one bright
+ * segment rather than a train of them. A repeating dash pattern would read as a dotted
+ * line in motion, which says "data flowing through a pipe"; one segment reads as the eye
+ * being led from a parent to a child, which is what this actually means.
+ *
+ * `stroke: none` at rest, not `opacity: 0` or `display: none`. The path is always in the
+ * DOM (see the Pulse comment in FamilyEdge.tsx for why it cannot be conditional), and a
+ * path with no stroke is skipped at paint time -- so 150 idle pulses cost nothing, where
+ * 150 transparent-but-painted strokes would cost a compositor pass each.
+ *
+ * NEGATIVE offset so the segment runs source -> target, from the older generation towards
+ * the younger. Positive would run it upwards and quietly assert that children produce
+ * their parents. The offset animates from 1 to 0 against a normalised pathLength, which
+ * is what lets one keyframe serve a 69px partner edge and a 400px drop line at the same
+ * apparent speed.
+ *
+ * Brighter than the lit path it rides on (--color-ink at full, over that path's own
+ * --color-ink at 2.8px) and thinner, so it reads as a highlight travelling along the
+ * line rather than as a second line beside it.
+ *
+ * 1.4s and linear: fast enough to arrive while you are still looking, slow enough to
+ * follow across four generations, and linear because a travelling highlight that eases
+ * looks like it is being dragged by hand. It loops, unlike the one-shot halo -- a pulse
+ * that fired once would be missed by anyone who moved the pointer a moment too late, and
+ * unlike the old always-on relation flow this only ever runs on the handful of edges
+ * belonging to the person under the pointer.
+ */
+.kf-pulse {
+	stroke: none;
+	stroke-width: 2;
+	stroke-linecap: round;
+	pointer-events: none;
+}
+
+@keyframes kf-pulse-travel {
+	from {
+		stroke-dashoffset: 1;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+.react-flow__edge.is-active:not(.is-relation) .kf-pulse {
+	stroke: var(--color-ink);
+	stroke-dasharray: 0.12 0.88;
+	animation: kf-pulse-travel 1400ms linear infinite;
 }
 
 .react-flow .react-flow__handle {
