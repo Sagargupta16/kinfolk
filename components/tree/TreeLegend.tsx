@@ -117,7 +117,7 @@ function Line({
 function Weights() {
 	return (
 		<svg aria-hidden="true" viewBox="0 0 28 12" className="h-3 w-7 shrink-0">
-			{["var(--kf-stroke-faint)", "var(--kf-stroke-soft)", "var(--kf-stroke-firm)"].map(
+			{["var(--kf-stroke-soft)", "var(--kf-stroke-skeleton)", "var(--kf-stroke-close)"].map(
 				(width, index) => (
 					<line
 						key={width}
@@ -125,11 +125,13 @@ function Weights() {
 						y1={1.5 + index * 4.5}
 						x2="28"
 						y2={1.5 + index * 4.5}
-						stroke="var(--color-edge-soft)"
+						// Accent, like the revealed relations these describe.
+						stroke="var(--color-accent)"
 						strokeLinecap="round"
 						// The three steps of the closeness scale, read from the same tokens the
 						// edge rules use. Hardcoded, this sample claimed a 0.75/1/1.4 scale for
-						// months after those numbers changed.
+						// months after those numbers changed -- and it would now be describing
+						// the pre-reveal faint/soft/firm scale, which no relation is drawn at.
 						style={{ strokeWidth: width }}
 					/>
 				),
@@ -179,9 +181,12 @@ function lineRows(census: TreeCensus): Row[] {
 			count: census.family,
 		},
 		{
-			sample: <Line stroke="var(--color-accent-dim)" width="var(--kf-stroke-skeleton)" dot />,
+			// Neutral, matching the canvas. This sample was `--color-accent-dim` back when 68
+			// partner edges rendered amber; the skeleton is one colour now and a partnership is
+			// told apart by running horizontally, which is what the dot in this sample shows.
+			sample: <Line stroke="var(--color-edge)" width="var(--kf-stroke-skeleton)" dot />,
 			label: "Partnership",
-			hint: "Children hang from the dot. Grey once the partnership has ended.",
+			hint: "Runs across, not down. Children hang from the dot.",
 			count: census.partners,
 		},
 	];
@@ -189,7 +194,9 @@ function lineRows(census: TreeCensus): Row[] {
 	for (const category of CATEGORY_ORDER) {
 		const { label, dash } = CATEGORIES[category];
 		rows.push({
-			sample: <Line dash={dash} />,
+			// Accent and at skeleton weight, because that is how a REVEALED relation is drawn.
+			// A grey hairline sample would describe the old permanent overlay.
+			sample: <Line dash={dash} stroke="var(--color-accent)" width="var(--kf-stroke-skeleton)" />,
 			label,
 			// The kinds THIS tree contains, not every kind in the category: "professional"
 			// is not what somebody is looking for, "colleague" is -- and listing
@@ -422,7 +429,27 @@ function personRows(census: TreeCensus, lod: Lod, hasSelf: boolean): Row[] {
 	return rows;
 }
 
-function Section({ title, rows, lod }: { title: string; rows: Row[]; lod: Lod }) {
+function Section({
+	title,
+	rows,
+	lod,
+	note,
+}: {
+	title: string;
+	rows: Row[];
+	lod: Lod;
+	/**
+	 * One line about WHEN these marks are on screen, for a section whose rows describe
+	 * something the resting canvas does not draw.
+	 *
+	 * The relation rows need it and would otherwise be the one failure a census-driven
+	 * legend is built to prevent: every count is truthful about the graph, but a reader
+	 * looking for a dashed amber line on the resting canvas will not find one, because it
+	 * appears only for the person they point at. A key whose marks cannot be located
+	 * discredits the rest of itself.
+	 */
+	note?: string;
+}) {
 	const visible = rows.filter((row) => row.count > 0 && (!row.lods || row.lods.includes(lod)));
 	if (visible.length === 0) return null;
 
@@ -431,6 +458,7 @@ function Section({ title, rows, lod }: { title: string; rows: Row[]; lod: Lod })
 			<h3 className="mb-2 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-ink-faint">
 				{title}
 			</h3>
+			{note && <p className="-mt-1 mb-2 text-[0.625rem] leading-snug text-ink-faint">{note}</p>}
 			<dl className="space-y-2">
 				{visible.map((row) => (
 					<div key={row.label} className="flex items-start gap-2.5">
@@ -543,7 +571,19 @@ export function TreeLegend({
 						"border border-hairline-strong bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
 					)}
 				>
-					<Section title="Connections" rows={lineRows(census)} lod={lod} />
+					<Section
+						title="Connections"
+						rows={lineRows(census)}
+						lod={lod}
+						// Only when this graph HAS relations to reveal. Census-driven like every
+						// count here: on a pure pedigree the note would explain an interaction
+						// that produces nothing.
+						note={
+							Object.values(census.categories).some((count) => count > 0)
+								? "The amber lines below appear for one person at a time. Point at somebody, or tap them to keep them up."
+								: undefined
+						}
+					/>
 					<Section title="People" rows={personRows(census, lod, hasSelf)} lod={lod} />
 				</div>
 			)}
