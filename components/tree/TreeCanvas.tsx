@@ -462,9 +462,44 @@ function Canvas({
 				// landed, so the skeleton grows downwards with the cards rather than being
 				// there waiting for them. Relation edges are excluded: they are an overlay,
 				// and animating them in would read as part of the structure.
+				/**
+				 * How far each node sits from every other, so a relation edge can be drawn
+				 * according to how far it reaches.
+				 *
+				 * Measured on the sample tree, this is the canvas's worst remaining problem: the
+				 * median relation edge spans 2214px where the median FAMILY edge spans 69px --
+				 * 32x, and the p90 is 61x. Fifty-two lines crossing the whole canvas at one
+				 * weight is the haze the cards sit in, and it is also a lie about the data,
+				 * because a friendship between neighbours reads exactly like one across four
+				 * generations.
+				 *
+				 * Done here rather than in the `flowEdges` memo because it needs POSITIONS,
+				 * which only exist after ELK has run. And as a class rather than an inline
+				 * opacity, so the cascade can still dim, light and taper the same edge.
+				 */
+				const centres = new Map(
+					positioned.map((node) => [
+						node.id,
+						{ x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 },
+					]),
+				);
+				/** Beyond this the line is mostly transit rather than connection. */
+				const FAR_SPAN = 1200;
+
 				setEdges(
 					flowEdges.map((edge) => {
-						if (edge.className?.includes("is-relation")) return edge;
+						if (edge.className?.includes("is-relation")) {
+							const from = centres.get(edge.source);
+							const to = centres.get(edge.target);
+							if (!from || !to) return edge;
+							const span = Math.hypot(to.x - from.x, to.y - from.y);
+							// Only the long ones recede. A short social edge is as legible as a family
+							// one and carries the same weight of meaning, so nothing is gained by
+							// fading it -- the problem is specifically the canvas-spanning kind.
+							return span > FAR_SPAN
+								? { ...edge, className: withFlag("is-far", edge.className, true) }
+								: edge;
+						}
 						const delay = (delays.get(edge.source) ?? 0) + ROW_STAGGER_MS;
 						const bar = bars.get(edge.source);
 						return {
@@ -792,6 +827,26 @@ function Canvas({
 					>
 						<stop offset="0%" stopColor="var(--color-edge-soft)" stopOpacity="1" />
 						<stop offset="100%" stopColor="var(--color-edge-soft)" stopOpacity="0.68" />
+					</linearGradient>
+
+					{/*
+					 * The same taper in the far-edge colour.
+					 *
+					 * A second definition rather than a recoloured one, because a gradient's stops
+					 * cannot be reached by a rule targeting the path -- so a far DIRECTED edge would
+					 * otherwise keep the full-contrast taper and escape the distance treatment
+					 * entirely, which is the bug the `.is-far.is-directed` rule exists to close.
+					 */}
+					<linearGradient
+						id="kf-taper-far"
+						gradientUnits="objectBoundingBox"
+						x1="0"
+						y1="0"
+						x2="1"
+						y2="0"
+					>
+						<stop offset="0%" stopColor="var(--color-edge-far)" stopOpacity="1" />
+						<stop offset="100%" stopColor="var(--color-edge-far)" stopOpacity="0.68" />
 					</linearGradient>
 				</defs>
 			</svg>

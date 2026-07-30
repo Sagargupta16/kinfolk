@@ -51,7 +51,12 @@ type Metrics = {
  * this tree ever draws was already proven readable at it.
  */
 export const NODE_METRICS: Record<Lod, Metrics> = {
-	full: { width: 168, height: 78, gap: 32, rowGap: 72 },
+	// 92, not 78, and the number is measured rather than chosen: with the kinship term
+	// allowed two lines, the card's own content boxes to 92px for the longest term the
+	// walk can produce ("great-great-uncle by marriage"). ELK reserves this box, so a card
+	// that needs more than it says either overflows its own border or overlaps a
+	// neighbour.
+	full: { width: 168, height: 92, gap: 32, rowGap: 72 },
 	compact: { width: 148, height: 40, gap: 22, rowGap: 48 },
 	dot: { width: 16, height: 16, gap: 18, rowGap: 40 },
 };

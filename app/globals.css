@@ -61,6 +61,21 @@
 	 * Weight carries the rest of the separation.
 	 */
 	--color-edge-soft: #868d9b;
+	/*
+	 * A relation whose two people sit far apart on the canvas.
+	 *
+	 * Measured: the median relation edge spans 2214px where the median family edge spans
+	 * 69px, so 52 of these cross most of the canvas and, drawn at one weight, they are the
+	 * haze the cards sit in. Drawing distance is also more honest -- a friendship between
+	 * neighbours should not look identical to one spanning four generations.
+	 *
+	 * A TOKEN rather than an opacity, and that was forced rather than preferred: a far
+	 * edge is still content and owes 3:1 under SC 1.4.11, and fading --color-edge-soft
+	 * composites to 2.29:1 at 0.5 and 1.86:1 at 0.4 -- both under the floor. This is
+	 * 4.03:1, clear of it, and a value that can be checked rather than a composite that
+	 * has to be recomputed whenever the backdrop moves.
+	 */
+	--color-edge-far: #6b7180;
 	/* A relation that has ended: dimmer than the overlay, still 3.32:1, and a fixed
 	   value rather than an opacity so the composite is predictable, not emergent. */
 	--color-edge-past: #5f6470;
@@ -379,6 +394,31 @@ body {
 	stroke-width: var(--kf-stroke-firm);
 }
 
+/**
+ * A relation reaching right across the canvas.
+ *
+ * Quieter colour AND the scale's thinnest weight, so distance reads as distance. Placed
+ * before the closeness rules would be wrong -- it has to override them, because a "very
+ * close" friend on the far side of the graph is still a line the eye should not follow
+ * across four generations at full weight. Closeness survives on the short edges, where it
+ * can actually be compared.
+ *
+ * `is-active` and `is-ended` both still win, since they come later in the file: pointing
+ * at somebody must always be able to bring their far ties back to full contrast, which is
+ * exactly the question a long edge exists to answer.
+ */
+.react-flow__edge.is-relation.is-far .react-flow__edge-path {
+	stroke: var(--color-edge-far);
+	stroke-width: var(--kf-stroke-faint);
+}
+
+/* A far DIRECTED edge keeps its taper, but tapers from the quieter token. Without this
+   the gradient reference would outrank the colour above and a far mentorship would render
+   at full overlay contrast. */
+.react-flow__edge.is-relation.is-far.is-directed .react-flow__edge-path {
+	stroke: url("#kf-taper-far");
+}
+
 /*
  * A relation that has ended. Dimmer colour and a sparse dash: it is history, and a
  * former colleague drawn as firmly as a current one overstates the graph. The dash
@@ -681,6 +721,35 @@ body {
 }
 
 /**
+ * The kinship line, clamped to two lines rather than truncated to one.
+ *
+ * A measurement, not a taste call: 31 of the 117 people in the sample tree (26%) had
+ * their relationship cut off at one line, because the term is the widest thing on the
+ * card -- "great-great-uncle by marriage" needs 164px in a 142px column, where the p90
+ * NAME needs only 109px and never wraps.
+ *
+ * Truncating this line is worse than truncating anything else on the card, because these
+ * terms share long prefixes. "great-great-gran..." could be a grandmother or a
+ * grandfather, so the clipped half is exactly the half that identifies who you are
+ * looking at. Two lines covers every term `kinship.ts` can generate.
+ *
+ * `line-clamp` rather than free wrapping: ELK has already reserved this node's box, so a
+ * third line would overflow the card it is drawn in. The ellipsis then only appears for
+ * something longer than anything the kinship walk produces.
+ */
+.kf-relation {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	overflow: hidden;
+	/* Long hyphenated rungs ("great-great-grandmother") break at the hyphens, which is
+	   where a reader expects them to. Without this the whole word is one unbreakable box
+	   and overflows rather than wrapping. */
+	overflow-wrap: break-word;
+}
+
+/**
  * Presence ring: how connected somebody is.
  *
  * Behind the card, spreading further the busier the person. A ring rather than a
@@ -701,13 +770,20 @@ body {
 	 * drop shadow and the design uses hairlines rather than shadows.
 	 */
 	/*
-	 * In the edge colour, not hairline: this ring is the only thing on the card that
-	 * says how connected somebody is, and at 60% hairline it measured 1.16:1 -- a mark
-	 * nobody could see, carrying information nothing else carries. 80% of --color-edge
-	 * is 5.10:1, which is a ring you can read at a glance and still quieter than the
-	 * ink it sits beside.
+	 * 28%, down from 80%, and the reason is what a screenshot showed that no per-element
+	 * measurement could: 96 of the 117 cards clear the ring floor, so at 5.12:1 the
+	 * "quiet hint" was a grey halo on four cards in five, and the canvas read as fog with
+	 * cards in it rather than cards on a canvas. The prior note claimed the ring was "the
+	 * only thing that says how connected somebody is" and used that to justify the weight
+	 * -- but it is not: the edges converging on a card say it too, and they say it
+	 * precisely.
+	 *
+	 * So this is texture, not information, and it is scored as texture: 1.60:1 against the
+	 * canvas, just above the 1.26:1 hairline that bounds the card. Present when you look
+	 * for it, absent when you are reading a name. No 3:1 floor applies, because a mark
+	 * that carried unique meaning at this size would be a mark competing with the graph.
 	 */
-	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-edge) 80%, transparent);
+	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-edge) 28%, transparent);
 	pointer-events: none;
 	/*
 	 * Animates when the level of detail changes, since the box changes with it -- and
@@ -760,6 +836,61 @@ body {
 	box-shadow:
 		0 0 0 calc(var(--kf-spread, 0px) + 7px)
 		color-mix(in oklab, var(--color-ink) 65%, transparent);
+}
+
+/**
+ * The pointer-tracked wash, taken from brand/portfolio-react's `GlassCard`.
+ *
+ * A soft radial highlight that follows the cursor across the card, so the surface reads
+ * as lit from where you are pointing rather than uniformly flat. It is the one piece of
+ * that component worth porting: the tilt there rotates the whole card in 3D, which cannot
+ * work here because React Flow owns the node wrapper's `transform` for positioning and a
+ * perspective rotation would fight the layout.
+ *
+ * Three deliberate departures from the original:
+ *
+ *   1. Driven by `--kf-mx` / `--kf-my` custom properties set on pointermove, NOT by React
+ *      state. That component calls `setMousePos` on every rAF, which is fine for a page
+ *      holding a dozen cards and ruinous for a canvas holding 117 -- each set would
+ *      re-render the node and React Flow re-measures on render. Writing a custom property
+ *      touches only the compositor.
+ *   2. Accent rather than their cyan, at 8% -- and 8% is a ceiling rather than a taste
+ *      choice. Amber has to keep meaning "you" and "this relation", so the wash has to
+ *      stay below the threshold where it reads as a state. Measured at 1.13:1 against the
+ *      surface, it is texture, not information, which is the only thing that may use the
+ *      accent decoratively.
+ *   3. No `prefers-reduced-motion` gating. Their `GlassCard` reads `useReducedMotion`,
+ *      and their own CLAUDE.md forbids that in new code -- Sagar runs reduced-motion ON
+ *      at the OS level, so gating would freeze the effect for the person who asked for it.
+ *
+ * Defaults to the card's centre so a card that has never been hovered is evenly lit
+ * rather than glowing in its top-left corner.
+ */
+.kf-card {
+	position: relative;
+	--kf-mx: 50%;
+	--kf-my: 50%;
+}
+
+.kf-card::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: radial-gradient(
+		200px circle at var(--kf-mx) var(--kf-my),
+		color-mix(in oklab, var(--color-accent) 8%, transparent),
+		transparent 65%
+	);
+	opacity: 0;
+	transition: opacity var(--duration-base) var(--ease-out);
+	/* Inert: the card beneath owns the drag, and a pseudo-element covering it would
+	   swallow the gesture that moves the node. */
+	pointer-events: none;
+}
+
+.kf-card:hover::before {
+	opacity: 1;
 }
 
 /**
