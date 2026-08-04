@@ -28,6 +28,11 @@ jobs:
           fetch-depth: 0
 
       - name: Scan repository history
+        # This one still annotates "Node.js 20 is deprecated", and that is upstream
+        # rather than a stale pin here: gitleaks-action's own action.yml declares
+        # node20, so GitHub force-runs it on 24. Nothing to fix from this repo --
+        # bumping the SHA again would not change the declaration. Recorded so the
+        # annotation is not mistaken for a pin we forgot.
         uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
