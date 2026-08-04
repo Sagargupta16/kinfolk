@@ -1,0 +1,61 @@
+name: Production health
+
+# A deploy that passed its checks can still stop answering later: Neon suspends an
+# idle branch, a secret gets rotated, a domain expires. This is the daily question
+# "is it still up", separate from "did this change ship".
+
+on:
+  schedule:
+    # 02:31 UTC. An odd minute on purpose -- the top of the hour is when every
+    # scheduled workflow on GitHub queues at once, and a delayed run reports as a
+    # failure it did not have.
+    - cron: "31 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: public endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe production
+        env:
+          BASE: ${{ vars.PRODUCTION_URL || 'https://kinfolk.vercel.app' }}
+        run: |
+          set -u
+          fail=0
+
+          probe() {
+            local path="$1" expected="$2" label="$3"
+            local code=""
+            for attempt in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "${BASE}${path}" || echo "000")
+              [ "$code" = "$expected" ] && break
+              # Longer backoff than the deploy check: the likely cause here is a
+              # suspended Neon branch waking up, not a cold function.
+              sleep 15
+            done
+            if [ "$code" = "$expected" ]; then
+              echo "  ok    ${label}: ${code}"
+            else
+              echo "::error::${label} returned ${code}, expected ${expected} (${BASE}${path})"
+              fail=1
+            fi
+          }
+
+          # Verified against a real server before being asserted here.
+          probe "/" 200 "landing page"
+          probe "/signin" 200 "sign in"
+          # The canary: 200 only when AUTH_SECRET and the GitHub provider are both
+          # configured, so a rotated secret shows up here rather than as a user
+          # failing to sign in.
+          probe "/api/auth/providers" 200 "auth providers"
+          probe "/tree" 307 "tree redirects when signed out"
+          # Demo mode is the one path that reads no session and no database, so it
+          # separates "the app is broken" from "Neon is asleep".
+          probe "/demo" 307 "demo sets its cookie and forwards"
+
+          exit "$fail"

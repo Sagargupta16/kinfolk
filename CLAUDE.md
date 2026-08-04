@@ -24,7 +24,7 @@ It is also a contact graph, not only a pedigree. Anyone can be a node -- a frien
 - **Auth**: Auth.js v5 (`next-auth@5` beta), GitHub provider only, database sessions
 - **UI**: Tailwind 4, React Flow (`@xyflow/react`) canvas, ELK (`elkjs`) layout, Motion, lucide-react
 - **Package manager**: pnpm
-- **Deploy target**: not deployed yet (Vercel + Neon when it ships, mirroring `prod/kalchar`)
+- **Deploy target**: Vercel + Neon, mirroring `prod/kalchar`. Pinned to the `sin1` region in [vercel.json](vercel.json) to sit beside the Neon project in `aws-ap-southeast-1`. NOT GitHub Pages: `pnpm build` emits four dynamic (`ƒ`) routes, because `/tree` reads Neon per request, `/demo` is a route handler that sets an httpOnly cookie, and every write is a server action. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Run
 
@@ -249,7 +249,9 @@ The canvas rework landed 2026-07-30 and was measured before and after in the bro
 
 The schema is live on a real Neon branch as of 2026-07-29, and `loadTreeView()` is verified against it by `pnpm db:smoke` (22 live checks: fusion across two graphs, kinship terms, contact filtering at `linked` access, mine-only, the no-graph case, and a pending link changing nothing). New-account provisioning is verified against the same branch: one graph, one self node with `sex` left `unknown`, `rootPersonId` set, a non-null `loadTreeView()` returning kinship "you", idempotent on a second call, and clean teardown. `/api/auth/providers` returns 200 with the callback on port 3007.
 
-Setup for a fresh clone is [docs/SETUP.md](docs/SETUP.md), which is where the click-by-click Neon and GitHub OAuth steps live -- `.env.example` points at it rather than restating them.
+Setup for a fresh clone is [docs/SETUP.md](docs/SETUP.md), which is where the click-by-click Neon and GitHub OAuth steps live -- `.env.example` points at it rather than restating them. Production is [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): three workflows in [.github/workflows/](.github/workflows) covering CI (gitleaks, lint, typecheck, tests, build, a dead-Tailwind-utility guard over the BUILT css), deploy (committed migrations to Neon, then endpoint probes) and a daily health check. Vercel's own Git integration does the building, so `deploy.yml` deliberately only does what Vercel cannot: get the schema ahead of the code, and assert afterwards that the deployment answers.
+
+Two deploy rules worth stating outright. **`deploy.yml` runs `db:migrate`, never `db:push`** -- push diffs the live schema and applies what it infers, which can drop a column it thinks is redundant; `migrate` runs the committed SQL and nothing else. And **CI needs no database secret at all**, verified by running the build with `DATABASE_URL` unset: `lib/db/client.ts` is importable without one and nothing queries at build time, so the only env the build gets is a throwaway `AUTH_SECRET` to stop Auth.js logging `MissingSecret`.
 
 The editor landed 2026-07-29: an Add sheet docked TOP-left (moved from bottom-left, where it sat beside React Flow's zoom stack in the corner a reader scans last) with three tabs (person, relation, partnership), backed by [lib/tree/edit-actions.ts](lib/tree/edit-actions.ts) and gated by [lib/tree/authz.ts](lib/tree/authz.ts). Verified live against Neon -- 10 authorization checks including "cannot edit another user's graph" and "cross-graph pair refused" -- plus in the browser that demo mode renders no Add button at all.
 

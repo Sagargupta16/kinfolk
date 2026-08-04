@@ -1,0 +1,132 @@
+name: Deploy
+
+# Vercel, not GitHub Pages, and the reason is structural rather than a preference.
+#
+# `pnpm build` emits four DYNAMIC routes (`ƒ`): /tree, /demo, /signin and the Auth.js
+# handler. They are server-rendered on demand because the app reads Neon per request,
+# runs server actions for every write, and keeps Auth.js DATABASE sessions -- none of
+# which a static host can serve. `prod/kalchar` reached the same conclusion and left
+# its own Pages workflow dormant with a note saying so.
+#
+# Vercel's own Git integration builds and promotes on push, so this workflow does the
+# part it cannot: applying schema changes to Neon before the new code depends on them,
+# and proving the deployment actually answers afterwards.
+
+on:
+  push:
+    branches: [main]
+    # Only when something that can change the deployed behaviour moves. A README
+    # edit should not open a database connection.
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "drizzle/**"
+      - "auth.ts"
+      - "next.config.mjs"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never two deploys at once, and never cancel one midway: a half-applied migration
+# is worse than a late one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: apply schema to Neon
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Gated on a GitHub Environment so the production DATABASE_URL is only readable
+    # from this job, and so a reviewer can be required before it runs.
+    environment:
+      name: production
+      url: https://kinfolk.vercel.app
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        # `db:migrate`, never `db:push`. Push diffs the live schema and applies
+        # whatever it decides, which is right for a scratch branch and wrong for
+        # production -- it can drop a column it thinks is redundant. `migrate` runs
+        # the committed SQL files in order and nothing else.
+        #
+        # Skipped when there is no drizzle/ directory yet: the schema was created
+        # with `db:push` during development, so the first real migration has still
+        # to be generated. Failing here would block every deploy for a table that
+        # is already correct.
+        run: |
+          if [ -d drizzle ] && ls drizzle/*.sql >/dev/null 2>&1; then
+            pnpm db:migrate
+          else
+            echo "No committed migrations yet -- skipping. Generate them with \`pnpm db:generate\` before the first schema change."
+          fi
+        env:
+          # The DIRECT Neon host, not the -pooler one: drizzle-kit opens a plain TCP
+          # connection that the pooler endpoint will not serve.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  verify:
+    name: verify the deployment answers
+    needs: migrate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for Vercel to promote the new build
+        # Vercel builds on its own trigger, so this workflow cannot know when the
+        # new deployment is live. A fixed wait is honest about that: the check
+        # below is what actually decides, and it retries.
+        run: sleep 45
+
+      - name: Check the public endpoints
+        env:
+          BASE: ${{ vars.PRODUCTION_URL || 'https://kinfolk.vercel.app' }}
+        run: |
+          set -u
+          fail=0
+
+          probe() {
+            local path="$1" expected="$2" label="$3"
+            local code=""
+            # Retried, because a cold serverless function can exceed the first
+            # timeout and a single 000 would be a false alarm.
+            for attempt in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "${BASE}${path}" || echo "000")
+              [ "$code" = "$expected" ] && break
+              sleep 10
+            done
+            if [ "$code" = "$expected" ]; then
+              echo "  ok    ${label}: ${code}"
+            else
+              echo "::error::${label} returned ${code}, expected ${expected} (${BASE}${path})"
+              fail=1
+            fi
+          }
+
+          # The landing page renders with no session and no database read.
+          probe "/" 200 "landing page"
+          # Sign-in must be reachable, or nobody can get in at all.
+          probe "/signin" 200 "sign in"
+          # Auth.js is configured and answering. This one is the real canary: it
+          # returns 200 only when AUTH_SECRET and the GitHub provider are both
+          # present, so it catches a missing secret that the pages would not.
+          probe "/api/auth/providers" 200 "auth providers"
+          # /tree with no session redirects to /signin rather than erroring.
+          probe "/tree" 307 "tree redirects when signed out"
+
+          exit "$fail"

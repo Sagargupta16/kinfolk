@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least-privilege default: CI only reads the repo to lint, typecheck and build.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history, or gitleaks scans one commit and misses a credential
+          # that was added and then removed in an earlier one.
+          fetch-depth: 0
+
+      - name: Scan repository history
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: lint, typecheck, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          # 22, matching the `engines.node` floor in package.json.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        # The whole suite is pure and offline -- no Neon, no browser -- so it runs
+        # BEFORE the build and fails fast on a logic regression rather than after
+        # waiting for Next to compile.
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          # Deliberately NOT the real secrets.
+          #
+          # `lib/db/client.ts` is built to be importable with no DATABASE_URL, because
+          # Next collects page data by importing every route's module graph -- so a
+          # throw at module scope would fail the build on a fresh clone. Nothing in
+          # this app queries at build time (every data route is `ƒ`, server-rendered on
+          # demand), so the build needs no database and CI should not hold one.
+          #
+          # AUTH_SECRET is set to a throwaway because Auth.js logs `MissingSecret` at
+          # import; the value is never used to sign anything here.
+          AUTH_SECRET: build-only-not-a-real-secret
+
+      - name: Dead Tailwind utility guard
+        # A Tailwind 4 arbitrary value needs PARENTHESES to read a CSS variable.
+        # The square-bracket form emits the literal property name, which is not a
+        # valid value -- so the property silently falls back to its initial one and
+        # the transition simply does not happen. Nothing warns: not the build, not
+        # Biome, not the browser. 34 utilities in this repo were dead this way.
+        #
+        # Scanned in the BUILT css, not the source, because Tailwind also reads
+        # markdown and comments as class-name sources: documenting the broken form
+        # compiles a real dead rule into production.
+        #
+        # `grep -F` on the escaped-bracket signature Tailwind emits, not a regex: an ERE
+        # spelling of this needs `\\\[`, which the shell mangles into an unmatched
+        # bracket class -- the first version of this guard silently matched nothing.
+        # Verified both ways before being committed: it finds a planted dead rule and
+        # passes on the current build.
+        run: |
+          if grep -rlF --include='*.css' -- '-\[--' .next/static/; then
+            echo '::error::Dead Tailwind utility in the built CSS: a CSS variable in an arbitrary value needs PARENTHESES, not square brackets. See the gotcha in CLAUDE.md.'
+            exit 1
+          fi
