@@ -299,6 +299,75 @@ describe("generation bands", () => {
  * is that it contains everything DRAWN -- the opposite of generation bands, which are
  * about people only.
  */
+describe("union dot placement", () => {
+	function partnerEdge(id: string, person: string, union: string): FlowEdge {
+		return { id, source: person, target: union, kind: "partner", layout: true };
+	}
+
+	function unionNode(id: string): FlowNode {
+		return {
+			id,
+			type: "union",
+			data: { union: { id, childIds: [] } },
+		} as unknown as FlowNode;
+	}
+
+	it("sits between the two people it joins", async () => {
+		/*
+		 * ELK places a junction to minimise edge crossings, which is right for a layered graph
+		 * and wrong for a marriage. Measured on the sample tree before this pass: all 34 couples
+		 * had their dot off the couple's midpoint, the worst by 498px -- and a dot beside a
+		 * couple rather than between them makes the drop to the children appear to leave from
+		 * nowhere.
+		 */
+		const { nodes: positioned } = await layoutGraph(
+			[personNode("mum"), personNode("dad"), unionNode("u1"), personNode("kid")],
+			[
+				partnerEdge("p1", "mum", "u1"),
+				partnerEdge("p2", "dad", "u1"),
+				familyEdge("c1", "u1", "kid"),
+			],
+		);
+
+		const centre = (id: string) => {
+			const node = positioned.find((n) => n.id === id);
+			return node ? node.position.x + node.width / 2 : Number.NaN;
+		};
+
+		const midpoint = (centre("mum") + centre("dad")) / 2;
+		expect(centre("u1")).toBeCloseTo(midpoint, 1);
+	});
+
+	it("leaves a single parent's union where ELK put it", async () => {
+		// Nothing to sit between: the dot already hangs below its one parent, which is honest.
+		const { nodes: positioned } = await layoutGraph(
+			[personNode("parent"), unionNode("u1"), personNode("kid")],
+			[partnerEdge("p1", "parent", "u1"), familyEdge("c1", "u1", "kid")],
+		);
+
+		// Placed, and still in the gap between the two generations rather than nudged onto a row.
+		const dot = positioned.find((n) => n.id === "u1");
+		const parent = positioned.find((n) => n.id === "parent");
+		const kid = positioned.find((n) => n.id === "kid");
+		expect(dot && parent && kid && dot.position.y > parent.position.y).toBe(true);
+		expect(dot && kid && dot.position.y < kid.position.y).toBe(true);
+	});
+
+	it("does not move the people to centre the dot", async () => {
+		// The nudge is cosmetic and must never shift the skeleton, the same rule the sibling
+		// bars follow.
+		const nodes = [personNode("mum"), personNode("dad"), unionNode("u1")];
+		const edges = [partnerEdge("p1", "mum", "u1"), partnerEdge("p2", "dad", "u1")];
+
+		const first = await layoutGraph(nodes, edges);
+		const second = await layoutGraph(nodes, edges);
+		const people = (result: typeof first) =>
+			result.nodes.filter((n) => n.type === "person").map((n) => ({ id: n.id, ...n.position }));
+
+		expect(people(first)).toEqual(people(second));
+	});
+});
+
 describe("graphExtent", () => {
 	it("returns a zero box for no nodes", () => {
 		// Not an empty-array guard for its own sake: the minimap divides by the width,

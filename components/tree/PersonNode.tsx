@@ -1,33 +1,43 @@
 "use client";
 
 /**
- * A person on the canvas, at one of three levels of detail.
+ * A person on the canvas, at three levels of detail, plus the union junction.
  *
- * Design intent: this is an archive card, not a dashboard tile. Flat surface,
- * 1px hairline, mono metadata, one accent reserved for "this is you". The left
- * edge carries a 2px living/deceased rail because that is the single fact you
- * scan a tree for, and a rail reads faster than a badge.
+ * Design intent: an archive card, not a dashboard tile. Flat surface, 1px hairline,
+ * mono metadata, one accent reserved for "this is you". Three things are encoded that
+ * the eye reads before it reads any text, so each is deliberate rather than decorative:
+ * how well attested the person is (the provenance tick and the rail), how connected
+ * they are (the presence ring), and how much of them is drawn at all (the LOD).
  *
- * Three things are encoded here that the eye reads before it reads any text, so
- * each is deliberate rather than decorative:
+ * Two rules were earned the hard way and must not be undone:
  *
- *   - how well attested the person is (the provenance tick and the rail)
- *   - how connected they are (the presence ring, from lib/tree/density)
- *   - how much of them is drawn at all (the level of detail)
- *
- * Provenance is a tick, not a word: "verified" printed on most cards would be a
- * word repeated across most of the canvas, costing the width a name needs and
- * separating nobody. Glyph plus tooltip, and never colour alone.
+ *   - The name never wraps and never carries a glyph. Measured: a sex glyph plus its
+ *     gap takes the name column from 142px to 105px and pushes 9 of 117 names from
+ *     fitting into truncating. Glyphs that appear on EVERY card go on the metadata
+ *     row; the name line carries only conditional marks.
+ *   - Contact VALUES never reach the canvas. A card shows which channels exist and
+ *     nothing more, because a canvas gets screenshotted -- and an accessible name is
+ *     more exposed than the visible card, so it must not become the back door either.
  */
-import { Handle, Position } from "@xyflow/react";
-import { CircleDashed, Mars, ShieldQuestion, Transgender, Users, Venus } from "lucide-react";
-import { type CSSProperties, type PointerEvent, useCallback, useRef } from "react";
-import type { Person } from "@/lib/db/schema";
+import { Handle, type NodeProps, Position } from "@xyflow/react";
+import {
+	ChevronDown,
+	ChevronUp,
+	CircleDashed,
+	Layers,
+	Mars,
+	ShieldQuestion,
+	Transgender,
+	Venus,
+} from "lucide-react";
+import { type CSSProperties, memo, type PointerEvent, useCallback, useRef } from "react";
+import type { Sex, Verification } from "@/lib/db/schema";
 import { type Degree, RING_MIN_RANK } from "@/lib/tree/density";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import { type Lod, NODE_METRICS } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
+import { QuickAddButton } from "./QuickAdd";
 
 export type PersonNodeData = FusedPerson & {
 	/** Highlights the viewer's own card. */
@@ -35,269 +45,211 @@ export type PersonNodeData = FusedPerson & {
 	/** How connected this person is; absent until density has run. */
 	degree?: Degree;
 	lod?: Lod;
-	/**
-	 * What this person is to the viewer: "grandmother", "second cousin", "friend".
-	 *
-	 * The card's second line, and it replaced a birth surname plus two channel
-	 * icons. Those were on most cards and separated nobody -- Cambridge
-	 * Intelligence: "avoid repeating words if they appear across most nodes". A
-	 * kinship term is different on nearly every card and is the one fact a viewer
-	 * cannot recover by looking, since counting six edges up and four back down is
-	 * precisely what the eye will not do.
-	 */
+	/** What this person is to the viewer: "grandmother", "second cousin", "friend". */
 	kinship?: Kinship;
+	/** Whether this person has anything to fold, per direction. */
+	folds?: { down: boolean; up: boolean };
+	/** Currently folded directions, so the control can say which way it points. */
+	collapsed?: { down: boolean; up: boolean };
+	/** How many people the folds on THIS card are hiding. */
+	hidden?: number;
+	/** Fold or unfold. Absent when this canvas has no collapse affordance. */
+	onFold?: (personId: string, direction: "descendants" | "ancestors") => void;
+	/**
+	 * Open the quick-add sheet for this person. Absent on a read-only canvas, which is what
+	 * hides the `+` entirely -- a disabled control advertises an action that cannot work.
+	 *
+	 * Handed the whole FusedPerson rather than an id and a name, because the canvas has to
+	 * resolve WHICH source row the write targets: the fused id is the smallest member id, and
+	 * on a person recorded by two families it belongs to the other family about half the time.
+	 */
+	onQuickAdd?: (person: FusedPerson) => void;
 };
 
 /**
- * Offset hairlines behind a merged card, one per extra record.
+ * How many stacked sheets a merged card may show.
  *
- * Capped at two: past that the offset reaches into the neighbouring card, and
- * "several families" is the whole message anyway. Ordered deepest first so the
- * nearer sheet paints over the further one, the way a real stack sits.
+ * Two, because the sheets are 3px apart and a third is indistinguishable from the
+ * second at any zoom this canvas reaches. The exact number of contributors is on the
+ * metadata row as a count, which is the honest place for a number.
  */
 const MAX_STACK = 2;
 
+/** Deepest first, so the furthest sheet is painted before the ones over it. */
 function stackDepths(sharedBy: number): number[] {
-	const sheets = Math.min(Math.max(sharedBy - 1, 0), MAX_STACK);
-	return Array.from({ length: sheets }, (_, i) => sheets - i);
+	const sheets = Math.min(sharedBy - 1, MAX_STACK);
+	return Array.from({ length: Math.max(sheets, 0) }, (_, index) => sheets - index);
 }
 
 /**
- * What each verification level says, and how firmly it is drawn.
- *
- * Weight ascends with confidence so the marks read as a scale at a glance. The
- * label is what a reader gets on hover, and it is phrased as the EVIDENCE rather
- * than a status, because "documented" tells you what you could go and check
- * whereas "verified" only tells you somebody was satisfied.
- *
- * Exported for the legend, which lists these marks. Declaration order is strongest
- * evidence first, and the legend reads it in that order -- a scale explained from the
- * weak end reads as a list of unrelated glyphs. The two blank marks are skipped
- * there, so adding a level with no glyph needs no change to the legend.
+ * Provenance marks, exported because TreeLegend explains them and must not restate
+ * them. A missing entry is deliberate: `unverified` gets no mark, since the default
+ * state needs no glyph, and `disputed` has its own dashed border.
  */
-export const PROVENANCE: Record<
-	FusedPerson["trust"]["level"],
-	{ mark: string; title: string; className: string }
+export const PROVENANCE: Partial<
+	Record<Verification, { mark: string; title: string; tone: string }>
 > = {
-	documented: { mark: "✓✓", title: "documented in a record", className: "text-living" },
-	self_confirmed: { mark: "✓", title: "confirmed by this person", className: "text-living" },
-	family_recalled: { mark: "○", title: "recalled by a relative", className: "text-ink-faint" },
-	unverified: { mark: "", title: "", className: "" },
-	disputed: { mark: "", title: "", className: "" },
+	documented: { mark: "✓✓", title: "Backed by a record", tone: "text-living" },
+	self_confirmed: { mark: "✓", title: "Confirmed by this person", tone: "text-living" },
+	family_recalled: { mark: "○", title: "Recalled by a relative", tone: "text-ink-faint" },
+};
+
+/** Sex glyphs, also read by the legend. `unknown` is a stored value, so it has a mark. */
+export const SEX_MARKS: Record<Sex, { Icon: typeof Venus; title: string }> = {
+	female: { Icon: Venus, title: "Female" },
+	male: { Icon: Mars, title: "Male" },
+	other: { Icon: Transgender, title: "Other" },
+	unknown: { Icon: CircleDashed, title: "Not recorded" },
 };
 
 /**
- * The glyph for a person's recorded sex, and what makes it safe: it renders the STORED
- * value and nothing else.
+ * Ring spread from connectedness rank.
  *
- * `unknown` is the schema default and by far the most common value in a real genealogy,
- * so it gets a mark of its own -- a dashed circle, which reads as "an outline nobody has
- * filled in" -- rather than falling back to a male default the way most family-tree
- * software does. That default is exactly the corruption `sexEnum` exists to avoid, and it
- * is the reason the gender-required layout libraries were rejected.
- *
- * Nothing here consults the name. Inferring sex from "Alexandra" would write a guess into
- * the one channel a reader trusts to be recorded fact, and unlike a kinship term (which is
- * recomputed every render) a glyph looks equally confident whether or not anybody said so.
- *
- * Exported for the legend, which lists these marks and must not restate them.
- */
-export const SEX_MARKS: Record<Person["sex"], { Icon: typeof Venus; title: string }> = {
-	female: { Icon: Venus, title: "recorded female" },
-	male: { Icon: Mars, title: "recorded male" },
-	other: { Icon: Transgender, title: "recorded as other" },
-	unknown: { Icon: CircleDashed, title: "sex not recorded" },
-};
-
-/**
- * Ring radius for how connected somebody is.
- *
- * A hub gets a visibly wider halo than a leaf; the floor is 0 so a person with
- * no recorded connections gets no ring at all rather than a faint one that reads
- * as a rendering artefact. Capped low on purpose -- this is a hint that sits
- * behind the card, and a big glow would out-shout the name.
- *
- * 0 means an invisible ring, not an absent one: the focus glow in globals.css blooms
- * out of this same box (`.kf-lit .kf-presence`), so dropping the element for the
- * quietest people would leave exactly them unable to answer a hover.
+ * Capped at 6px, and the ring colour sits at 28% rather than the 80% it started at. A
+ * screenshot is what caught it: 96 of 117 people clear the ring floor, so four cards in
+ * five wore a grey halo and the canvas read as fog with cards in it. Per-element
+ * measurement said every value was fine, because nothing per-element can see that 96
+ * rings share a canvas.
  */
 function ringSpread(rank: number): number {
 	if (rank <= RING_MIN_RANK) return 0;
-	// Caps at 6px rather than 10. A 10px halo on a 92px card is a ninth of its height on
-	// each side, and 96 of the sample tree's 117 people clear the floor -- so the widest
-	// setting was being spent on most of the canvas at once, which is the opposite of a
-	// scale. 6px still separates a hub from a leaf, measured against a 168px card.
 	return Math.round(2 + rank * 4);
 }
 
 /**
- * Point the card's wash at the cursor.
+ * The pointer-tracked wash, written as custom properties on the element.
  *
- * Writes two custom properties on the element and nothing else -- no state, no re-render.
- * That is the whole reason this is a hook rather than the `useState` + rAF pair
- * portfolio-react's `GlassCard` uses: on a canvas of 117 nodes, a state write per
- * pointermove re-renders the node, and React Flow re-measures nodes on render. The
- * property write stays on the compositor.
- *
- * Coalesced with a rAF flag, because pointermove fires faster than a frame and only the
- * last position in a frame is the one that gets painted.
+ * Never React state. A state write re-renders the node, and React Flow answers a render
+ * by re-measuring -- across 117 cards on every pointermove that is ruinous.
+ * `clientX/clientY` are read EAGERLY, before the rAF: the event object is pooled, so
+ * reading it inside the callback can yield a stale or nulled value.
  */
 function usePointerWash() {
 	const ref = useRef<HTMLDivElement>(null);
-	const queued = useRef(false);
+	const frame = useRef(0);
 
-	return {
-		ref,
-		onPointerMove: useCallback((event: PointerEvent<HTMLDivElement>) => {
-			const element = ref.current;
-			if (!element || queued.current) return;
+	const onPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
+		const node = ref.current;
+		if (!node) return;
+		const { clientX, clientY } = event;
 
-			// Read the coordinates NOW: the event is pooled, so touching it inside the
-			// callback below can see a different position than the one that fired.
-			const { clientX, clientY } = event;
-			queued.current = true;
+		cancelAnimationFrame(frame.current);
+		frame.current = requestAnimationFrame(() => {
+			const box = node.getBoundingClientRect();
+			node.style.setProperty("--kf-mx", `${clientX - box.left}px`);
+			node.style.setProperty("--kf-my", `${clientY - box.top}px`);
+		});
+	}, []);
 
-			requestAnimationFrame(() => {
-				queued.current = false;
-				const node = ref.current;
-				if (!node) return;
-				const box = node.getBoundingClientRect();
-				node.style.setProperty("--kf-mx", `${((clientX - box.left) / box.width) * 100}%`);
-				node.style.setProperty("--kf-my", `${((clientY - box.top) / box.height) * 100}%`);
-			});
-		}, []),
-	};
+	return { ref, onPointerMove };
 }
 
-export function PersonNode({ data, selected }: { data: PersonNodeData; selected?: boolean }) {
-	const wash = usePointerWash();
-	const person = data.primary;
+function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData }) {
 	const lod = data.lod ?? "full";
+	const person = data.primary;
 	const name = displayName(person);
 	const dates = lifespan(person);
-	// The stored value, not a guess from the death date: "unknown" is a real
-	// answer in genealogy and rendering it as alive would assert something nobody
-	// recorded. Only an explicit "deceased" gets the past rail.
-	const isDeceased = person.living === "deceased";
-	const isUnknown = person.living === "unknown";
 	const sharedBy = data.contributingTreeIds.length;
-	const trust = data.trust;
-	const provenance = PROVENANCE[trust.level];
 	const spread = ringSpread(data.degree?.rank ?? 0);
-	const sexMark = SEX_MARKS[person.sex];
+	const wash = usePointerWash();
 
-	/**
-	 * The second line: who this person is to the viewer.
+	/*
+	 * The dot level: a mark plus a FIRST NAME.
 	 *
-	 * Nothing when there is no viewer -- a signed-out visitor and mine-only demo mode
-	 * both get a bare name, which is honest, where "relative" would not be. The
-	 * channel icons this replaced are gone entirely rather than moved: what a card
-	 * owes is identity, and whether a phone number exists is a question for the person
-	 * you already found.
+	 * It used to be the mark alone, on the argument that this level answers "what shape is
+	 * this family" and 117 names would be noise. Half right: the shape was legible and the
+	 * graph was not, so finding anybody meant switching back to cards and losing the very
+	 * overview you came here for. A first name is the smallest thing that makes a dot
+	 * identifiable, and it is what fits -- measured across all 117 people at 9px mono, a first
+	 * name needs 45px at p90 where a full name needs 84px and would make this level nearly as
+	 * wide as the compact row.
 	 */
-	const relation = data.kinship?.label;
-
-	const rail = (
-		<span
-			aria-hidden
-			className={cn(
-				"w-0.5 shrink-0",
-				isDeceased ? "bg-past" : isUnknown ? "bg-hairline-strong" : "bg-living",
-			)}
-		/>
-	);
-
-	/**
-	 * The presence ring: connectedness, drawn behind everything.
-	 *
-	 * A ring rather than a size change, because ELK has already allocated this
-	 * node's box -- growing the busiest cards would either overlap their
-	 * neighbours or force the whole layout to reserve the maximum.
-	 *
-	 * Always rendered, even at spread 0 where it draws nothing. It is also the surface
-	 * the focus glow blooms from, and a zero-radius box-shadow on a positioned span
-	 * costs a paint of nothing -- where dropping the element would mean the least
-	 * connected people are the ones a hover cannot answer.
-	 */
-	const ring = (
-		<span
-			aria-hidden
-			className="kf-presence"
-			style={{ "--kf-spread": `${spread}px` } as CSSProperties}
-		/>
-	);
-
 	if (lod === "dot") {
+		// First word only. `displayName` falls back to a nickname or "Unknown", so this is never
+		// empty -- and splitting a fallback still yields something to print.
+		const firstName = name.split(/\s+/)[0] ?? name;
+
 		return (
 			<div
-				className="relative flex size-4 items-center justify-center"
-				title={`${name}${dates ? `, ${dates}` : ""}`}
+				className="flex flex-col items-center justify-start gap-1"
+				style={{ width: NODE_METRICS.dot.width, height: NODE_METRICS.dot.height }}
 			>
-				<Handle type="target" position={Position.Top} />
-				<Handle type="source" position={Position.Bottom} />
-				{ring}
-				{/* At this size the whole node IS the status: nothing else fits, so the
-				    living rail becomes the fill, and deceased is a HOLLOW dot rather
-				    than a differently coloured one -- at a 0.2 scale overview the fill
-				    is the only channel still readable.
-
-				    "You" gets a ring, not just the accent. A union dot is also drawn in
-				    accent, and at this zoom a 10px accent fill and a 6px accent-dim one
-				    are the same two amber pixels -- so the viewer could not find
-				    themselves in the one view whose entire purpose is orientation. The
-				    ring makes it the widest mark on the canvas, which is a difference in
-				    SIZE and survives being scaled down. */}
-				<span
+				<Handle type="target" position={Position.Top} isConnectable={false} />
+				<div
 					className={cn(
-						// Springs to 1.75x. At the overview zoom a dot is ~3 screen pixels, so
-						// the growth is the only channel a hover has -- there is no border
-						// colour to shift and no text to brighten. The overshoot buys a mark
-						// that small the extra frame of visibility it needs to register.
-						"size-2.5 rounded-full border transition-transform duration-(--duration-base)",
-						"ease-(--ease-spring) hover:scale-175",
+						"kf-dot size-2.5 shrink-0 rounded-full border transition-transform",
+						"duration-(--duration-fast) ease-(--ease-spring) hover:scale-175",
 						data.isSelf
 							? "border-accent bg-accent ring-1 ring-accent ring-offset-2 ring-offset-canvas"
-							: isDeceased
-								? "border-past bg-canvas"
-								: isUnknown
-									? "border-hairline-strong bg-canvas"
-									: "border-living bg-living/40",
-						selected && !data.isSelf && "ring-1 ring-accent",
+							: person.living === "deceased"
+								? // Hollow, which is the distinction that survives at 3px: filled or not,
+									// rather than one hue against another.
+									"border-past bg-canvas"
+								: person.living === "unknown"
+									? "border-ink-faint bg-canvas"
+									: // Living is 93 of 117 dots, so it takes the NEUTRAL ink and the accent
+										// stays the only colour on the canvas. Filled green here made dots mode
+										// -- the view whose entire job is showing the shape of the family --
+										// into a green mass with one amber pixel in it, so the single landmark
+										// competed with the majority state. Same defect as the card rail and
+										// the minimap, and only a screenshot could show it.
+										"border-edge bg-edge",
+						selected && "ring-2 ring-accent ring-offset-2 ring-offset-canvas",
 					)}
 				/>
+				{/*
+				 * Truncated rather than wrapped: a second line would double this level's height
+				 * for a surname it is deliberately not showing. The full name is on the card
+				 * level, the panel, and this node's own accessible label.
+				 */}
+				<span
+					className={cn(
+						"max-w-full truncate font-mono text-[0.5625rem] leading-none",
+						data.isSelf ? "text-accent-ink" : "text-ink-muted",
+					)}
+				>
+					{firstName}
+				</span>
+				<Handle type="source" position={Position.Bottom} isConnectable={false} />
 			</div>
 		);
 	}
 
+	const provenance = PROVENANCE[data.trust.level];
+	const sex = SEX_MARKS[person.sex];
+	const compact = lod === "compact";
+
 	return (
-		// A wrapper, because the card itself clips to its rounded corners and the
-		// stacked sheets have to escape it.
-		//
-		// Width read from NODE_METRICS rather than written as a utility class. ELK has
-		// already reserved a box of exactly this size, so a card that disagrees either
-		// overlaps its neighbour or leaves a gap ELK is holding open for nothing -- and
-		// two numbers that must match are one number.
-		// HEIGHT as well as width, and that is a fix rather than a tidy-up. ELK reserves a box
-		// of exactly these dimensions, and setting only the width let the card size itself to
-		// its content -- so raising the reserved height to fit a two-line kinship term bought
-		// nothing on screen, and the card and the layout disagreed by 16px. Measured on a live
-		// element: reserved 92, rendered 78.
+		/*
+		 * Card width AND height both come from NODE_METRICS, because ELK reserves both.
+		 *
+		 * Setting only the width let the card size itself to content, so raising the
+		 * reserved height to fit a two-line kinship term bought nothing on screen and left
+		 * the layout and the card disagreeing by 16px (reserved 92, rendered 78, measured
+		 * live). The inner card needs `size-full` for the same reason.
+		 *
+		 * `group/node` is what the fold controls hang their hover off, and it has to be the
+		 * WRAPPER rather than the card: the controls sit outside the card's box.
+		 */
 		<div
-			className="relative"
+			className="group/node relative"
 			style={{ width: NODE_METRICS[lod].width, height: NODE_METRICS[lod].height }}
 		>
-			{ring}
+			{spread > 0 && (
+				<div className="kf-presence" style={{ "--kf-spread": `${spread}px` } as CSSProperties} />
+			)}
 
-			{/* The fusion reveal: sheets slide in from further out and settle onto the
-			    stack, so the combined view SHOWS two records becoming one instead of
-			    only claiming it in the footer. The resting offset stays, so it still
-			    reads as merged long after the animation is over. */}
+			{/* Stacked sheets: this person is described by more than one family. */}
 			{stackDepths(sharedBy).map((depth) => (
-				<span
+				<div
 					key={depth}
-					aria-hidden
 					className="kf-stack kf-stack--fuse"
-					style={{ "--kf-stack": depth } as CSSProperties}
+					style={
+						{
+							transform: `translate(${depth * 3}px, ${depth * -3}px) rotate(${depth * 0.6}deg)`,
+							"--kf-stack": depth,
+						} as CSSProperties
+					}
 				/>
 			))}
 
@@ -305,162 +257,328 @@ export function PersonNode({ data, selected }: { data: PersonNodeData; selected?
 				ref={wash.ref}
 				onPointerMove={wash.onPointerMove}
 				className={cn(
-					// `size-full` so the card fills the box ELK reserved rather than shrinking to
-					// its own content, which is what let the two disagree.
-					"kf-card group relative flex size-full overflow-hidden rounded-(--radius-node) border bg-surface",
-					// Spring, and a 2px lift rather than 1. The card is the thing under the
-					// pointer, so the overshoot reads as it responding; at 1px with a plain
-					// ease-out the lift was below the threshold where a hover feels answered at
-					// all, which is the whole job of the gesture. Transform on the INNER card
-					// only -- React Flow owns the wrapper's transform for positioning.
-					"transition-[border-color,transform,box-shadow] duration-(--duration-base)",
-					"ease-(--ease-spring) hover:-translate-y-0.5 hover:border-hairline-strong",
+					"kf-card flex size-full flex-col overflow-hidden rounded-(--radius-node)",
+					"border bg-surface hover:-translate-y-0.5 hover:border-hairline-strong",
+					"hover:shadow-(--kf-shadow-card)",
 					selected ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]" : "border-hairline",
-					// Families disagreeing is the one state worth interrupting the
-					// monochrome for, and it is drawn as a dashed border rather than a
-					// colour so it survives being read without colour vision.
-					trust.conflicted && "kf-conflicted",
+					data.trust.conflicted && "kf-conflicted",
 				)}
 			>
-				{/* Layout needs handles, but they are visually suppressed in globals.css. */}
-				<Handle type="target" position={Position.Top} />
-				<Handle type="source" position={Position.Bottom} />
+				<Handle type="target" position={Position.Top} isConnectable={false} />
 
-				{rail}
+				{/*
+				 * Living status as a 2px rail, and `living` gets NO colour.
+				 *
+				 * Found by screenshotting the whole canvas: 94 of 117 people are living, so a
+				 * green rail put a saturated 7.36:1 stripe on 80% of the cards -- brighter than
+				 * the NAME above it (the rail's luminance is 0.366 against the card's 0.0065),
+				 * and at fit zoom the tree read as rows of green dashes rather than as a family.
+				 * That is the same defect as the presence-ring fog, reached from the other side:
+				 * a mark carried by four cards in five separates nobody, and this one was also
+				 * spending a second colour against the one-accent rule.
+				 *
+				 * So the rail now marks only what is UNCOMMON. Deceased is the minority (23) and
+				 * keeps its quiet grey; `unknown` keeps the hairline, since an unrecorded status
+				 * is a real stored value and worth showing. Living is the default state, so it
+				 * gets the default treatment: nothing. Per-element measurement cleared the green
+				 * at every step -- only the picture showed that 94 of them shared a canvas.
+				 */}
+				<div
+					className={cn(
+						"h-0.5 w-full shrink-0",
+						person.living === "deceased"
+							? "bg-past"
+							: person.living === "unknown"
+								? "bg-hairline-strong"
+								: "bg-transparent",
+					)}
+				/>
 
-				<div className={cn("min-w-0 flex-1", lod === "compact" ? "px-2.5 py-1.5" : "px-3 py-2.5")}>
-					<div className="flex items-baseline gap-1.5">
-						{/*
-						 * No sex glyph on this line, and that was measured rather than assumed.
-						 *
-						 * It was tried here on the reasoning that the p90 name needs 109px of a 142px
-						 * column, so there was slack. There was not: the glyph plus its gap takes the
-						 * column to 105px, and 9 of 117 names went from fitting to truncating. The
-						 * name is the one thing on a card that must never be clipped -- it is what a
-						 * viewer is scanning for -- so the glyph lives on the metadata row below,
-						 * where the only competition is a date.
-						 */}
-						<p className="truncate text-[0.9375rem] font-medium leading-tight tracking-[-0.01em] text-ink">
+				<div className="flex min-h-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-1">
+					{/* The name line. Truncates, never wraps, and carries only CONDITIONAL marks. */}
+					<div className="flex items-center gap-1">
+						<span
+							className={cn(
+								"min-w-0 flex-1 truncate text-[0.9375rem] font-medium leading-tight",
+								data.isSelf ? "text-accent-ink" : "text-ink",
+							)}
+						>
 							{name}
-						</p>
-						{provenance.mark && (
+						</span>
+						{provenance && (
+							// `role="img"` is what lets this carry an accessible name: the mark is a
+							// GLYPH standing for a sentence ("✓✓" means "backed by a record"), and a
+							// bare span is a generic container that ARIA gives no name to -- so a
+							// screen reader would read the tick literally, or skip it. Biome's
+							// useAriaPropsSupportedByRole is right to insist.
 							<span
+								role="img"
 								title={provenance.title}
-								className={cn(
-									"shrink-0 font-mono text-[0.5625rem] leading-none",
-									provenance.className,
-								)}
+								aria-label={provenance.title}
+								className={cn("shrink-0 font-mono text-[0.5625rem] leading-none", provenance.tone)}
 							>
 								{provenance.mark}
 							</span>
 						)}
-						{trust.conflicted && (
+						{data.trust.conflicted && (
 							<ShieldQuestion
-								aria-label="families disagree about this person"
-								className="size-3 shrink-0 text-accent"
-								strokeWidth={1.5}
+								className="size-3 shrink-0 text-accent-dim"
+								strokeWidth={1.75}
+								aria-label="Families disagree on the dates"
 							/>
 						)}
 					</div>
 
-					{lod === "compact" ? (
-						// One line of metadata, and the relationship outranks the dates: at this
-						// size a viewer is scanning for WHO, and a birth year does not answer it.
-						(relation || dates) && (
-							<span className="truncate text-[0.6875rem] leading-tight text-ink-muted">
-								{relation ?? <span className="tabular font-mono">{dates}</span>}
-							</span>
-						)
+					{compact ? (
+						/* One line, and the kinship term outranks the dates: it is the fact that
+						   cannot be recovered by looking at the picture. */
+						<span className="truncate font-mono text-[0.625rem] leading-tight text-ink-faint">
+							{data.kinship?.label ?? dates}
+						</span>
 					) : (
 						<>
-							{relation && (
-								<p
+							{data.kinship && (
+								<span
 									className={cn(
-										"text-xs leading-[1.25]",
-										// Wraps to two lines instead of truncating, and that was a
-										// measurement rather than a preference: the kinship term is the
-										// widest thing on the card, and 31 of 117 people in the sample
-										// tree (26%) had theirs cut off. "great-great-uncle by marriage"
-										// needs 164px in a 142px column.
-										//
-										// Truncation is worse here than anywhere else on the card,
-										// because these terms share long prefixes -- "great-great-gran…"
-										// could be a grandmother or a grandfather, so the clipped half
-										// is the half that identifies the person. The name line has
-										// 33px of slack at p90 and never wraps, so the second line is
-										// where the room has to come from.
-										"kf-relation",
-										// An in-law rung is inferred from a partner's line rather than
-										// read off the graph, so it is drawn a step fainter than a term
-										// the ancestor walk proved. Same hierarchy the provenance tick
-										// uses: how firmly a thing is drawn tracks how well it is known.
-										data.kinship?.via === "in_law" || data.kinship?.via === "relation"
+										"kf-relation font-mono text-[0.625rem] leading-tight",
+										// An INFERRED kinship is drawn a step fainter than a proven one:
+										// `in_law` and `relation` are read off a partner's line or a stored
+										// relation rather than proven by the ancestor walk, the same
+										// how-firmly-drawn-tracks-how-well-known hierarchy as the tick.
+										data.kinship.via === "in_law" || data.kinship.via === "relation"
 											? "text-ink-faint"
 											: "text-ink-muted",
 									)}
 								>
-									{relation}
-								</p>
+									{data.kinship.label}
+								</span>
 							)}
 
-							<div className="mt-1.5 flex items-center gap-1.5 text-ink-faint">
-								{/* The sex glyph belongs here, not beside the name: on the name line it
-								    cost 37px of column and pushed 9 of 117 names into truncation. Here
-								    its only neighbour is a date, and both are recorded facts rather
-								    than identity. */}
-								<sexMark.Icon
-									aria-label={sexMark.title}
-									className="size-3 shrink-0"
-									strokeWidth={1.5}
-								/>
-								{dates && <span className="tabular font-mono text-[0.6875rem]">{dates}</span>}
+							<div className="flex items-center gap-1.5 text-ink-faint">
+								{/* On the metadata row, never the name line: this glyph is on EVERY card. */}
+								<sex.Icon className="size-2.5 shrink-0" strokeWidth={2} aria-label={sex.title} />
+								{dates && (
+									<span className="tabular truncate text-[0.625rem] leading-none">{dates}</span>
+								)}
 								{sharedBy > 1 && (
 									<span
-										className="flex items-center gap-1"
-										title={`recorded by ${sharedBy} families`}
+										className="ml-auto flex shrink-0 items-center gap-0.5 text-[0.625rem] leading-none"
+										title={`Described by ${sharedBy} families`}
 									>
-										<Users aria-hidden className="size-3" strokeWidth={1.5} />
-										<span className="tabular font-mono text-[0.625rem]">{sharedBy}</span>
+										<Layers className="size-2.5" strokeWidth={2} aria-hidden="true" />
+										<span className="tabular">{sharedBy}</span>
 									</span>
 								)}
 							</div>
 						</>
 					)}
 				</div>
+
+				<Handle type="source" position={Position.Bottom} isConnectable={false} />
 			</div>
+
+			{/*
+			 * The `+`, on the card's TRAILING edge.
+			 *
+			 * The fold chevrons already own the top and bottom centre with 44px targets, so the
+			 * right-hand edge is the one side of a card carrying no control. Always visible for
+			 * the SELECTED card, which is how a touch or keyboard user reaches it at all; on
+			 * hover otherwise, like the chevrons.
+			 */}
+			{data.onQuickAdd && (
+				<QuickAddButton
+					visible={Boolean(selected)}
+					// The whole FusedPerson, not `data.id`. The subject of a quick-add has to be a
+					// source row the viewer may write to, and the fused id is the smallest member id
+					// -- which on a merged person is the far family's row about half the time, so
+					// `addRelative` would refuse with "you may not change this graph" about somebody's
+					// own grandmother. The canvas resolves it through `editTarget`.
+					onOpen={() => data.onQuickAdd?.(data)}
+					className="absolute -right-2.5 top-1/2 z-10 size-6 -translate-y-1/2"
+				/>
+			)}
+
+			{/*
+			 * Fold controls, OUTSIDE the card and only where there is something to fold.
+			 *
+			 * Outside because the card is already at its measured content height, so a control
+			 * inside would either steal a line from the kinship term or overflow the box ELK
+			 * reserved. Absolutely positioned against the wrapper instead, which costs no
+			 * layout at all.
+			 *
+			 * A direction with nothing in it draws no button: a control that cannot do
+			 * anything reads as a broken feature rather than an inapplicable one.
+			 */}
+			{data.onFold && data.folds?.up && (
+				<FoldButton
+					direction="ancestors"
+					folded={Boolean(data.collapsed?.up)}
+					personId={data.id}
+					name={name}
+					hidden={data.hidden}
+					cardWidth={NODE_METRICS[lod].width}
+					cardHeight={NODE_METRICS[lod].height}
+					onFold={data.onFold}
+				/>
+			)}
+			{data.onFold && data.folds?.down && (
+				<FoldButton
+					direction="descendants"
+					folded={Boolean(data.collapsed?.down)}
+					personId={data.id}
+					name={name}
+					hidden={data.hidden}
+					cardWidth={NODE_METRICS[lod].width}
+					cardHeight={NODE_METRICS[lod].height}
+					onFold={data.onFold}
+				/>
+			)}
 		</div>
 	);
 }
 
 /**
- * The junction between partners. Deliberately tiny: a couple should read as two
- * cards joined by a point, not as three boxes in a row.
+ * One fold control.
  *
- * It answers a hover, unlike before. This dot is the node the sibling bar drops from and
- * every child edge originates at, so on a dense canvas "which junction does this family
- * hang off" is a real question -- and a 6px mark that does not respond reads as decoration
- * rather than as part of the graph. Scale only, because there is no room for anything
- * else at this size and growth is the one channel that survives being zoomed out.
+ * The count is the whole affordance: "12" beside a chevron says there is something to
+ * open and roughly how much, where a bare chevron says only that a control exists.
  */
-export function UnionNode({ data }: { data: { union: { status: string } } }) {
-	const dissolved = ["separated", "divorced"].includes(data.union.status);
+function FoldButton({
+	direction,
+	folded,
+	personId,
+	name,
+	hidden,
+	cardWidth,
+	cardHeight,
+	onFold,
+}: {
+	direction: "descendants" | "ancestors";
+	folded: boolean;
+	personId: string;
+	name: string;
+	hidden?: number;
+	/** The card's own box, so the hit area can never grow larger than what it belongs to. */
+	cardWidth: number;
+	cardHeight: number;
+	onFold: (personId: string, direction: "descendants" | "ancestors") => void;
+}) {
+	const up = direction === "ancestors";
+	// Points the way it will TRAVEL: a folded branch offers to open outward, an open one
+	// offers to close back toward the card.
+	const Icon = folded ? (up ? ChevronUp : ChevronDown) : up ? ChevronDown : ChevronUp;
+	const label = `${folded ? "Show" : "Hide"} ${name}'s ${up ? "ancestors" : "descendants"}`;
 
 	return (
-		<div className="group relative flex size-3 items-center justify-center">
-			<Handle type="target" position={Position.Top} />
-			<Handle type="source" position={Position.Bottom} />
+		<button
+			type="button"
+			onClick={(event) => {
+				// The canvas would otherwise treat this as a card click and pin the person.
+				event.stopPropagation();
+				onFold(personId, direction);
+			}}
+			// React Flow starts a drag on pointerdown; without this, pressing the button
+			// drags the card instead of firing the click. `nodrag` covers the same ground for
+			// their own handler, and both are cheap.
+			onPointerDown={(event) => event.stopPropagation()}
+			title={label}
+			aria-label={label}
+			aria-expanded={!folded}
+			className={cn(
+				/*
+				 * The TARGET is 44px; the visible pill is not.
+				 *
+				 * Measured at 375px: the pill alone was 20x14, so on a phone the primary collapse
+				 * gesture was a third of the 44px floor -- and it sits between two cards, where a
+				 * miss taps a person and pins them instead. But growing the pill to 44px would put
+				 * a control the size of a third of a card into the gap between generations, and
+				 * those gaps are where the sibling bars read.
+				 *
+				 * So the button is a transparent square that centres a small pill. The border,
+				 * fill and shadow move to the inner span, so the touch area is honest at every
+				 * zoom while the mark stays 20px.
+				 */
+				"nodrag absolute left-1/2 z-10 flex -translate-x-1/2 items-center justify-center",
+				"transition-opacity duration-(--duration-fast) ease-(--ease-out)",
+				// Revealed on hover of the wrapper, so the control appears with the card rather
+				// than having to be hunted for. Always visible once FOLDED, because a hidden
+				// branch behind a hidden control is unrecoverable.
+				folded ? "opacity-100" : "opacity-0 group-hover/node:opacity-100 focus-visible:opacity-100",
+			)}
+			/*
+			 * Sized INLINE against the live zoom, not with a Tailwind arbitrary-value utility.
+			 *
+			 * `size-(--kf-hit)` looked right and measured 35px: a utility resolves its variable
+			 * where the variable is DECLARED, so it read the `:root` definition with the
+			 * `var(--kf-zoom, 1)` fallback rather than the zoom published onto the viewport.
+			 * Reading `--kf-zoom` here, on an element inside that viewport, is what makes the
+			 * cascade deliver the live value.
+			 *
+			 * CAPPED at the card's own size, and that cap is a bug fix rather than caution. A
+			 * 44px screen target divided by a 0.4 zoom is 110 layout pixels, which at that zoom
+			 * is wider than the whole card -- measured live, the button covered a 32x17 card
+			 * completely and `elementFromPoint` at the card's centre returned the BUTTON, so
+			 * clicking a person opened a fold instead of their panel. A control may overhang its
+			 * card's edge; it may never eclipse it.
+			 */
+			style={{
+				width: `min(calc(44px / var(--kf-zoom, 1)), ${cardWidth * 0.5}px)`,
+				height: `min(calc(44px / var(--kf-zoom, 1)), ${cardHeight * 0.6}px)`,
+				...(up
+					? { top: `max(calc(-22px / var(--kf-zoom, 1)), -${cardHeight * 0.3}px)` }
+					: { bottom: `max(calc(-22px / var(--kf-zoom, 1)), -${cardHeight * 0.3}px)` }),
+			}}
+		>
 			<span
-				aria-hidden
 				className={cn(
-					"size-1.5 rounded-full",
-					// Spring, matching the card's lift and the dot LOD's growth: all three are
-					// responses to a gesture the viewer just made, and a different curve on each
-					// would read as three different products.
-					"transition-transform duration-(--duration-base) ease-(--ease-spring)",
-					"group-hover:scale-200",
-					dissolved ? "bg-hairline-strong" : "bg-accent-dim",
+					"flex items-center gap-0.5 rounded-full border border-hairline bg-surface-raised",
+					"px-1.5 py-0.5 text-ink-faint shadow-(--kf-shadow-card)",
+					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
+					"group-hover/node:border-hairline-strong",
+				)}
+			>
+				<Icon className="size-3" strokeWidth={2.5} aria-hidden="true" />
+				{folded && hidden ? (
+					<span className="tabular text-[0.5625rem] leading-none">{hidden}</span>
+				) : null}
+			</span>
+		</button>
+	);
+}
+
+/**
+ * Memoised, and that matters more here than anywhere else in the app.
+ *
+ * Focus rewrites className on every node through `setNodes`, so all 117 nodes receive a
+ * new props object on each hover. Without a memo every one of them re-renders and React
+ * Flow re-measures the lot.
+ */
+export const PersonNode = memo(PersonNodeInner);
+
+/**
+ * The union junction: a dot, not a box.
+ *
+ * Sized near-zero in the layout so a couple reads as a couple rather than as three
+ * nodes. Never draggable and never a tab stop -- a junction is structural, not somebody
+ * you can visit.
+ */
+function UnionNodeInner({ data }: NodeProps & { data: { union: { status?: string } } }) {
+	const status = data.union.status;
+	const ended = status === "separated" || status === "divorced";
+
+	return (
+		<div className="group flex size-3 items-center justify-center">
+			<Handle type="target" position={Position.Top} isConnectable={false} />
+			<div
+				className={cn(
+					"size-1.5 rounded-full transition-transform duration-(--duration-fast)",
+					"ease-(--ease-spring) group-hover:scale-200",
+					ended ? "bg-accent-dim" : "bg-hairline-strong",
 				)}
 			/>
+			<Handle type="source" position={Position.Bottom} isConnectable={false} />
 		</div>
 	);
 }
+
+export const UnionNode = memo(UnionNodeInner);

@@ -58,7 +58,19 @@ export const NODE_METRICS: Record<Lod, Metrics> = {
 	// neighbour.
 	full: { width: 168, height: 92, gap: 32, rowGap: 72 },
 	compact: { width: 148, height: 40, gap: 22, rowGap: 48 },
-	dot: { width: 16, height: 16, gap: 18, rowGap: 40 },
+	/*
+	 * 56x34, not 16x16, because the dot now carries a first name under it.
+	 *
+	 * A nameless dot showed the SHAPE of a family and nothing else -- you could see the graph
+	 * but not read it, so finding anybody meant going back to cards and losing the overview.
+	 * A first name is what fits: measured across all 117 people at 9px mono, a first name needs
+	 * 45px at p90 and 51px at the widest, where a FULL name needs 84px and would make this level
+	 * nearly as wide as the compact row it exists to be smaller than.
+	 *
+	 * The gap stays tight (18px) because the label is centred under the mark and the reserved
+	 * width already contains it, so neighbouring labels cannot collide.
+	 */
+	dot: { width: 56, height: 34, gap: 18, rowGap: 44 },
 };
 
 export const PERSON_WIDTH = NODE_METRICS.full.width;
@@ -213,6 +225,7 @@ export async function layoutGraph(
 	);
 
 	anchorFamilylessNodes(nodes, edges, positions, metrics.gap);
+	centreUnionDots(nodes, edges, positions);
 
 	const positioned = nodes.map((node) => {
 		const box = positions.get(node.id);
@@ -258,6 +271,53 @@ function generationBands(nodes: PositionedNode[], personHeight: number): Generat
 			right: Math.max(...members.map((m) => m.position.x + m.width)),
 			count: members.length,
 		}));
+}
+
+/**
+ * Slide each union dot to sit between the two people it joins.
+ *
+ * ELK places the junction to minimise edge crossings, which is the right objective for a
+ * layered graph and the wrong position for a marriage: measured on the sample tree, ALL 34
+ * couples had their dot off the midpoint between the partners, the worst by 498px. A dot
+ * hanging beside a couple rather than between them is what makes the drop to the children
+ * look like it leaves from nowhere -- the "not centre aligned" complaint.
+ *
+ * A post-layout nudge rather than an ELK constraint, for the same reason `siblingBars` is
+ * computed afterwards: the skeleton must not shift to accommodate cosmetics, and moving a
+ * 12x12 dot cannot introduce an overlap that matters. Only x moves; the y ELK assigned is
+ * what keeps the dot in its generation gap.
+ *
+ * Where the couple's midpoint and the children's midpoint disagree, this prefers the
+ * COUPLE. The dot's job is to say "these two are partners"; the bracket below already says
+ * which children are theirs, and it spans the children's own extent independently.
+ */
+function centreUnionDots(nodes: FlowNode[], edges: FlowEdge[], positions: Map<string, Box>): void {
+	/** Partners per union node id. */
+	const partners = new Map<string, string[]>();
+	for (const edge of edges) {
+		if (!edge.layout || edge.kind !== "partner") continue;
+		const existing = partners.get(edge.target);
+		if (existing) existing.push(edge.source);
+		else partners.set(edge.target, [edge.source]);
+	}
+
+	for (const node of nodes) {
+		if (node.type !== "union") continue;
+		const dot = positions.get(node.id);
+		const couple = partners.get(node.id);
+		// A single-parent union has nothing to sit between, so ELK's x is left alone -- the dot
+		// already hangs below its one parent, which is the honest picture.
+		if (!dot || !couple || couple.length < 2) continue;
+
+		const centres = couple
+			.map((id) => positions.get(id))
+			.filter((box): box is Box => Boolean(box))
+			.map((box) => box.x + box.width / 2);
+		if (centres.length < 2) continue;
+
+		const midpoint = (Math.min(...centres) + Math.max(...centres)) / 2;
+		dot.x = midpoint - dot.width / 2;
+	}
 }
 
 /**
