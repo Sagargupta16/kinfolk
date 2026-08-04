@@ -20,6 +20,15 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # gitleaks needs this, and without it the job fails with a 403 rather than a
+      # finding: on a `pull_request` event it calls GET /pulls/{n}/commits to scan
+      # only what the PR added, and the workflow's `contents: read` default does not
+      # cover that endpoint. The error reads "Resource not accessible by
+      # integration", which sounds like a missing token and is actually a missing
+      # scope.
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
