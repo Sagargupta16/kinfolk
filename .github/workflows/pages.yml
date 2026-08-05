@@ -1,0 +1,75 @@
+name: Deploy landing page
+
+# The PAGE, not the app.
+#
+# GitHub Pages serves `docs/index.html` at sagargupta.online/kinfolk/ -- the public front
+# door, matching how sagargupta.online/portfolio-react/ is served. It deliberately does
+# NOT serve Kinfolk itself: `pnpm build` emits four dynamic routes because /tree reads
+# Neon per request, /demo is a route handler that sets an httpOnly cookie, and every write
+# is a server action. Pages serves static files only, so the app lives on Vercel and this
+# page links to it.
+#
+# That split also lets the repository stay private while this page is public, because
+# Pages publishes only what is under docs/.
+
+on:
+  push:
+    branches: [main]
+    # Only when the page itself changes. Application code has its own workflow and must
+    # not trigger a Pages deploy.
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Pages allows one deployment at a time, and a queued one should wait rather than be
+# dropped: the last push is the content that should end up live.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: publish docs/
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Writing a Pages deployment needs both, and neither is in the read-only default.
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Guard against a dead app link
+        # The two app buttons are hidden until APP_URL is set, so a half-configured page
+        # never renders a link that 404s. This asserts the inverse: that APP_URL, once
+        # set, is a real absolute URL rather than a placeholder somebody left behind.
+        run: |
+          url=$(grep -oE 'const APP_URL = "[^"]*"' docs/index.html | sed 's/.*"\(.*\)"/\1/')
+          if [ -n "$url" ]; then
+            case "$url" in
+              https://*) echo "app link: $url" ;;
+              *) echo "::error::APP_URL is set to '$url', which is not an https URL."; exit 1 ;;
+            esac
+          else
+            echo "APP_URL is empty, so the app buttons stay hidden. Set it once the Vercel deployment exists."
+          fi
+
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload docs/
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          # Only this directory is published, which is what keeps a private repo's source
+          # private while the landing page is public.
+          path: docs/
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

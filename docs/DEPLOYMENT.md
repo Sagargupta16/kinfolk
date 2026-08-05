@@ -22,6 +22,19 @@ Every `ƒ` needs a server at request time, and none of them can be exported:
 
 GitHub Pages serves static files only, so it would host the landing page and nothing that makes this an app. `prod/kalchar` reached the same conclusion and left its own Pages workflow dormant with a note recording why.
 
+## Two things are deployed, to two places
+
+| What | Where | URL |
+| --- | --- | --- |
+| The landing page (`docs/index.html`) | GitHub Pages | `https://sagargupta.online/kinfolk/` |
+| The app itself | Vercel | the origin Vercel assigns |
+
+Pages already resolves this repository to the domain subpath -- `gh api repos/Sagargupta16/kinfolk/pages` reports `html_url: http://sagargupta.online/kinfolk/`, and the existing certificate covers `sagargupta.online`. So the front door is at the URL you want with no DNS work at all.
+
+The page publishes from `docs/`, which is also what lets this repository stay **private** while the page is public: Pages serves only that directory, never the source.
+
+The two app buttons on that page are hidden until `APP_URL` is set in `docs/index.html`. That is deliberate -- a link to a deployment that does not exist is worse than no link, because it reports the project as live and then 404s. `pages.yml` also fails the build if `APP_URL` is set to something that is not an `https://` URL, so a placeholder cannot ship.
+
 ## The URL: sagargupta.online/kinfolk
 
 The app is mounted at `/kinfolk` so it sits beside the other projects on that domain, matching `sagargupta.online/portfolio-react/`. `basePath` and `assetPrefix` in [`next.config.mjs`](../next.config.mjs) read `NEXT_PUBLIC_BASE_PATH`, so the same build serves the root locally and `/kinfolk` in production -- hardcoding it would make every local URL wrong.
@@ -94,6 +107,7 @@ CI needs no secrets at all. `lib/db/client.ts` is built to import cleanly with n
 | [`ci.yml`](../.github/workflows/ci.yml) | every PR and push to `main` | gitleaks over full history, then lint, typecheck, 279 tests, build, and a guard against dead Tailwind utilities in the built CSS |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | push to `main` touching app code | applies committed migrations to Neon, waits, then probes the live endpoints |
 | [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC | probes production, to catch a suspended Neon branch or a rotated secret |
+| [`pages.yml`](../.github/workflows/pages.yml) | push to `main` touching `docs/**` | publishes the landing page to GitHub Pages at `sagargupta.online/kinfolk/` |
 
 Vercel's own Git integration builds and promotes on push. `deploy.yml` deliberately does **not** duplicate that; it does the two things Vercel cannot: get the schema ahead of the code that depends on it, and assert afterwards that the deployment actually answers.
 
