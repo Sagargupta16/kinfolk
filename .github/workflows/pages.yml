@@ -37,7 +37,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # Writing a Pages deployment needs both, and neither is in the read-only default.
+      # All THREE, because a job-level `permissions` block REPLACES the workflow default
+      # rather than adding to it. Listing only the two Pages scopes dropped
+      # `contents: read`, and on a private repository checkout then fails with
+      # "fatal: repository not found" -- which reads like a wrong URL and is actually the
+      # token having no permission to see the repo at all.
+      contents: read
       pages: write
       id-token: write
     environment:
