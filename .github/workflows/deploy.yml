@@ -45,8 +45,10 @@ jobs:
     # Gated on a GitHub Environment so the production DATABASE_URL is only readable
     # from this job, and so a reviewer can be required before it runs.
     environment:
+      # No `url:` here on purpose: it would be a guess, and the one this workflow
+      # first shipped with pointed at an unrelated site. Vercel's own deployment
+      # link is the authoritative one.
       name: production
-      url: https://kinfolk.vercel.app
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -86,6 +88,18 @@ jobs:
     needs: migrate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Only once somebody has said where production IS.
+    #
+    # The first run of this workflow probed a guessed `kinfolk.vercel.app` and got three
+    # green checks from a completely unrelated site squatting that hostname -- no
+    # `_next/static` anywhere in its markup, so not even a Next build. A default that
+    # silently tests a stranger's server is worse than no check: it reports success for
+    # a deployment that does not exist.
+    #
+    # So the URL is required now rather than guessed. Set the repository variable
+    # PRODUCTION_URL (Settings -> Secrets and variables -> Actions -> Variables) and
+    # this starts running; until then it skips and says so.
+    if: vars.PRODUCTION_URL != ''
     steps:
       - name: Wait for Vercel to promote the new build
         # Vercel builds on its own trigger, so this workflow cannot know when the
@@ -95,7 +109,7 @@ jobs:
 
       - name: Check the public endpoints
         env:
-          BASE: ${{ vars.PRODUCTION_URL || 'https://kinfolk.vercel.app' }}
+          BASE: ${{ vars.PRODUCTION_URL }}
         run: |
           set -u
           fail=0

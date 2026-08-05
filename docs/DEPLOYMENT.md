@@ -38,7 +38,7 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. The **pooler** host is correct here -- the app talks over the serverless HTTP driver, and a serverless function opens a connection per invocation. |
 | `AUTH_SECRET` | A fresh 32+ byte random string. **Not** the one from `.env.local`: a local secret that leaks should not be able to forge production sessions. Generate with `node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"`. |
-| `AUTH_URL` | The deployed origin, e.g. `https://kinfolk.vercel.app`. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. |
+| `AUTH_URL` | The deployed origin Vercel gives you, with no trailing slash. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. Do NOT assume `kinfolk.vercel.app`: an unrelated project already answers there. |
 | `AUTH_GITHUB_ID` | From the production OAuth app below. |
 | `AUTH_GITHUB_SECRET` | Same. |
 
@@ -48,8 +48,8 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 
 The development app's callback points at `http://localhost:3007`, so it cannot serve the deployed site. Create a second one at [github.com/settings/developers](https://github.com/settings/developers):
 
-- **Homepage URL**: `https://kinfolk.vercel.app`
-- **Authorization callback URL**: `https://kinfolk.vercel.app/api/auth/callback/github`
+- **Homepage URL**: the origin Vercel assigned
+- **Authorization callback URL**: that origin plus `/api/auth/callback/github`
 
 The callback path is fixed by Auth.js. Do not shorten it.
 
@@ -62,7 +62,9 @@ For the workflows in [`.github/workflows/`](../.github/workflows):
 | Kind | Name | Purpose |
 | --- | --- | --- |
 | Secret | `DATABASE_URL` | Migrations only. Use the **direct** host: drizzle-kit needs TCP. |
-| Variable | `PRODUCTION_URL` | The deployed origin. Optional -- the health checks fall back to `https://kinfolk.vercel.app`. |
+| Variable | `PRODUCTION_URL` | The deployed origin, with no trailing slash. **Required**: the endpoint checks skip until it is set. |
+
+`PRODUCTION_URL` is required rather than defaulted, and that is a correction rather than caution. The first version of `deploy.yml` fell back to a guessed `https://kinfolk.vercel.app`, and its first real run reported **three green checks from an unrelated site** already answering on that hostname -- no `_next/static` anywhere in its markup, so not even a Next build. A check that silently probes somebody else's server is worse than no check, because it reports success for a deployment that does not exist. Both workflows now skip with `if: vars.PRODUCTION_URL != ''` instead.
 
 Create a **`production` GitHub Environment** and scope `DATABASE_URL` to it. That way only the migrate job can read it, and a required reviewer can be added later without touching the workflow.
 
