@@ -19,6 +19,7 @@ import type { Degree } from "@/lib/tree/density";
 import type { FlowNode } from "@/lib/tree/graph";
 import { searchPeople } from "@/lib/tree/search";
 import { cn } from "@/lib/utils";
+import { SearchEmpty } from "./TreeStates";
 
 /** Why a row is in the list, when it is not the obvious reason. */
 const REASON: Record<string, string> = {
@@ -32,6 +33,7 @@ export function TreeSearch({
 	selfId,
 	degree,
 	onGoTo,
+	focusRef,
 }: {
 	nodes: FlowNode[];
 	/** Sorts the viewer first among namesakes, and marks their row. */
@@ -40,6 +42,14 @@ export function TreeSearch({
 	degree?: Map<string, Degree>;
 	/** Handed the fused node id; the canvas owns what "go there" means. */
 	onGoTo: (id: string) => void;
+	/**
+	 * Filled with a function that focuses the input, for the `/` shortcut.
+	 *
+	 * A ref holding a callback rather than a `focus` boolean prop: focusing is an EVENT,
+	 * and a boolean would have to be set and then unset, which means the second `/` in a
+	 * session does nothing until something clears the flag.
+	 */
+	focusRef?: React.RefObject<(() => void) | null>;
 }) {
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
@@ -74,25 +84,21 @@ export function TreeSearch({
 	const active = cursor.query === query && cursor.index < hits.length ? cursor.index : -1;
 
 	/**
-	 * Slash focuses the search box.
+	 * Publish the focus handle upwards, rather than binding `/` here.
 	 *
-	 * The convention everywhere else a graph is searched, and it costs no screen
-	 * space. Guarded on the event target: typing a slash INTO the field, or into any
-	 * future editor input, must insert the character rather than steal focus.
+	 * This component used to own its own `/` listener. Once the canvas gained a
+	 * shortcuts table (see TreeShortcuts.tsx) that became a second place deciding what a
+	 * keystroke means -- two `keydown` handlers for one key, each with its own idea of
+	 * when typing should be exempt, and a help sheet documenting only one of them. So the
+	 * binding lives in the table and this exposes the action it invokes.
 	 */
 	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key !== "/" || event.metaKey || event.ctrlKey) return;
-			const target = event.target as HTMLElement | null;
-			if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-			if (target?.isContentEditable) return;
-			event.preventDefault();
-			inputRef.current?.focus();
+		if (!focusRef) return;
+		focusRef.current = () => inputRef.current?.focus();
+		return () => {
+			focusRef.current = null;
 		};
-
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	}, [focusRef]);
 
 	function go(id: string) {
 		onGoTo(id);
@@ -188,13 +194,17 @@ export function TreeSearch({
 					// viewport, and a listbox would promise a selection model that does not
 					// exist here.
 					className={cn(
-						"absolute inset-x-0 top-[calc(100%+0.25rem)] z-20 overflow-hidden rounded-md",
-						"border border-hairline bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
+						"kf-glass absolute inset-x-0 top-[calc(100%+0.25rem)] z-20",
+						"overflow-hidden rounded-lg",
 					)}
 				>
 					{hits.length === 0 && (
-						<li className="px-3 py-2.5 font-mono text-[0.6875rem] text-ink-faint">
-							nobody by that name
+						<li>
+							{/* Echoes the query back, because the commonest cause is a typo and a
+							    reader cannot spot one they cannot see -- and it names the matching
+							    rule, since "no match" on a name you are sure of reads as broken
+							    until you know the search is not fuzzy. */}
+							<SearchEmpty query={query.trim()} />
 						</li>
 					)}
 

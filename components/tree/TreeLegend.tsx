@@ -367,11 +367,14 @@ function personRows(census: TreeCensus, lod: Lod, hasSelf: boolean): Row[] {
 	// PROVENANCE is declared strongest evidence first, which is the order a scale
 	// should be read in. Filtered on the mark, so a level that draws nothing needs no
 	// row -- and a future level with no glyph needs no change here.
-	for (const [level, { mark, title, className }] of Object.entries(PROVENANCE)) {
+	// `tone`, not `className`: the field carries only a colour utility, and naming it after
+	// what it MEANS is what let the card and this legend keep agreeing when the card was
+	// rewritten. A generic `className` invites somebody to put layout in it.
+	for (const [level, { mark, title, tone }] of Object.entries(PROVENANCE)) {
 		if (!mark) continue;
 		rows.push({
 			sample: (
-				<span aria-hidden className={cn("font-mono text-[0.5625rem]", className)}>
+				<span aria-hidden className={cn("font-mono text-[0.5625rem]", tone)}>
 					{mark}
 				</span>
 			),

@@ -1,116 +1,246 @@
 @import "tailwindcss";
 
-/**
- * Kinfolk design tokens.
+/*
+ * ============================================================================
+ * Kinfolk design tokens
+ * ============================================================================
  *
- * Monochrome surface stack + one accent. The accent is warm amber rather than
- * the usual product blue: this is an archive of relatives, and warmth reads as
- * personal where blue reads as SaaS.
+ * Two schemes, one set of names. Every colour is declared twice -- once under
+ * `[data-theme="dark"]`, once under `[data-theme="light"]` -- and referenced
+ * everywhere by its semantic name, so no component knows which scheme it is in and
+ * nothing carries a `dark:` variant. `lib/theme.ts` writes the attribute onto `<html>`
+ * before first paint.
  *
- * Canvas is near-black, never #000, so elevated surfaces remain visible.
+ * `@theme inline` is what makes that work, and the `inline` is load-bearing. A plain
+ * `@theme` copies the VALUE into a `--color-*` property on `:root`, freezing whatever
+ * `[data-theme]` said at that moment; `inline` emits the reference into the utility
+ * itself, so `bg-canvas` compiles to `background-color: var(--kf-canvas)` and resolves
+ * against the live attribute on every element.
+ *
+ * Contrast is a measurement, not a taste call. Text owes 4.5:1 (WCAG SC 1.4.3) and an
+ * edge, ring or glyph owes 3:1 (SC 1.4.11) against the surface behind it. Every ratio
+ * quoted below was computed from the sRGB luminance of the pair, and anything drawn
+ * with an alpha was scored on the COMPOSITE (fg*a + bg*(1-a)) rather than on the token
+ * -- an opacity is not a colour until you know what sits behind it.
  */
-@theme {
-	--color-canvas: #0a0b0d;
-	--color-surface: #121316;
-	--color-surface-raised: #191b1f;
-	--color-hairline: #26282e;
-	--color-hairline-strong: #33363e;
 
-	--color-ink: #f2f3f5;
-	--color-ink-muted: #a1a5ad;
+@theme inline {
+	--color-canvas: var(--kf-canvas);
+	--color-surface: var(--kf-surface);
+	--color-surface-raised: var(--kf-surface-raised);
+	/* Floating chrome: a panel over the canvas, translucent so the tree shows through. */
+	--color-glass: var(--kf-glass);
+	--color-hairline: var(--kf-hairline);
+	--color-hairline-strong: var(--kf-hairline-strong);
+
+	--color-ink: var(--kf-ink);
+	--color-ink-muted: var(--kf-ink-muted);
+	--color-ink-faint: var(--kf-ink-faint);
+
+	--color-accent: var(--kf-accent);
+	--color-accent-dim: var(--kf-accent-dim);
 	/*
-	 * The floor for TEXT, so it is set by contrast rather than by taste: 5.31:1 on
-	 * canvas, 4.65:1 on the raised surface, both clear of WCAG SC 1.4.3's 4.5:1. The
-	 * previous #6f747d measured 4.19:1 and failed, which matters because this token
-	 * carries dates, "born <name>", stat labels and every placeholder -- the
-	 * metadata a genealogy UI is mostly made of.
-	 */
-	--color-ink-faint: #80858e;
-
-	--color-accent: #e0a33e;
-	--color-accent-dim: #8a6526;
-
-	/*
-	 * Edges, split from the hairline stack.
+	 * The accent as TEXT, which owes 4.5:1 where a stroke owes 3:1.
 	 *
-	 * A hairline is a border between surfaces and may be as quiet as it likes. An
-	 * edge is the CONTENT -- who descends from whom, and who knows whom -- so it is a
-	 * meaningful graphic under WCAG SC 1.4.11 and owes 3:1. Drawn in
-	 * --color-hairline-strong an edge managed 1.63:1, which is a line you can only
-	 * find if you already know it is there.
-	 *
-	 * Two values, because family and social are not the same kind of thing. The
-	 * skeleton is what the page is about and sits at 7.50:1; the relation overlay is
-	 * an annotation on it, at 4.03:1. Both clear the threshold, so the gap between
-	 * them is hierarchy rather than one of them being sacrificed to make room.
-	 *
-	 * `--color-edge` deliberately lands near React Flow's own #b1b1b7 (9.23:1), which
-	 * is what the skeleton rendered as while its rule was losing to React Flow's
-	 * stylesheet on source order. The look was right and unowned; this makes it ours
-	 * without a visible change.
+	 * Identical to `--color-accent` in dark (amber is 8.94:1 there, comfortably past
+	 * both floors) and a step darker in light, where the same amber would be 1.9:1 and
+	 * effectively invisible as a word.
 	 */
-	--color-edge: #9aa0ac;
-	/*
-	 * Raised from #6b7180 (4.03:1) to 5.90:1, because the overlay was the half of this
-	 * graph that could not be read. Kinfolk is a contact graph as much as a pedigree, so
-	 * a friendship is CONTENT, not an annotation -- and at 4.03 with a 0.75px stroke it
-	 * was the faintest mark on the canvas carrying information nothing else carried.
-	 *
-	 * The gap to --color-edge (7.50:1) is still the hierarchy: 1.27x, and now both ends
-	 * of it are legible rather than one being sacrificed to make room for the other.
-	 * Weight carries the rest of the separation.
-	 */
-	--color-edge-soft: #868d9b;
-	/*
-	 * `--color-edge-far` was deleted here.
-	 *
-	 * It existed to fade a relation whose two people sat far apart, because 52 permanent
-	 * overlay lines at a median span of 2214px were the haze the cards sat in. Relations
-	 * are now revealed per person instead, so the problem it mitigated no longer exists --
-	 * and fading a line the viewer explicitly asked for would be the wrong answer anyway.
-	 */
-	/* A relation that has ended: dimmer than the overlay, still 3.32:1, and a fixed
-	   value rather than an opacity so the composite is predictable, not emergent. */
-	--color-edge-past: #5f6470;
+	--color-accent-ink: var(--kf-accent-ink);
 
-	/* Living vs deceased is the one semantic colour pair a tree needs. */
-	--color-living: #5fb47f;
-	--color-past: #6f747d;
+	--color-edge: var(--kf-edge);
+	--color-edge-soft: var(--kf-edge-soft);
+	--color-edge-past: var(--kf-edge-past);
 
-	--radius-node: 0.625rem;
+	--color-living: var(--kf-living);
+	--color-past: var(--kf-past);
+	--color-danger: var(--kf-danger);
 
-	--duration-fast: 120ms;
-	--duration-base: 200ms;
-	--duration-slow: 320ms;
-	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-	/*
-	 * Overshoots, then settles. Reserved for a gesture the viewer just made -- a card
-	 * lifting, a dot growing under the cursor -- where the overshoot reads as the thing
-	 * responding to them. Never for entrances or for anything the canvas does on its
-	 * own: a hundred cards springing past their positions is a toy, and it also fights
-	 * the layout, which is the one thing an entrance must not do.
-	 */
-	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--radius-node: 0.75rem;
 
 	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 	--font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 /*
- * Dash rhythms, as tokens.
+ * Durations and easings do not vary by scheme, so they sit in a plain `@theme`.
  *
- * Two readers have to agree on these: the edge rules below, and the sample lines in
- * the legend. Hardcode the pattern in both and the next rhythm change gets made in
- * one of them, leaving the key confidently describing a line the canvas no longer
- * draws -- the one failure a legend cannot survive, because its whole value is being
- * trusted without checking.
+ * Tailwind 4 arbitrary values need PARENTHESES to read one of these:
+ * `duration-(--duration-base)` compiles to `var(--duration-base)`. The SQUARE-BRACKET
+ * form emits the literal property name instead, which is not a valid duration -- so the
+ * property silently falls back to its initial value and the transition simply does not
+ * happen. Nothing warns: not the build, not Biome, not the console. 34 utilities across
+ * this repo were dead this way once; confirm the computed style on a real element when
+ * adding one.
  *
+ * The broken form is described rather than written out here on purpose: Tailwind scans
+ * this file for class names, comments included, so spelling it literally compiles a dead
+ * rule into the stylesheet as proof of its own warning.
+ */
+@theme {
+	--duration-fast: 120ms;
+	--duration-base: 200ms;
+	--duration-slow: 320ms;
+	/* Panels and sheets travel far enough that 200ms reads as a jump rather than a slide. */
+	--duration-panel: 380ms;
+
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	/*
+	 * Overshoots, then settles. Reserved for a gesture the viewer just made -- a card
+	 * lifting, a dot growing under the cursor -- where the overshoot reads as the thing
+	 * responding to them. Never for entrances: a hundred cards springing past their
+	 * positions is a toy, and it fights the layout, which is the one thing an entrance
+	 * must not do.
+	 */
+	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dark, the default                                                          */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * `:root` carries dark as well as the attribute selector, so a document whose
+ * attribute never arrived still renders a coherent canvas rather than unstyled text.
+ * The inline script sets it synchronously, but a blocked script should degrade to a
+ * theme rather than to nothing.
+ */
+:root,
+[data-theme="dark"] {
+	/* Near-black, never #000: a true black canvas makes every hairline a hard edge and
+	   removes the room a raised surface needs in order to read as raised. */
+	--kf-canvas: #0a0b0d;
+	--kf-surface: #121316;
+	--kf-surface-raised: #191b1f;
+	--kf-glass: color-mix(in oklab, #191b1f 82%, transparent);
+	--kf-hairline: #26282e;
+	--kf-hairline-strong: #33363e;
+
+	--kf-ink: #f2f3f5; /* 17.4:1 on canvas */
+	--kf-ink-muted: #a1a5ad; /* 8.13:1 */
+	/* The floor for TEXT, set by contrast rather than taste: 5.31:1 on canvas, 4.65:1
+	   on the raised surface. This token carries dates, stat labels and every
+	   placeholder -- the metadata a genealogy UI is mostly made of. */
+	--kf-ink-faint: #80858e;
+
+	/* Warm amber, deliberately not product blue: this is an archive of relatives, and
+	   warmth reads as personal where blue reads as SaaS. 8.94:1. */
+	--kf-accent: #e0a33e;
+	--kf-accent-dim: #8a6526;
+	--kf-accent-ink: #e0a33e;
+
+	/*
+	 * Edges are split from the hairline stack. A hairline is a border between surfaces
+	 * and may be as quiet as it likes; an edge is the CONTENT -- who descends from whom
+	 * -- so it is a meaningful graphic under SC 1.4.11 and owes 3:1. Drawn in
+	 * hairline-strong an edge managed 1.63:1, findable only if you knew it was there.
+	 */
+	--kf-edge: #9aa0ac; /* 7.50:1 -- the family skeleton */
+	--kf-edge-soft: #868d9b; /* 5.90:1 -- the relation overlay */
+	--kf-edge-past: #5f6470; /* 3.32:1 -- an ended relation */
+
+	/* Living vs deceased is the one semantic colour pair a tree needs. */
+	--kf-living: #5fb47f;
+	--kf-past: #6f747d;
+	--kf-danger: #d9705f;
+
+	/*
+	 * How far the direction taper's faint end fades.
+	 *
+	 * Never to 0: a stroke reaching transparent reads as cut off rather than as
+	 * arriving, and the terminus is exactly where a reader looks to see WHO a relation
+	 * lands on. 0.68 composites to 3.28:1 here -- the first attempt used 0.35, which
+	 * measures 1.69:1 and is the precise defect this repo's contrast rule exists to
+	 * catch.
+	 */
+	--kf-taper-fade: 0.68;
+	/* Alphas per scheme: the same alpha over a white surface is a different mark than
+	   over a near-black one, so each was scored separately on its own canvas. */
+	--kf-ring-alpha: 28%;
+	--kf-wash-alpha: 8%;
+	--kf-lattice-alpha: 56%;
+	/*
+	 * Elevation. Hairlines carry structure in this UI, so a shadow only ever says "this
+	 * floats above the canvas" -- one soft, wide, low-opacity pair rather than a
+	 * material-design stack.
+	 */
+	--kf-shadow-panel: 0 16px 48px -12px rgb(0 0 0 / 0.72), 0 2px 8px -2px rgb(0 0 0 / 0.5);
+	--kf-shadow-card: 0 8px 24px -10px rgb(0 0 0 / 0.65);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Light                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Not an inversion of the dark set, and the ratios are why.
+ *
+ * Inverting gives pure-white surfaces and mid-grey text at 3.x:1, so the whole stack
+ * was scored fresh against a warm off-white canvas (#fbfaf8, not #fff: a paper-white
+ * field keeps the restraint the near-black one has, and leaves #fff free to mean
+ * "raised"). The accent had to go DARKER rather than lighter -- amber at #e0a33e is
+ * 1.9:1 on white -- so it becomes a bronze that reads as the same warm hue at 4.79:1.
+ *
+ * Two tokens are pinned by their floors and cannot be quietened further: `ink-faint`
+ * at 4.77:1 is the last rung above the 4.5 text floor, and `edge-past` at 3.24:1 is
+ * the last above the 3:1 graphics floor.
+ */
+[data-theme="light"] {
+	--kf-canvas: #fbfaf8;
+	--kf-surface: #ffffff;
+	--kf-surface-raised: #ffffff;
+	--kf-glass: color-mix(in oklab, #ffffff 86%, transparent);
+	--kf-hairline: #e4e2dd; /* 1.24:1 -- a boundary, not a mark */
+	--kf-hairline-strong: #cfccc5; /* 1.54:1 */
+
+	--kf-ink: #17191c; /* 16.89:1 on canvas */
+	--kf-ink-muted: #585d66; /* 6.35:1 */
+	--kf-ink-faint: #6b7079; /* 4.77:1 */
+
+	--kf-accent: #9a6410; /* 4.79:1 */
+	--kf-accent-dim: #c79a4e;
+	--kf-accent-ink: #8a5a0e; /* 5.62:1, for the accent used as a word */
+
+	--kf-edge: #6e737c; /* 4.57:1 */
+	--kf-edge-soft: #868b94; /* 3.28:1 */
+	--kf-edge-past: #878c95; /* 3.24:1 */
+
+	--kf-living: #2f7d4f; /* 4.83:1 */
+	--kf-past: #7f848c; /* 3.61:1 */
+	--kf-danger: #b03a28;
+
+	/* Higher than dark's 0.68: the same alpha over a light canvas loses more contrast,
+	   and 0.82 is what puts the taper's faint end at 3.45:1. */
+	--kf-taper-fade: 0.82;
+	--kf-ring-alpha: 34%;
+	--kf-wash-alpha: 10%;
+	--kf-lattice-alpha: 72%;
+	--kf-shadow-panel: 0 16px 40px -14px rgb(23 25 28 / 0.18), 0 2px 6px -2px rgb(23 25 28 / 0.1);
+	--kf-shadow-card: 0 6px 18px -10px rgb(23 25 28 / 0.16);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Scheme-independent tokens                                                  */
+/* -------------------------------------------------------------------------- */
+
+/*
  * A plain `:root` rather than `@theme`: there is no `stroke-dasharray-*` utility
  * namespace for Tailwind to generate from these, so putting them in the theme block
  * would imply a class that does not exist.
  */
 :root {
+	/*
+	 * Relation categories are told apart by dash RHYTHM, not colour -- colour-coding
+	 * five categories would spend the one accent five times over. Ordered tightest to
+	 * sparsest, so the dash reads as distance from kinship.
+	 *
+	 * Each rhythm is a token because two readers depend on it: the edge rules below and
+	 * the legend's sample lines. Hardcode it in both and the next change lands in one of
+	 * them, leaving the key describing a line the canvas no longer draws -- the one
+	 * failure a legend cannot survive, since its whole value is being believed without
+	 * checking.
+	 */
 	--kf-dash-kin: 8 3;
 	--kf-dash-care: 9 3 1 3;
 	--kf-dash-social: 5 4;
@@ -120,78 +250,151 @@
 	--kf-dash-ended: 1 5;
 
 	/*
-	 * Stroke weights, as ONE scale.
+	 * Stroke weight is ONE scale, and four readers depend on it: the skeleton rule, the
+	 * base relation rule, the three closeness rules, and the legend's samples. Before
+	 * this they each named their own number and had already drifted -- the base relation
+	 * rule said 1 while `is-close-1` said 0.75, so an edge's weight depended on whether
+	 * its closeness class had matched, and 0.75 lost its dash rhythm entirely below
+	 * about 0.8 zoom.
 	 *
-	 * Four separate places used to name their own numbers -- the skeleton rule, the base
-	 * relation rule, three closeness rules, and the legend's sample lines -- and they
-	 * had drifted: the base relation rule said 1 while `is-close-1` said 0.75, so the
-	 * weight an edge got depended on whether its closeness class had matched. A reader
-	 * cannot learn a scale whose steps are not evenly spaced, and 0.75 is below the
-	 * width at which a dash rhythm survives at all once the canvas is zoomed out.
-	 *
-	 * So: four steps, each 0.4 apart, sharing one floor. The overlay's weakest tie is
-	 * now the same 1.1 the old scale used as its MIDDLE step, and the skeleton stays
-	 * heaviest so the hierarchy the layout establishes is never inverted.
+	 * Centred ON the skeleton weight rather than capped under it, and only because
+	 * relations are REVEALED one person at a time: a revealed relation is not competing
+	 * with the skeleton, it is the answer to a question just asked. Restore an always-on
+	 * overlay and this inverts back into a lie.
 	 */
 	--kf-stroke-faint: 1.1;
 	--kf-stroke-soft: 1.5;
 	--kf-stroke-firm: 1.9;
 	--kf-stroke-skeleton: 2.3;
-	/*
-	 * The top of the scale, for the closest revealed tie.
-	 *
-	 * Above the skeleton, which the old scale never allowed: every relation weight used to
-	 * be capped under 2.3 so an always-on overlay could not outweigh a parentage. A
-	 * REVEALED relation is the one thing the viewer explicitly asked to see, so being the
-	 * heaviest line on screen while it is up is correct -- and the skeleton is only ever
-	 * outweighed by the handful of lines belonging to the person under the pointer.
-	 */
 	--kf-stroke-close: 3;
+
+	/*
+	 * A 44px touch target measured in SCREEN pixels, for controls inside the canvas.
+	 *
+	 * Everything in `.react-flow__viewport` is inside a scaled layer, so a plain `44px`
+	 * is 44 * zoom on screen: the fold chevrons measured 35px at 0.785 zoom and would be
+	 * 7px at the 0.15 floor. Dividing by the scale the browser is about to apply is what
+	 * keeps the target honest at every zoom.
+	 *
+	 * `--kf-zoom` is published onto the viewport element by TreeCanvas. The fallback of 1
+	 * matters: before the first effect runs, and for any control rendered outside the
+	 * canvas, this has to resolve to a plain 44px rather than to nothing.
+	 */
+	--kf-hit: calc(44px / var(--kf-zoom, 1));
 }
+
+/* -------------------------------------------------------------------------- */
+/* Base                                                                       */
+/* -------------------------------------------------------------------------- */
 
 html {
+	/* Also set as a real property by lib/theme.ts, so scrollbars and form controls
+	   follow. Declared here too so a document with no script still gets it. */
 	color-scheme: dark;
+	/* The canvas owns scrolling; a document rubber-band fights a pan gesture. */
+	overscroll-behavior: none;
 }
 
-/**
- * The dot-lattice spotlight, from brand/portfolio-react's `.grid-bg`.
+[data-theme="light"] {
+	color-scheme: light;
+}
+
+body {
+	background: var(--color-canvas);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+/* Numbers that sit in a column -- dates, counts -- must not jitter as they change. */
+.tabular {
+	font-variant-numeric: tabular-nums;
+	font-family: var(--font-mono);
+}
+
+/*
+ * Focus, once, for everything.
  *
- * Its hero sits on a faint dot texture masked to a soft ellipse, so the page has a centre
- * of gravity instead of being type floating on a void -- which is exactly what Kinfolk's
- * landing page was. The same technique already runs on the CANVAS (React Flow's dot
- * pattern with a radial mask), so bringing it here makes the two screens read as one
- * product: you meet the lattice on the landing page and then pan across it in the graph.
+ * `:focus-visible` rather than `:focus`, so a mouse click leaves no ring, plus an
+ * offset in the canvas colour -- which is what keeps the indicator visible against a
+ * card AND against the canvas.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+	border-radius: 0.25rem;
+}
+
+/* React Flow paints its own ring on the node wrapper; ours has to reach the card. */
+.react-flow__node:focus-visible {
+	outline: none;
+}
+
+.react-flow__node:focus-visible .kf-card,
+.react-flow__node:focus-visible .kf-dot {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Motion gate                                                                */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * There is deliberately NO `prefers-reduced-motion` rule in this file.
  *
- * Geometry differs from theirs on purpose. 22px there, 24px here to match the canvas's own
- * `<Background gap={24}>` -- a visitor who lands and then opens the graph should not see
- * the texture change pitch under them.
+ * The animations here carry information: the entrance stagger shows generations
+ * assembling oldest first, the draw-on shows the skeleton growing downwards from
+ * parent to child, the pulse shows which way parentage runs. An OS flag set years ago
+ * to stop advertising banners jumping would silently delete that channel, and the
+ * reader would never learn a channel had existed.
  *
- * Contrast is deliberately BELOW the canvas lattice's 1.14:1 (this sits on a page with
- * running text over it, where that one sits behind cards), and no 3:1 floor applies
- * because a texture carrying meaning would be a texture competing with the words.
+ * So the switch is in the app instead -- `data-motion="off"` on `<html>`, written by
+ * the Motion control in the toolbar. It asks about THIS canvas, which is the only
+ * question whose answer is knowable, and it is discoverable and reversible.
+ *
+ * `!important` because it has to beat the inline animation styles React Flow and
+ * Motion both write. 0.01ms rather than 0: a zero-duration animation never fires
+ * `animationend`, so anything awaiting that event would hang forever.
+ */
+[data-motion="off"],
+[data-motion="off"] *,
+[data-motion="off"] *::before,
+[data-motion="off"] *::after {
+	animation-duration: 0.01ms !important;
+	animation-delay: 0ms !important;
+	animation-iteration-count: 1 !important;
+	transition-duration: 0.01ms !important;
+	transition-delay: 0ms !important;
+	scroll-behavior: auto !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Page texture                                                               */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The masked dot lattice every full-page screen wears, ported from
+ * brand/portfolio-react.
+ *
+ * Pitched at 24px to match the canvas's own `<Background gap={24}>`, which is the
+ * point: a visitor meets this texture on the landing page and then pans across the
+ * same one in the graph, instead of watching it change pitch. Masked off-centre at
+ * 50% 38% so the brightest part sits under the headline rather than in the empty
+ * lower half.
  */
 .kf-lattice {
-	position: absolute;
-	inset: 0;
 	background-image: radial-gradient(
-		color-mix(in oklab, var(--color-hairline) 70%, var(--color-canvas)) 1px,
-		transparent 1px
+		circle at 1px 1px,
+		color-mix(in oklab, var(--color-hairline-strong) var(--kf-lattice-alpha), transparent) 1px,
+		transparent 0
 	);
 	background-size: 24px 24px;
-	/* Off-centre towards the top, where the headline is, so the brightest part of the
-	   texture sits under the thing being read rather than in the empty lower half. */
-	mask-image: radial-gradient(ellipse 70% 60% at 50% 38%, black 25%, transparent 76%);
-	pointer-events: none;
+	mask-image: radial-gradient(ellipse 80% 60% at 50% 38%, #000 0%, transparent 100%);
 }
 
-/**
- * The pill chip that opens a section, from portfolio-react's `.badge-pill`.
- *
- * Their section rhythm is: chip, then headline. It gives a block of text somewhere to
- * start, and it is the one piece of chrome that says "this is a designed page" rather than
- * "this is a document". Ours is mono and uppercase rather than their sentence case,
- * matching the metadata voice already used across the canvas.
- */
+/* The pill that opens every full-page screen, before the headline. */
 .kf-chip {
 	display: inline-flex;
 	align-items: center;
@@ -201,304 +404,108 @@ html {
 	background: color-mix(in oklab, var(--color-surface) 70%, transparent);
 	padding: 0.3125rem 0.75rem;
 	font-family: var(--font-mono);
-	font-size: 0.625rem;
-	letter-spacing: 0.14em;
+	font-size: 0.6875rem;
+	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: var(--color-ink-muted);
-}
-
-body {
-	background-color: var(--color-canvas);
-	color: var(--color-ink);
-	font-family: var(--font-sans);
-	-webkit-font-smoothing: antialiased;
-}
-
-/* Numbers in a genealogy UI are dates; they must not jitter between rows. */
-.tabular {
-	font-variant-numeric: tabular-nums;
+	backdrop-filter: blur(8px);
 }
 
 /*
- * React Flow's defaults are light-themed and heavy; quiet them down.
+ * Floating chrome: toolbars, the detail panel, the legend, the overview.
  *
- * EVERY override in this file qualifies with `.react-flow`, and that is not style.
- * React Flow's stylesheet is imported by TreeCanvas, so it lands after this file and
- * wins any single-class tie on source order alone -- silently, since the rule is
- * still there in the file and only the computed value gives it away. Three overrides
- * had already lost that way before this was noticed. Read the computed style off a
- * live element when adding another.
+ * Glass is confined to elements that FLOAT over the canvas, and that boundary is
+ * load-bearing rather than stylistic. `backdrop-filter` forces a compositor layer and
+ * re-filters whatever is behind it every frame; on 117 cards that is 117 layers
+ * re-rasterising as the tree pans, which is the "1000+ members without lag" target
+ * broken by decoration. At most five of these are on screen at once.
  */
-.react-flow .react-flow__background {
-	background-color: var(--color-canvas);
+.kf-glass {
+	background: var(--color-glass);
+	backdrop-filter: blur(16px) saturate(140%);
+	box-shadow: var(--kf-shadow-panel);
+	border: 1px solid var(--color-hairline);
 }
 
-/*
- * The dot lattice, faded out towards the edges.
- *
- * A uniform lattice competes with the tree: it is the same weight in the middle of
- * the canvas, where the cards are, as it is in the empty margins, so the busiest
- * region is also the noisiest one. The mask keeps the texture where there is nothing
- * to read and gets it out of the way where there is -- the technique
- * brand/portfolio-react uses on its own lattice (`AmbientBackground.tsx`).
- *
- * Masked in VIEWPORT space, which is correct here only because React Flow renders
- * this SVG outside `.react-flow__viewport` (confirmed on a live element: the pane
- * carries the pan transform, this does not). So the fade stays centred on the screen
- * while the tree moves under it, and reads as depth of field rather than as a hole in
- * the data. Masking inside the transformed pane would drag the fade around with the
- * pan and put the dark patch over whatever you scrolled to.
- *
- * `mask-image` unprefixed only: this is Chrome, Firefox and Safari 15.4+, and the
- * `-webkit-` copy would just be a second value to keep in sync.
- */
-.react-flow .react-flow__background {
-	mask-image: radial-gradient(ellipse 85% 85% at 50% 45%, black 25%, transparent 78%);
-}
+/* -------------------------------------------------------------------------- */
+/* Canvas surface                                                             */
+/* -------------------------------------------------------------------------- */
 
 /*
- * Lattice dots, from a token rather than a literal.
+ * Feeding React Flow's own variable beats overriding their selector.
  *
- * The `color` prop was `#1c1e23`, a value between --color-canvas and
- * --color-hairline that belonged to neither, so the one piece of the canvas nobody
- * could restyle from the token stack was its background.
- *
- * Set through React Flow's OWN variable rather than by overriding `fill`, and that
- * was forced rather than chosen: their rule is `.react-flow__background-pattern.dots`,
- * which ties a `.react-flow .react-flow__background-pattern` override on specificity
- * and then wins on source order, because their stylesheet is imported after this file.
- * A `fill` here computed to their #91919a default -- a light-theme dot on a near-black
- * canvas. Feeding the variable their rule already reads puts the value in the one
- * place nothing outranks. (Their fallback chain checks a `-props` variable first,
- * which is why the `color` prop had to come off the component for this to be read.)
- *
- * Deliberately BELOW --color-hairline (56% of it): a hairline separates two surfaces
- * and has to be found, where the lattice only has to be sensed. Measured against the
- * canvas, the dot is 1.14:1 and a hairline 1.34:1, so the ordering is real rather than
- * intended -- and 1.14 is within a hundredth of the 1.18 the old literal scored, which
- * is the point: this tokenises a value that was already right. No 3:1 floor applies,
- * because a texture that carried meaning would be a texture competing with the tree.
+ * Their `.react-flow__background-pattern.dots { fill: ... }` ties a
+ * `.react-flow .react-flow__background-pattern` override on specificity and then wins
+ * on source order, because their stylesheet is imported after this file. Setting the
+ * variable their rule READS lands instead. This also means the `color` prop on
+ * `<Background>` must be REMOVED rather than merely left unset: it writes
+ * `--xy-background-pattern-color-props`, which they check first.
  */
 .react-flow {
-	--xy-background-pattern-color: color-mix(in oklab, var(--color-hairline) 56%, var(--color-canvas));
+	--xy-background-pattern-color: color-mix(in oklab, var(--color-hairline) 64%, var(--color-canvas));
 }
 
 /*
- * The family skeleton.
- *
- * Two classes, not one, and that is load-bearing: React Flow ships its own
- * `.react-flow__edge-path` rule and its stylesheet is imported AFTER this file, so
- * at equal specificity theirs wins on source order and every edge silently rendered
- * in their #b1b1b7 default. Qualifying with the container outranks it. The same trap
- * is documented for the Controls buttons further down.
+ * `.react-flow__background` renders OUTSIDE `.react-flow__viewport`, so it does not
+ * carry the pan transform (confirmed on a live element) -- which is exactly what lets
+ * this mask stay screen-fixed while the tree pans under it. Anything else placed in
+ * that SVG inherits the same non-panning behaviour.
+ */
+.react-flow .react-flow__background {
+	background-color: var(--color-canvas);
+	mask-image: radial-gradient(ellipse 94% 90% at 50% 45%, #000 58%, transparent 100%);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Family skeleton                                                            */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Doubly qualified on purpose. React Flow's stylesheet is imported after this file,
+ * so a single-class rule loses on source order and the skeleton silently renders in
+ * their #b1b1b7 default. Any new React Flow override needs the same treatment -- read
+ * the computed style off a real element to confirm it landed, since the file will look
+ * correct either way.
  */
 .react-flow .react-flow__edge-path {
 	stroke: var(--color-edge);
 	stroke-width: var(--kf-stroke-skeleton);
-	/* Rounded joins on the orthogonal skeleton: a mitred right angle at this weight
-	   reads as a printing artefact, and the corner is where the eye follows the line. */
 	stroke-linejoin: round;
 	stroke-linecap: round;
+	transition:
+		stroke var(--duration-base) var(--ease-out),
+		stroke-width var(--duration-base) var(--ease-out),
+		opacity var(--duration-base) var(--ease-out);
 }
 
 /*
- * A partnership, drawn in the SAME neutral as the rest of the skeleton.
+ * A partnership needs no colour: it is the one family edge running HORIZONTALLY, so
+ * geometry distinguishes it for free at every zoom.
  *
- * It used to be `--color-accent-dim`, and that was measured as the single worst use of
- * colour on the canvas: 68 of the 150 family edges rendered amber, so nearly half the
- * skeleton was wearing the one accent this design reserves for "you" and "this
- * relation". An accent spent on the most common structural element on screen is not an
- * accent, and it left the canvas reading as an amber lattice with grey cards in it.
- *
- * A partnership does not need a colour anyway. It is the one family edge that runs
- * HORIZONTALLY, between two people on the same row, where every parentage edge runs
- * vertically between rows -- so its geometry already distinguishes it completely, for
- * free, at every zoom, and without spending a channel. The rule stays (rather than being
- * deleted) so the marker for "this is a partnership" has somewhere to live, and because
- * the cap change below is a real difference: a butt cap makes the horizontal run meet the
- * two drop lines squarely, where the round cap the skeleton uses bulges past the join.
+ * This rule survives only to set `butt`, which makes the horizontal run meet its drop
+ * lines squarely where the skeleton's round cap bulges past the join. It used to be
+ * `--color-accent-dim`, which put 68 of 150 family edges in amber -- nearly half the
+ * skeleton wearing the one colour reserved for "you" and "this relation", which is not
+ * an accent but a theme.
  */
-.react-flow__edge.is-partner .react-flow__edge-path {
+.react-flow .react-flow__edge.is-partner .react-flow__edge-path {
 	stroke-linecap: butt;
 }
 
-.react-flow__edge.is-inferred .react-flow__edge-path {
+/* Adoptive and step parentage: recorded differently, so drawn differently. */
+.react-flow .react-flow__edge.is-inferred .react-flow__edge-path {
 	stroke-dasharray: 4 4;
 }
 
-/**
- * Family edges draw themselves on, once, in generation order.
+/*
+ * The skeleton drawing itself on.
  *
- * The cards already arrive oldest row first; without this the skeleton is simply
- * there from frame one, so the lines look like a backdrop the cards were placed
- * on rather than the connections that put them where they are.
- *
- * The path carries `pathLength="1"` (set in TreeCanvas), which normalises the
- * dash maths: one keyframe then covers every edge whatever its real length,
- * where a pixel dasharray would let short edges finish while long ones are still
- * drawing.
- *
- * `stroke-dasharray` lives INSIDE the keyframes rather than on the rule, so that
- * with `backwards` fill it reverts the moment the animation ends. A dasharray
- * left on the rule would persist against a normalised path length, and every
- * later dash pattern (an ended relation, a professional tie) would compose with
- * it and render as a solid line.
+ * The dasharray lives INSIDE the keyframes rather than on the rule, so
+ * `animation-fill-mode: backwards` reverts it: an edge waiting out its delay is a
+ * solid line at full length, not a dashed one. A large literal rather than
+ * `pathLength` because these paths are hand-built and their length is unknown here.
  */
 @keyframes kf-draw {
-	from {
-		stroke-dasharray: 1;
-		stroke-dashoffset: 1;
-	}
-	to {
-		stroke-dasharray: 1;
-		stroke-dashoffset: 0;
-	}
-}
-
-.react-flow__edge.kf-draw .react-flow__edge-path {
-	animation: kf-draw var(--duration-slow) var(--ease-out) backwards;
-	animation-delay: var(--kf-delay, 0ms);
-}
-
-/**
- * Social, professional and extended-kin edges -- REVEALED, never resting.
- *
- * These are only ever on screen for the person the viewer is pointing at (see
- * `revealedRelations` in TreeCanvas), which changes what they have to be. Drawn
- * permanently they had to stay out of the skeleton's way, so they were quieter AND
- * thinner AND dashed -- three channels all saying "ignore me", on the half of the graph
- * that carries information nothing else carries.
- *
- * Now that a relation appears because somebody ASKED for it, it can be drawn as the
- * answer to a question instead of as background: the accent, at the skeleton's own
- * weight. That is the reveal doing the work three faded channels were failing to do.
- *
- * The accent is correct here rather than extravagant -- this is exactly the "this
- * relation" meaning it is reserved for, and it is now spent on at most a handful of
- * lines at a time instead of on 68 partner edges permanently.
- *
- * Dash rhythm survives because it is the only thing carrying WHICH KIND, and the
- * categories are still distinguished by rhythm rather than colour.
- */
-.react-flow__edge.is-relation .react-flow__edge-path {
-	stroke: var(--color-accent);
-	/* At the skeleton's weight, not under it. The old scale kept every relation thinner
-	   than every parentage so the hierarchy could not invert -- but that hierarchy is
-	   established by the resting canvas now, and a line the viewer explicitly asked for
-	   should not be the faintest thing on screen. */
-	stroke-width: var(--kf-stroke-skeleton);
-	stroke-dasharray: var(--kf-dash-social);
-	stroke-linecap: round;
-}
-
-/**
- * Dash rhythm per category, and EVERY category has one.
- *
- * The rhythm is the only channel that distinguishes them, colour being spoken for
- * by the one-accent rule, so a category with no rule of its own is a category the
- * canvas cannot express. Ordered tightest to sparsest, which maps onto how close
- * the tie is to kinship -- the reading is then learnable from the graph itself
- * rather than needing the legend memorised.
- *
- * Each rule sets ONLY `stroke-dasharray`, and every value comes from a `--kf-dash-*`
- * token so the legend's sample lines cannot drift from these. Weight belongs to
- * closeness and colour to the colour token; a category rule that touched either would
- * silently outrank both, since these sit at the same specificity and later in the file.
- */
-
-/* Extended kin: tightest dash, closest to a family edge. */
-.react-flow__edge.is-cousin .react-flow__edge-path,
-.react-flow__edge.is-in_law .react-flow__edge-path,
-.react-flow__edge.is-step_sibling .react-flow__edge-path,
-.react-flow__edge.is-godparent .react-flow__edge-path {
-	stroke-dasharray: var(--kf-dash-kin);
-}
-
-/* Care: a long dash broken by a dot, the one rhythm with two marks in it. Reads as
-   sustained-but-punctuated, and it is deliberately the most distinctive of the
-   five: a caregiver tie is the one a reader is most likely to be looking for. */
-.react-flow__edge.is-caregiver .react-flow__edge-path {
-	stroke-dasharray: var(--kf-dash-care);
-}
-
-/* Social: the middle rhythm, inherited from the base rule above. Named here rather
-   than left implicit so the set of five is visible in one place, and so a new
-   social kind cannot land on the fallback by accident. */
-.react-flow__edge.is-friend .react-flow__edge-path,
-.react-flow__edge.is-close_friend .react-flow__edge-path,
-.react-flow__edge.is-family_friend .react-flow__edge-path,
-.react-flow__edge.is-neighbour .react-flow__edge-path,
-.react-flow__edge.is-classmate .react-flow__edge-path,
-.react-flow__edge.is-roommate .react-flow__edge-path {
-	stroke-dasharray: var(--kf-dash-social);
-}
-
-/* Professional: long dash with a gap, visually the furthest from kinship. */
-.react-flow__edge.is-colleague .react-flow__edge-path,
-.react-flow__edge.is-business_partner .react-flow__edge-path,
-.react-flow__edge.is-mentor .react-flow__edge-path,
-.react-flow__edge.is-teacher .react-flow__edge-path,
-.react-flow__edge.is-employer .react-flow__edge-path {
-	stroke-dasharray: var(--kf-dash-professional);
-}
-
-/* "connected to", the kind that records a tie whose nature nobody wrote down.
-   The sparsest rhythm, because the honest reading is "something, unspecified". */
-.react-flow__edge.is-other .react-flow__edge-path {
-	stroke-dasharray: var(--kf-dash-other);
-}
-
-/**
- * Closeness, as a WIDTH MULTIPLIER on the revealed weight.
- *
- * The "show immediate connections more densely" half of the graph: a close friend draws
- * a firmer line than an acquaintance, so the dense core of somebody's world is visible
- * without reading a single label. Weight is pre-attentive, which is exactly why it is
- * driven by stored closeness rather than picked by eye.
- *
- * Three steps around the revealed weight rather than three absolute values off the old
- * scale, and the change follows from the reveal. The old scale ran 1.1 / 1.5 / 1.9, every
- * step deliberately UNDER the 2.3 skeleton so an always-on relation could never outweigh
- * a parentage. A revealed relation is not competing with the skeleton -- it is the answer
- * to a question the viewer just asked -- so the scale is now centred ON the skeleton
- * weight instead of hiding beneath it.
- *
- * Weight only, never opacity: a faded thin line stops being findable at all (0.7 opacity
- * took the old token to 2.52:1, under the 3:1 a meaningful graphic owes), and "less
- * close" should read as finer rather than as half-erased.
- */
-.react-flow__edge.is-relation.is-close-1 .react-flow__edge-path {
-	stroke-width: var(--kf-stroke-soft);
-}
-
-.react-flow__edge.is-relation.is-close-2 .react-flow__edge-path {
-	stroke-width: var(--kf-stroke-skeleton);
-}
-
-.react-flow__edge.is-relation.is-close-3 .react-flow__edge-path {
-	stroke-width: var(--kf-stroke-close);
-}
-
-/**
- * A revealed relation draws itself on, from the person you are pointing at outwards.
- *
- * The line GROWING towards the other person is what makes a relation crossing four
- * generations followable: the motion tells you which end you are at and where it is
- * heading, which is the job the arrowhead failed at and the reason the taper was
- * introduced. Now the reveal carries it and the taper is a refinement rather than the
- * only cue.
- *
- * Affordable only because of the reveal: as an always-on overlay this would have been 52
- * simultaneous animations on every layout. At most a handful run now, once, on demand.
- *
- * `stroke-dasharray` lives inside the keyframes for the same reason `kf-draw`'s does --
- * see that comment. `pathLength` is NOT normalised on these (they are React Flow's own
- * bezier paths, not our FamilyEdge), so the dash values are in user units and the
- * animation is length-proportional: a longer relation takes longer to arrive, which is
- * the honest reading of distance and replaces what `is-far` was trying to say with
- * colour.
- */
-@keyframes kf-reveal {
 	from {
 		stroke-dasharray: 0 4000;
 	}
@@ -507,595 +514,36 @@ body {
 	}
 }
 
-.react-flow__edge.is-relation.kf-reveal .react-flow__edge-path {
-	animation: kf-reveal var(--duration-slow) var(--ease-out);
-}
-
-/*
- * A relation that has ended. Dimmer colour and a sparse dash: it is history, and a
- * former colleague drawn as firmly as a current one overstates the graph. The dash
- * overrides the category rhythm on purpose -- "over" outranks "professional" as the
- * thing you need to know.
- *
- * A dimmer TOKEN rather than opacity, so the result is a value that can be checked
- * (3.32:1) instead of a composite that depends on whatever it is drawn over.
- */
-.react-flow__edge.is-ended .react-flow__edge-path {
-	stroke: var(--color-edge-past);
-	stroke-dasharray: var(--kf-dash-ended);
-}
-
-/*
- * Relations sit above the cards so their labels are never painted over, which
- * means they must not intercept pointer events -- an invisible hit area over a
- * card would block dragging it.
- *
- * So they are not hovered directly. Hovering or tapping a PERSON activates the
- * relations touching them (see TreeCanvas), which is the question you actually
- * have: who is this person connected to, and how.
- */
-/*
- * Every descendant, not just the group: React Flow sets pointer-events: all on
- * edge labels, and that beats a `none` on the ancestor. A label rect sitting
- * over a card would otherwise swallow the drag that should move the card.
- */
-.react-flow__edge.is-relation,
-.react-flow__edge.is-relation * {
-	pointer-events: none;
-}
-
-/*
- * Labels are visible the moment the relation is, and fade IN with it.
- *
- * They used to start at `opacity: 0` and wait for `is-active`, which was the right
- * default when all 52 relations were permanently drawn -- fifty-two labels would have
- * been unreadable text over every card on the canvas. But a revealed relation is already
- * the answer to "who is this person connected to", and half of that answer is HOW: a line
- * appearing with no word on it says a connection exists while withholding the one thing
- * that makes it meaningful, and there is no second gesture left to ask with, since the
- * reveal already consumed the hover and the tap.
- *
- * Delayed by the draw-on, so the word arrives as the line lands on the far card rather
- * than floating in space ahead of it.
- */
-.react-flow__edge.is-relation .react-flow__edge-textwrapper {
-	animation: kf-fade var(--duration-base) var(--ease-out) backwards;
-	animation-delay: var(--duration-slow);
-}
-
-@keyframes kf-fade {
-	from {
-		opacity: 0;
-	}
-	to {
-		opacity: 1;
-	}
-}
-
-.react-flow__edge.is-relation .react-flow__edge-text {
-	fill: var(--color-accent);
-	font-family: var(--font-mono);
-	font-size: 9px;
-}
-
-.react-flow__edge.is-relation .react-flow__edge-textbg {
-	fill: var(--color-canvas);
-}
-
-/*
- * Direction, drawn as a TAPER rather than an arrowhead.
- *
- * The arrowhead is gone, and it was the worst mark on the canvas. Three reasons, each
- * on its own sufficient:
- *
- *   1. Scale. A 14px triangle terminating a 400px bezier is 3% of the line, and it
- *      lands exactly where the line meets a card -- so it was read as part of the
- *      card's border, not as a property of the edge. On a phone it sits under a
- *      fingertip.
- *   2. It could not be styled. React Flow hoists markers into one shared `<defs>`
- *      outside the edge groups and writes the colour as an INLINE style, so the
- *      arrowhead could not inherit the dimming, the active state, or the past colour.
- *      A dimmed edge kept a full-contrast head; an ended relation kept a live one.
- *   3. It was redundant. The dash flow already runs source -> target when active, and
- *      that is legible along the WHOLE line rather than at one end of it.
- *
- * So a directed edge tapers: heavier where the role sits, lighter where it lands.
- * `stroke-width` cannot be interpolated along a path, but a gradient CAN fade the
- * stroke's own colour, and the eye reads "thins out towards" as direction. It costs
- * nothing at the terminus, works at every zoom, and dims with the rest of the edge
- * because it IS the stroke rather than a separate glyph.
- *
- * The gradient is defined once in TreeCanvas and referenced here, since a `<defs>`
- * entry cannot come from a stylesheet.
- */
-.react-flow__edge.is-relation.is-directed .react-flow__edge-path {
-	stroke: url("#kf-taper");
-}
-
-/* An ended directed relation is history first and directed second, so the past colour
-   outranks the taper for the same reason its dash rhythm outranks its category. */
-.react-flow__edge.is-relation.is-directed.is-ended .react-flow__edge-path {
-	stroke: var(--color-edge-past);
-}
-
-/*
- * There is deliberately NO `.is-relation.is-active` rule any more, and its removal is
- * the point rather than an omission.
- *
- * It used to recolour a lit relation to the accent, raise its weight, and run a looping
- * dash flow at 700ms -- all to pick ONE line out of an always-on overlay of fifty-two.
- * With relations revealed on demand, every relation on screen is already the lit one:
- * `is-active` now matches every single one of them, so keeping the rule would apply "this
- * one" to all of them, which says nothing.
- *
- * It would also actively destroy two channels it used to sit alongside. Its literal
- * `stroke-dasharray: 5 4` overrode whichever category rhythm the edge had, so the one
- * thing distinguishing a mentorship from a friendship would vanish exactly when the
- * viewer had asked to see it -- and the infinite `kf-flow` animation would put every
- * revealed line into perpetual motion, which is the "tree with fifty animated edges is a
- * screensaver" failure that comment warned about, arrived at from the other direction.
- *
- * Direction is carried by the taper plus the draw-on reveal, both of which run once.
- */
-
-/**
- * Generation rails.
- *
- * A banded row per generation, drawn under everything. Two jobs: make a row read
- * as a row (so the graph reads as a pedigree rather than a node soup), and give
- * the eye a horizontal to scan along on a wide tree.
- *
- * Alternating fills instead of lines: a stack of hairlines at these lengths
- * turns into a ruled ledger and starts competing with the family skeleton.
- */
-.kf-rails {
-	position: absolute;
-	inset: 0;
-	/*
-	 * Negative, not 0. The portal is the LAST child of the viewport, so at z-index
-	 * 0 these would paint over the edge SVG (which is z-index auto and earlier in
-	 * the DOM). Negative drops them to the bottom of the viewport's stacking
-	 * context, which is where ground belongs.
-	 */
-	z-index: -1;
-	/* Inert, so the pane still receives the drag that pans the canvas. */
-	pointer-events: none;
-}
-
-.kf-rail {
-	position: absolute;
-	border-top: 1px solid color-mix(in oklab, var(--color-hairline) 55%, transparent);
-	border-bottom: 1px solid color-mix(in oklab, var(--color-hairline) 55%, transparent);
-}
-
-.kf-rail--alt {
-	background: color-mix(in oklab, var(--color-surface) 45%, transparent);
-}
-
-.kf-rail__label {
-	position: absolute;
-	top: 50%;
-	left: 8px;
-	display: flex;
-	translate: 0 -50%;
-	align-items: baseline;
-	gap: 0.375rem;
-	font-family: var(--font-mono);
-	font-size: 0.5625rem;
-	font-variant-numeric: tabular-nums;
-	letter-spacing: 0.14em;
-	color: var(--color-ink-faint);
-	/*
-	 * No opacity. This is 9px text and the rails are the answer to "which generation
-	 * am I looking at" on a canvas ten thousand pixels wide, so it has to be readable
-	 * -- and 0.55 opacity took it to 2.36:1, well under the 4.5:1 that small text
-	 * owes. Quietness comes from the size, the letter-spacing and the mono face
-	 * instead, which cost nothing legible.
-	 */
-}
-
-.kf-rail__numeral {
-	/*
-	 * Was accent-dim, which measured 3.72:1 -- fine for a graphic, short of the 4.5:1
-	 * this text needs, and it also spent the accent on a wayfinding mark. Amber has to
-	 * keep meaning "you" and "this relation" or it means nothing.
-	 */
-	color: var(--color-ink-muted);
-}
-
-/**
- * Card entrance, staggered by generation.
- *
- * Only the inner card moves. React Flow owns the node wrapper's `transform` for
- * positioning, so animating the wrapper would fight it and the node would land
- * in the wrong place.
- */
-@keyframes kf-enter {
-	from {
-		opacity: 0;
-		transform: translateY(6px) scale(0.98);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
-}
-
-.kf-enter > * {
-	animation: kf-enter var(--duration-slow) var(--ease-out) backwards;
+.react-flow .react-flow__edge.kf-draw .react-flow__edge-path {
+	animation: kf-draw var(--duration-slow) var(--ease-out) backwards;
 	animation-delay: var(--kf-delay, 0ms);
 }
 
-/**
- * The landing page's entrance: each block arrives a beat after the one above it.
- *
- * Same shape as the card entrance and the same `--kf-delay` channel, deliberately --
- * a visitor meets this page and then the canvas, and two different rise distances
- * would read as two different products. Rise is 10px rather than 6: these blocks are
- * a headline and a paragraph, not a 78px card, and the same 6px on a much larger
- * element barely registers.
- *
- * CSS rather than the per-character spring in brand/portfolio-react's
- * `CharacterReveal`. That component needs `motion/react` and `useInView` on the
- * client, and this page is a server component with no client boundary at all -- so
- * porting it would ship a runtime and a hydration pass to animate four elements that
- * are on screen at load, where `useInView` is always true anyway. The staggered
- * arrival is the part that carries the effect; per-character is the part that costs.
- *
- * No `prefers-reduced-motion` here or anywhere in this file: motion in this UI is
- * meant to be seen.
- */
-@keyframes kf-rise {
-	from {
-		opacity: 0;
-		transform: translateY(10px);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
-}
-
-.kf-rise {
-	animation: kf-rise var(--duration-slow) var(--ease-out) backwards;
-	animation-delay: var(--kf-delay, 0ms);
-}
-
-/**
- * Fusion reveal.
- *
- * One offset sheet behind a card per extra family that recorded the same person.
- * The combined view's entire claim is "two records, one human, neither side lost
- * anything", and until now the only evidence on screen was a footer count.
- *
- * The sheets slide in from further out and settle, so the merge is something you
- * WATCH happen; the resting offset then persists, so a card still reads as merged
- * once the animation is over. Stroke only, no fill, so nothing competes with the
- * card's own surface.
- */
-.kf-stack {
-	position: absolute;
-	inset: 0;
-	border: 1px solid color-mix(in oklab, var(--color-hairline-strong) 70%, transparent);
-	border-radius: var(--radius-node);
-	background: var(--color-canvas);
-	/* Each sheet steps further out; --kf-stack is 1 for the nearest. */
-	translate: calc(var(--kf-stack) * 4px) calc(var(--kf-stack) * -4px);
-	/*
-	 * No z-index. The sheets and the card are all positioned with z-index auto, so
-	 * they paint in tree order and the card -- which comes last -- lands on top.
-	 * A negative z-index would work too, but only until something upstream gains a
-	 * stacking context, at which point the sheets would vanish behind it.
-	 */
-}
-
-@keyframes kf-fuse {
-	from {
-		translate: calc(var(--kf-stack) * 15px) calc(var(--kf-stack) * -15px);
-		opacity: 0;
-	}
-	to {
-		translate: calc(var(--kf-stack) * 4px) calc(var(--kf-stack) * -4px);
-		opacity: 1;
-	}
-}
-
-.kf-stack--fuse {
-	/* Later than the card's own entrance, so the card lands first and the records
-	   visibly gather behind it rather than everything arriving at once. */
-	animation: kf-fuse var(--duration-slow) var(--ease-out) backwards;
-	animation-delay: calc(var(--kf-delay, 0ms) + 160ms + var(--kf-stack) * 60ms);
-}
-
-/**
- * The kinship line, clamped to two lines rather than truncated to one.
- *
- * A measurement, not a taste call: 31 of the 117 people in the sample tree (26%) had
- * their relationship cut off at one line, because the term is the widest thing on the
- * card -- "great-great-uncle by marriage" needs 164px in a 142px column, where the p90
- * NAME needs only 109px and never wraps.
- *
- * Truncating this line is worse than truncating anything else on the card, because these
- * terms share long prefixes. "great-great-gran..." could be a grandmother or a
- * grandfather, so the clipped half is exactly the half that identifies who you are
- * looking at. Two lines covers every term `kinship.ts` can generate.
- *
- * `line-clamp` rather than free wrapping: ELK has already reserved this node's box, so a
- * third line would overflow the card it is drawn in. The ellipsis then only appears for
- * something longer than anything the kinship walk produces.
- */
-.kf-relation {
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-	overflow: hidden;
-	/* Long hyphenated rungs ("great-great-grandmother") break at the hyphens, which is
-	   where a reader expects them to. Without this the whole word is one unbreakable box
-	   and overflows rather than wrapping. */
-	overflow-wrap: break-word;
-}
-
-/**
- * Presence ring: how connected somebody is.
- *
- * Behind the card, spreading further the busier the person. A ring rather than a
- * bigger card because ELK has already reserved this node's box -- growing the
- * busiest ones would overlap their neighbours, or force every row to reserve the
- * maximum and waste the space on the quiet people.
- *
- * Neutral rather than accent-tinted: connectedness is a property of everybody on
- * the canvas, and an amber halo on half the tree would spend the one accent that
- * has to keep meaning "you" and "this relation".
- */
-.kf-presence {
-	position: absolute;
-	inset: 0;
-	border-radius: var(--radius-node);
-	/*
-	 * Spread only, no blur radius offset: a blurred glow at these sizes reads as a
-	 * drop shadow and the design uses hairlines rather than shadows.
-	 */
-	/*
-	 * 28%, down from 80%, and the reason is what a screenshot showed that no per-element
-	 * measurement could: 96 of the 117 cards clear the ring floor, so at 5.12:1 the
-	 * "quiet hint" was a grey halo on four cards in five, and the canvas read as fog with
-	 * cards in it rather than cards on a canvas. The prior note claimed the ring was "the
-	 * only thing that says how connected somebody is" and used that to justify the weight
-	 * -- but it is not: the edges converging on a card say it too, and they say it
-	 * precisely.
-	 *
-	 * So this is texture, not information, and it is scored as texture: 1.60:1 against the
-	 * canvas, just above the 1.26:1 hairline that bounds the card. Present when you look
-	 * for it, absent when you are reading a name. No 3:1 floor applies, because a mark
-	 * that carried unique meaning at this size would be a mark competing with the graph.
-	 */
-	box-shadow: 0 0 0 var(--kf-spread, 0px) color-mix(in oklab, var(--color-edge) 28%, transparent);
-	pointer-events: none;
-	/*
-	 * Animates when the level of detail changes, since the box changes with it -- and
-	 * when the person is focused, which is what `.kf-lit` below rides on.
-	 *
-	 * Spring rather than ease-out, and only because both triggers are things the viewer
-	 * just did. The overshoot IS the response: the halo swells past its resting spread
-	 * and settles, which reads as the card acknowledging the pointer rather than as a
-	 * value being interpolated. Safe on a spread specifically -- the curve overshoots
-	 * above the target and never below it, so no frame asks for a negative radius.
-	 */
-	transition: box-shadow var(--duration-base) var(--ease-spring);
-}
-
-/**
- * The focused person's halo.
- *
- * Focus depth (below) works by receding everyone else, and on a dense canvas that is
- * enough -- but not on a sparse one, nor when the lit neighbourhood is most of the
- * screen: with little left dimmed there is nothing for the answer to stand out
- * against, and the card you are pointing at looks like all the others. So the subject
- * gets a mark of its own, blooming out of the ring that is already there.
- *
- * Reusing `.kf-presence` rather than adding an element is what makes the bloom land
- * on the SAME box the connectedness ring occupies, so a hub's halo grows from its
- * existing wide ring and a leaf's from nothing -- one mark that means "this one", at a
- * size that still says how connected they are. It is also why PersonNode renders the
- * ring even at spread 0: an invisible box-shadow costs nothing, and a person with no
- * connections must still answer a hover.
- *
- * Monochrome, deliberately. Amber is spoken for by "you", "selected" and "this
- * relation" -- and search sets selected AND focus on the same card, so an amber halo
- * would land on top of the accent ring that means something else. Brightness is the
- * free channel here, and the value is a measurement: --color-ink at 65% composites to
- * 7.63:1 on the canvas and 7.60:1 over an alternating generation rail, clear of the
- * 3:1 a meaningful graphic owes under SC 1.4.11.
- *
- * Two thresholds, not one, and the second is what set the number. The glow shares its
- * box with the connectedness ring, so it also has to be distinguishable from THAT
- * (5.10:1) or a hub's halo grows without appearing to change. 7.63 against 5.10 is a
- * 1.50 step, so the halo reads as heating up as well as widening. --color-ink-muted at
- * 45% was the first attempt and measured 2.44:1 -- below the floor, and dimmer than the
- * ring it was supposed to bloom out of. Composited on a real 2D canvas rather than read
- * off the token, because `color-mix` resolves to `oklab()` and its numbers are not sRGB.
- *
- * One shot, not a pulse. A tree with a throbbing card is the screensaver the active
- * relation flow already refuses to be; the glow arrives, then holds while you read.
- *
- * BRIGHTENS IN PLACE -- it does not grow. The ring used to widen by 7px on top of the
- * resting spread, so a hub at spread 5 jumped to 12px (measured live) and a 12px halo
- * around a 168px card is not a highlight, it is a second border thicker than the card's
- * own 0.67px hairline. It also moved the card's apparent edge outward, which on a canvas
- * where distance between cards is meaningful reads as the card growing.
- *
- * So the spread is left exactly where it was and only the colour changes: same geometry,
- * more light. +1px is the entire size change, enough that a person at spread 0 still gets
- * a visible mark rather than nothing at all.
- *
- * The contrast reasoning above still holds and is what makes brightness sufficient on its
- * own: --color-ink at 65% composites to 7.63:1 against the canvas versus the resting
- * ring's 5.10:1, a 1.50 step. That step was always doing the work; the 7px was doing the
- * damage.
- */
-.react-flow__node.kf-lit .kf-presence {
-	box-shadow:
-		0 0 0 calc(var(--kf-spread, 0px) + 1px)
-		color-mix(in oklab, var(--color-ink) 65%, transparent);
-}
-
-/**
- * The pointer-tracked wash, taken from brand/portfolio-react's `GlassCard`.
- *
- * A soft radial highlight that follows the cursor across the card, so the surface reads
- * as lit from where you are pointing rather than uniformly flat. It is the one piece of
- * that component worth porting: the tilt there rotates the whole card in 3D, which cannot
- * work here because React Flow owns the node wrapper's `transform` for positioning and a
- * perspective rotation would fight the layout.
- *
- * Three deliberate departures from the original:
- *
- *   1. Driven by `--kf-mx` / `--kf-my` custom properties set on pointermove, NOT by React
- *      state. That component calls `setMousePos` on every rAF, which is fine for a page
- *      holding a dozen cards and ruinous for a canvas holding 117 -- each set would
- *      re-render the node and React Flow re-measures on render. Writing a custom property
- *      touches only the compositor.
- *   2. Accent rather than their cyan, at 8% -- and 8% is a ceiling rather than a taste
- *      choice. Amber has to keep meaning "you" and "this relation", so the wash has to
- *      stay below the threshold where it reads as a state. Measured at 1.13:1 against the
- *      surface, it is texture, not information, which is the only thing that may use the
- *      accent decoratively.
- *   3. No `prefers-reduced-motion` gating. Their `GlassCard` reads `useReducedMotion`,
- *      and their own CLAUDE.md forbids that in new code -- Sagar runs reduced-motion ON
- *      at the OS level, so gating would freeze the effect for the person who asked for it.
- *
- * Defaults to the card's centre so a card that has never been hovered is evenly lit
- * rather than glowing in its top-left corner.
- */
-.kf-card {
-	position: relative;
-	--kf-mx: 50%;
-	--kf-my: 50%;
-}
-
-.kf-card::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	border-radius: inherit;
-	background: radial-gradient(
-		200px circle at var(--kf-mx) var(--kf-my),
-		color-mix(in oklab, var(--color-accent) 8%, transparent),
-		transparent 65%
-	);
-	opacity: 0;
-	transition: opacity var(--duration-base) var(--ease-out);
-	/* Inert: the card beneath owns the drag, and a pseudo-element covering it would
-	   swallow the gesture that moves the node. */
-	pointer-events: none;
-}
-
-.kf-card:hover::before {
-	opacity: 1;
-}
-
-/**
- * Two families disagreeing about the same person.
- *
- * A dashed border, not a colour: the whole point is that this must survive being
- * read by somebody who cannot distinguish the accent, and it pairs with a glyph
- * on the card so the state is never carried by one channel alone.
- */
-.kf-conflicted {
-	border-style: dashed;
-	border-color: var(--color-accent-dim);
-}
-
-/**
- * Focus depth: hovering or tapping a person recedes everyone they are not
- * connected to.
- *
- * Dimming the rest rather than brightening the line, because the lit path is
- * already at full contrast -- and on a large tree "which of these is highlighted"
- * is a harder question than "which of these faded".
- *
- * 0.5, not the 0.28 this started at. Dimmed cards are still cards: the tree they
- * form is the context that makes the lit path mean anything, and at 0.28 a name
- * came out at 2.29:1 -- unreadable, which turns "recede" into "delete" and leaves a
- * hover looking like the rest of the family was never there. At 0.5 a name is
- * 4.91:1 and the separation from the undimmed 17.7:1 is still emphatic.
- */
-.react-flow__node.kf-dim {
-	opacity: 0.5;
-	transition: opacity var(--duration-base) var(--ease-out);
-}
-
 /*
- * 0.6 keeps the dimmed SKELETON at 3.32:1, still a legible line. That is the number
- * that mattered: the lit path is only meaningful against the pedigree it runs
- * through, so the family structure has to survive dimming even while it recedes.
+ * A lit family edge carries a travelling pulse, and it is a SECOND path rather than a
+ * dash on the first.
  *
- * The relation overlay falls to 2.15:1 at the same opacity and that is accepted
- * rather than fixed. It is the one thing on screen that a hover explicitly says you
- * are not looking at, it is transient, and it is reversible by moving the pointer --
- * and buying it 3:1 would need roughly 0.85, at which point nothing is dimmed and
- * the focus mode does not work at all.
- */
-.react-flow__edge.kf-dim .react-flow__edge-path {
-	opacity: 0.6;
-	transition: opacity var(--duration-base) var(--ease-out);
-}
-
-/*
- * A lit family edge brightens rather than recolours: the skeleton stays neutral so
- * the accent keeps meaning "you" and "this relation".
+ * The base path is already animating its draw-on and taking colour and weight from the
+ * cascade, so layering avoids an override fight and keeps the line solid underneath
+ * instead of becoming a dashed line while a dash moves through it.
  *
- * `--color-ink`, not `--color-ink-muted`, and that was a measurement rather than a
- * preference. Muted is #a1a5ad against the skeleton's #9aa0ac: 7.97:1 against 7.50:1,
- * a 7% step, which is a "brightens" nobody can see -- so the lit path was carried
- * entirely by the other cards dimming. Ink is 17.73:1, and the extra half pixel of
- * weight gives the trace a second channel for the case where the whole neighbourhood
- * is lit and there is barely anything left dimmed to compare against.
- */
-.react-flow__edge.is-active:not(.is-relation) .react-flow__edge-path {
-	stroke: var(--color-ink);
-	/* Half a step over the skeleton's own weight. Not a scale value: the scale describes
-	   how close a relation is, and this is the same edge lit, not a different edge. */
-	stroke-width: 2.8;
-}
-
-/**
- * The travelling pulse on a lit family edge.
- *
- * Invisible until its edge is active, and drawn as a SHORT dash chasing a long gap: the
- * dasharray is 12% of a normalised path with 88% empty, so what travels is one bright
- * segment rather than a train of them. A repeating dash pattern would read as a dotted
- * line in motion, which says "data flowing through a pipe"; one segment reads as the eye
- * being led from a parent to a child, which is what this actually means.
- *
- * `stroke: none` at rest, not `opacity: 0` or `display: none`. The path is always in the
- * DOM (see the Pulse comment in FamilyEdge.tsx for why it cannot be conditional), and a
- * path with no stroke is skipped at paint time -- so 150 idle pulses cost nothing, where
- * 150 transparent-but-painted strokes would cost a compositor pass each.
- *
- * NEGATIVE offset so the segment runs source -> target, from the older generation towards
- * the younger. Positive would run it upwards and quietly assert that children produce
- * their parents. The offset animates from 1 to 0 against a normalised pathLength, which
- * is what lets one keyframe serve a 69px partner edge and a 400px drop line at the same
- * apparent speed.
- *
- * Brighter than the lit path it rides on (--color-ink at full, over that path's own
- * --color-ink at 2.8px) and thinner, so it reads as a highlight travelling along the
- * line rather than as a second line beside it.
- *
- * 1.4s and linear: fast enough to arrive while you are still looking, slow enough to
- * follow across four generations, and linear because a travelling highlight that eases
- * looks like it is being dragged by hand. It loops, unlike the one-shot halo -- a pulse
- * that fired once would be missed by anyone who moved the pointer a moment too late, and
- * unlike the old always-on relation flow this only ever runs on the handful of edges
- * belonging to the person under the pointer.
+ * `0.12 0.88` against a normalised `pathLength` is ONE bright segment chasing a long
+ * gap, not a train of dots -- a repeating pattern in motion reads as data flowing
+ * through a pipe, where one segment reads as the eye being led parent -> child. The
+ * offset animates 1 -> 0 so it runs downwards; reversed, it would assert that children
+ * produce their parents.
  */
 .kf-pulse {
+	/*
+	 * The pulse path is unconditional in the markup, and `stroke: none` is why that is
+	 * free: a path with no stroke is skipped at paint, where 150 transparent-but-painted
+	 * strokes would each cost a compositor pass. A `lit` prop on the edge component
+	 * would instead put focus state into the memo the layout effect depends on,
+	 * re-running ELK on every hover -- the same trap the split edge arrays avoid.
+	 */
 	stroke: none;
-	stroke-width: 2;
+	stroke-width: var(--kf-stroke-close);
 	stroke-linecap: round;
-	pointer-events: none;
 }
 
 @keyframes kf-pulse-travel {
@@ -1108,44 +556,490 @@ body {
 }
 
 .react-flow__edge.is-active:not(.is-relation) .kf-pulse {
-	stroke: var(--color-ink);
+	stroke: var(--color-accent);
 	stroke-dasharray: 0.12 0.88;
 	animation: kf-pulse-travel 1400ms linear infinite;
 }
 
+/* The lit family edge itself: ink, and a shade heavier. */
+.react-flow .react-flow__edge.is-active:not(.is-relation) .react-flow__edge-path {
+	stroke: var(--color-ink);
+	stroke-width: 2.8;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Relation overlay                                                           */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * A relation is REVEALED for one person at a time, never drawn at rest.
+ *
+ * Measured on the sample graph: the 52 relation edges were 73% of all edge ink at a
+ * median span of 2214px against the family skeleton's median of 69px -- 32x. And the
+ * data is sparse: the median person has ONE relation and 56 of 120 have none. Fifty-two
+ * permanent canvas-crossing diagonals were the haze the cards sat in, and fading them
+ * by distance was treating a symptom -- the defect was drawing a per-person fact
+ * globally.
+ *
+ * A revealed edge is therefore drawn at FULL strength however far it reaches, in the
+ * accent, because the viewer asked for precisely that line.
+ */
+.react-flow .react-flow__edge.is-relation .react-flow__edge-path {
+	stroke: var(--color-accent);
+	stroke-width: var(--kf-stroke-skeleton);
+	stroke-dasharray: var(--kf-dash-social);
+	stroke-linecap: round;
+}
+
+/*
+ * Category rhythms. All 17 kinds are enumerated, so a new kind that skips this table
+ * inherits the base social rhythm rather than silently losing its category.
+ *
+ * Each rule sets ONLY `stroke-dasharray`: weight belongs to closeness, colour to the
+ * reveal.
+ */
+.react-flow .react-flow__edge.is-cousin .react-flow__edge-path,
+.react-flow .react-flow__edge.is-in_law .react-flow__edge-path,
+.react-flow .react-flow__edge.is-step_sibling .react-flow__edge-path,
+.react-flow .react-flow__edge.is-godparent .react-flow__edge-path {
+	stroke-dasharray: var(--kf-dash-kin);
+}
+
+.react-flow .react-flow__edge.is-caregiver .react-flow__edge-path {
+	stroke-dasharray: var(--kf-dash-care);
+}
+
+.react-flow .react-flow__edge.is-friend .react-flow__edge-path,
+.react-flow .react-flow__edge.is-close_friend .react-flow__edge-path,
+.react-flow .react-flow__edge.is-family_friend .react-flow__edge-path,
+.react-flow .react-flow__edge.is-neighbour .react-flow__edge-path,
+.react-flow .react-flow__edge.is-classmate .react-flow__edge-path,
+.react-flow .react-flow__edge.is-roommate .react-flow__edge-path {
+	stroke-dasharray: var(--kf-dash-social);
+}
+
+.react-flow .react-flow__edge.is-colleague .react-flow__edge-path,
+.react-flow .react-flow__edge.is-business_partner .react-flow__edge-path,
+.react-flow .react-flow__edge.is-mentor .react-flow__edge-path,
+.react-flow .react-flow__edge.is-teacher .react-flow__edge-path,
+.react-flow .react-flow__edge.is-employer .react-flow__edge-path {
+	stroke-dasharray: var(--kf-dash-professional);
+}
+
+.react-flow .react-flow__edge.is-other .react-flow__edge-path {
+	stroke-dasharray: var(--kf-dash-other);
+}
+
+/*
+ * Closeness is stroke WEIGHT only. An opacity would have to be re-scored against every
+ * backdrop it crosses, and a colour would spend the accent.
+ */
+.react-flow .react-flow__edge.is-relation.is-close-1 .react-flow__edge-path {
+	stroke-width: var(--kf-stroke-soft);
+}
+.react-flow .react-flow__edge.is-relation.is-close-2 .react-flow__edge-path {
+	stroke-width: var(--kf-stroke-skeleton);
+}
+.react-flow .react-flow__edge.is-relation.is-close-3 .react-flow__edge-path {
+	stroke-width: var(--kf-stroke-close);
+}
+
+/* An ended relation is history: a separate token rather than a fade, so the value can
+   be contrast-checked once instead of recomputed against every backdrop. */
+.react-flow .react-flow__edge.is-relation.is-ended .react-flow__edge-path {
+	stroke: var(--color-edge-past);
+	stroke-dasharray: var(--kf-dash-ended);
+}
+
+/*
+ * Direction is a tapered stroke, never an arrowhead.
+ *
+ * `MarkerType.ArrowClosed` was removed for three independent reasons: a 14px triangle
+ * on a 400px bezier lands where the line meets a card and reads as part of the card's
+ * border; React Flow hoists markers into a shared `<defs>` and writes the colour as an
+ * INLINE style, so the head could not inherit dimming or the ended colour; and it was
+ * redundant with the dash flow, which is legible along the whole line.
+ *
+ * `is-ended` overrides the `url()` REFERENCE rather than the colour, because a gradient
+ * stroke cannot be recoloured.
+ */
+.react-flow .react-flow__edge.is-relation.is-directed .react-flow__edge-path {
+	stroke: url("#kf-taper");
+}
+
+.react-flow .react-flow__edge.is-relation.is-directed.is-ended .react-flow__edge-path {
+	stroke: var(--color-edge-past);
+}
+
+@keyframes kf-reveal {
+	from {
+		stroke-dasharray: 0 4000;
+	}
+}
+
+.react-flow .react-flow__edge.is-relation.kf-reveal .react-flow__edge-path {
+	animation: kf-reveal var(--duration-slow) var(--ease-out);
+}
+
+/*
+ * Relation edges take no pointer events, on themselves AND every descendant.
+ *
+ * They render above the cards so their labels are not painted over, which means an
+ * edge label's `<rect>` sits on top of a card. React Flow sets `pointer-events: all`
+ * on labels, and that beats a `none` on the ancestor group -- so the `*` is
+ * load-bearing: without it a label swallows the drag that should move the card.
+ */
+.react-flow .react-flow__edge.is-relation,
+.react-flow .react-flow__edge.is-relation * {
+	pointer-events: none;
+}
+
+@keyframes kf-fade {
+	from {
+		opacity: 0;
+	}
+}
+
+/*
+ * A revealed relation shows its label IMMEDIATELY, on a delay matching the draw-on so
+ * the word lands as the line reaches the far card.
+ *
+ * Labels used to start at `opacity: 0` until focused, which was right when 52
+ * relations were permanently drawn (52 labels would have been text over every card).
+ * But the reveal already consumed the hover and the tap, so there is no second gesture
+ * left to ask with -- and a line appearing with no word on it says a connection exists
+ * while withholding the one thing that makes it meaningful.
+ */
+.react-flow .react-flow__edge.is-relation .react-flow__edge-textwrapper {
+	animation: kf-fade var(--duration-base) var(--ease-out) backwards;
+	animation-delay: var(--duration-slow);
+}
+
+.react-flow .react-flow__edge.is-relation .react-flow__edge-text {
+	fill: var(--color-accent-ink);
+	font-family: var(--font-mono);
+	font-size: 9px;
+	letter-spacing: 0.04em;
+}
+
+.react-flow .react-flow__edge.is-relation .react-flow__edge-textbg {
+	fill: var(--color-canvas);
+}
+
+/*
+ * There is deliberately NO `.is-relation.is-active` rule, and its absence is
+ * load-bearing.
+ *
+ * It used to recolour a lit relation, raise its weight and loop a 700ms dash flow, all
+ * to pick one line out of fifty-two. Now that relations are revealed, `is-active`
+ * matches every relation on screen, so the rule would say "this one" about all of them.
+ * Worse, its literal `stroke-dasharray: 5 4` overrode the category rhythm -- destroying
+ * the only channel that separates a mentorship from a friendship, exactly when the
+ * viewer asked to see it -- and its infinite animation would put every revealed line
+ * into perpetual motion.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Generation rails                                                           */
+/* -------------------------------------------------------------------------- */
+
+.kf-rails {
+	z-index: -1;
+}
+
+.kf-rail {
+	position: absolute;
+	border-top: 1px solid color-mix(in oklab, var(--color-hairline) 70%, transparent);
+	background: linear-gradient(
+		to bottom,
+		color-mix(in oklab, var(--color-surface) 34%, transparent),
+		transparent
+	);
+	pointer-events: none;
+}
+
+/* Alternating, so adjacent generations are distinguishable without a second colour. */
+.kf-rail--alt {
+	background: none;
+}
+
+.kf-rail__label {
+	position: absolute;
+	top: 0.375rem;
+	left: 0.5rem;
+	display: flex;
+	align-items: baseline;
+	gap: 0.375rem;
+	font-family: var(--font-mono);
+	font-size: 0.625rem;
+	letter-spacing: 0.12em;
+	color: var(--color-ink-faint);
+	text-transform: uppercase;
+}
+
+.kf-rail__numeral {
+	color: var(--color-ink-muted);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cards                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Only the INNER card animates on entrance, never the node wrapper.
+ *
+ * React Flow owns the wrapper's `transform` for positioning; animating it fights the
+ * layout and the node lands in the wrong place. Hence `.kf-enter > *`.
+ */
+@keyframes kf-enter {
+	from {
+		opacity: 0;
+		transform: translateY(10px) scale(0.96);
+	}
+}
+
+.kf-enter > * {
+	animation: kf-enter var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms);
+}
+
+@keyframes kf-rise {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+}
+
+.kf-rise {
+	animation: kf-rise var(--duration-base) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms);
+}
+
+.kf-card {
+	position: relative;
+	transition:
+		border-color var(--duration-base) var(--ease-out),
+		box-shadow var(--duration-base) var(--ease-out),
+		transform var(--duration-base) var(--ease-spring);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Depth                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The optional 3D tilt, and it is applied to the CARD, never to the pane.
+ *
+ * A canvas-wide `perspective` + `rotateX` was the obvious implementation and is wrong
+ * here: React Flow positions nodes by writing a 2D `translate` onto each wrapper, and it
+ * owns that transform -- so tilting an ancestor leaves the layout and the picture
+ * disagreeing about where a card is, and the sibling brackets (drawn in flat SVG
+ * coordinates) would no longer meet the cards they connect.
+ *
+ * Per-card is also the version that WORKS, verified live rather than assumed: a card under
+ * `perspective(700px) rotateX(45deg)` measured 132px -> 94px, three hit-probes down its
+ * face all landed inside it, and its click still fired. The browser's own hit-testing
+ * follows a CSS transform, so a tilted card is clickable exactly where it looks.
+ *
+ * `.kf-depth` is set on the node wrapper, so the transform composes with React Flow's
+ * positioning instead of fighting it.
+ */
+.kf-depth .kf-card {
+	transform: perspective(var(--kf-perspective, 900px)) rotateX(var(--kf-tilt, 8deg));
+	/* Children keep their own place in the 3D space rather than being flattened onto the
+	   card's face, which is what gives the presence ring and the stacked sheets real
+	   separation instead of a painted-on gradient. */
+	transform-style: preserve-3d;
+}
+
+/*
+ * Lift the tilted card back to level when it is the subject of attention.
+ *
+ * The tilt is a resting treatment: it says "this is a plane you are looking across". A
+ * card being read has to be legible, and text on a 8deg plane is measurably harder to
+ * read -- so focus straightens it, which doubles as the strongest possible "this one"
+ * signal because it is the only card facing the viewer squarely.
+ */
+.kf-depth.kf-lit .kf-card,
+.kf-depth .kf-card:hover {
+	transform: perspective(var(--kf-perspective, 900px)) rotateX(0deg) translateZ(18px);
+}
+
+/*
+ * There is deliberately no `.kf-depth .kf-stack` rule pushing the fusion sheets back in Z.
+ *
+ * It was written, and it was dead: PersonNode sets `transform` INLINE on each sheet to
+ * offset and rotate it, and an inline style beats a stylesheet rule -- so the depth
+ * version never applied. The sheets already read as behind the card through paint order
+ * and their offset, and adding the Z would mean moving that transform into JS purely to
+ * win a specificity argument.
+ */
+
+/*
+ * The card's pointer-tracked wash, ported from brand/portfolio-react's GlassCard with
+ * three deliberate departures: its `useState` + rAF pair re-renders on every
+ * pointermove, which React Flow answers by re-measuring the node -- ruinous across 117
+ * of them, so `--kf-mx`/`--kf-my` are set directly on the element; its 3D tilt is
+ * dropped, because React Flow owns the wrapper's `transform` for positioning; and its
+ * `useReducedMotion` gate is dropped in favour of this app's own Motion switch.
+ *
+ * Accent at 8% (1.13:1) is texture, not information -- the only thing allowed to use
+ * the accent decoratively.
+ */
+.kf-card::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: radial-gradient(
+		200px circle at var(--kf-mx, 50%) var(--kf-my, 0%),
+		color-mix(in oklab, var(--color-accent) var(--kf-wash-alpha), transparent),
+		transparent 70%
+	);
+	opacity: 0;
+	transition: opacity var(--duration-base) var(--ease-out);
+	pointer-events: none;
+}
+
+.kf-card:hover::before {
+	opacity: 1;
+}
+
+/*
+ * Connection density, as a ring that BRIGHTENS on hover and must not grow.
+ *
+ * The old rule widened the ring by 7px on top of its resting spread, so a hub went
+ * 5px -> 12px (measured live): a 12px halo around a 168px card is not a highlight but
+ * a second border, an order of magnitude thicker than the card's own hairline, and it
+ * pushed the card's apparent edge outward on a canvas where the gaps between cards
+ * carry meaning. Now +1px, with the whole signal in the colour -- ink at 65%
+ * composites to 7.63:1 against the resting ring, a 1.50 step, and that step was always
+ * what read as "this one".
+ */
+.kf-presence {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--radius-node);
+	box-shadow: 0 0 0 var(--kf-spread, 0px)
+		color-mix(in oklab, var(--color-edge) var(--kf-ring-alpha), transparent);
+	transition:
+		box-shadow var(--duration-base) var(--ease-spring),
+		opacity var(--duration-base) var(--ease-out);
+	pointer-events: none;
+}
+
+.react-flow__node.kf-lit .kf-presence {
+	box-shadow: 0 0 0 calc(var(--kf-spread, 0px) + 1px)
+		color-mix(in oklab, var(--color-ink) 65%, transparent);
+}
+
+/*
+ * The fusion reveal: stacked sheets behind a card described by more than one family.
+ *
+ * Reads `contributingTreeIds.length`, so it is a property of the DATA rather than a
+ * flag -- mine-only mode produces `merged 0` and therefore no sheets, automatically.
+ * The sheets carry no `z-index`: they and the card are all `z-index: auto`, so paint
+ * order alone puts the card on top, and that survives an ancestor gaining a stacking
+ * context in a way a negative index would not.
+ */
+.kf-stack {
+	position: absolute;
+	inset: 0;
+	border: 1px solid var(--color-hairline);
+	border-radius: var(--radius-node);
+	background: var(--color-surface);
+	pointer-events: none;
+}
+
+@keyframes kf-fuse {
+	from {
+		opacity: 0;
+		transform: translate(0, 0) rotate(0deg);
+	}
+}
+
+.kf-stack--fuse {
+	animation: kf-fuse var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: calc(var(--kf-delay, 0ms) + 160ms + var(--kf-stack) * 60ms);
+}
+
+/*
+ * The kinship line clamps to TWO lines; the name never wraps.
+ *
+ * Measured on the sample tree: 31 of 117 kinship terms (26%) were truncated at one
+ * line, because that term is the widest thing on the card -- "great-great-uncle by
+ * marriage" needs 164px in a 142px column, where the p90 NAME needs 109px. Truncating
+ * kinship is worse than truncating anything else, since the terms share long prefixes
+ * and "great-great-gran..." could be a grandmother or a grandfather.
+ */
+.kf-relation {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	overflow: hidden;
+	overflow-wrap: break-word;
+}
+
+/* Two sources give conflicting vital dates. Dashed, so it reads as unresolved rather
+   than as a different category of person. */
+.kf-conflicted {
+	border-style: dashed !important;
+	border-color: var(--color-accent-dim) !important;
+}
+
+/*
+ * Attention elsewhere. 0.5 / 0.6 rather than the 0.28 / 0.25 that took a dimmed name
+ * to 2.29:1 -- a dimmed card still has to be readable, because dimming means "not this
+ * one", never "not available".
+ */
+.react-flow__node.kf-dim {
+	opacity: 0.5;
+}
+
+.react-flow__edge.kf-dim .react-flow__edge-path {
+	opacity: 0.6;
+}
+
+.react-flow__node,
+.react-flow__edge {
+	transition: opacity var(--duration-base) var(--ease-out);
+}
+
+/* Handles exist for edge attachment and are never dragged here. */
 .react-flow .react-flow__handle {
 	opacity: 0;
 	pointer-events: none;
 }
 
-/* `background: none` lost the tie and left React Flow's rgba(255,255,255,0.5) plate
-   sitting on a near-black canvas -- a white smear in the corner of every screenshot.
-   Transparent, and a colour that actually resolves against the canvas behind it. */
+/* -------------------------------------------------------------------------- */
+/* React Flow chrome                                                          */
+/* -------------------------------------------------------------------------- */
+
 .react-flow .react-flow__attribution {
 	background: transparent;
+	font-family: var(--font-mono);
+	font-size: 0.5625rem;
+}
+
+.react-flow .react-flow__attribution a {
 	color: var(--color-ink-faint);
 }
 
-/**
- * Zoom controls. React Flow ships them light-themed and 26px square, which is
- * both wrong for a near-black canvas and under the 44px minimum a thumb needs.
- *
- * Selectors are deliberately two classes deep. React Flow's stylesheet is
- * imported by TreeCanvas and therefore lands AFTER this file in the cascade, so
- * a single-class rule loses the tie on source order alone.
- */
 .react-flow .react-flow__controls {
-	box-shadow: none;
+	box-shadow: var(--kf-shadow-panel);
 }
 
+/* 44px minimum hit target, which React Flow's own 16px buttons miss badly. */
 .react-flow .react-flow__controls-button {
 	width: 2.75rem;
 	height: 2.75rem;
-	background: var(--color-surface);
-	border: none;
+	background: var(--color-glass);
 	border-bottom: 1px solid var(--color-hairline);
-	fill: var(--color-ink-muted);
-	transition: background-color var(--duration-fast) var(--ease-out);
+	color: var(--color-ink-muted);
+	transition:
+		background-color var(--duration-fast) var(--ease-out),
+		color var(--duration-fast) var(--ease-out);
 }
 
 .react-flow .react-flow__controls-button:last-child {
@@ -1154,24 +1048,22 @@ body {
 
 .react-flow .react-flow__controls-button:hover {
 	background: var(--color-surface-raised);
-	fill: var(--color-ink);
+	color: var(--color-ink);
 }
 
 .react-flow .react-flow__controls-button svg {
-	width: 0.875rem;
-	height: 0.875rem;
+	fill: currentColor;
+	max-width: 1rem;
+	max-height: 1rem;
 }
 
-/**
- * No zoom buttons on a touch screen.
+/*
+ * Zoom buttons on a pointer device only.
  *
- * Not a viewport-width query: a narrow window on a laptop still has a cursor and
- * a scroll wheel, and hiding its zoom buttons would remove a control that works.
- * `pointer: coarse` asks the question that actually matters -- is the input a
- * finger -- and a finger already has pinch, which zooms about the point being
- * looked at rather than the viewport centre.
- *
- * 133px of vertical canvas is the saving, on the axis a phone has least of.
+ * On a phone they are 133px of vertical canvas spent on a gesture the platform already
+ * provides better: pinch zooms about the point you are looking at, where a + button
+ * zooms about the viewport centre and moves whatever you were reading. Hidden with CSS
+ * rather than a media-query hook, so the server renders the same markup either way.
  */
 @media (pointer: coarse) {
 	.react-flow .kf-zoom-controls {
@@ -1179,36 +1071,12 @@ body {
 	}
 }
 
-/*
- * Bottom-right, clear of React Flow's attribution.
- *
- * The extra bottom margin is the attribution's own height: it occupies this exact
- * corner, and at the standard 0.75rem inset the button covered the last 7px of
- * it. The credit stays, so the button moves.
- */
+/* Clear of the attribution, which sits in the same corner. */
 .react-flow .kf-locate {
-	margin: 0.75rem;
 	margin-bottom: 2.25rem;
 }
 
-/**
- * The overview map.
- *
- * Our own svg rather than React Flow's `<MiniMap>`, for the two reasons recorded in
- * TreeMinimap.tsx -- so this is a plain element and needs none of the position or
- * margin unwinding a `Panel` would have.
- *
- * `touch-action: none` matters on a phone: without it a drag across the map scrolls
- * the page instead of aiming, and the panel is the one place on this screen where a
- * swipe means something other than pan.
- */
 .kf-overview {
-	display: block;
-	overflow: hidden;
-	border: 1px solid var(--color-hairline);
 	border-radius: 0.375rem;
-	background-color: color-mix(in oklab, var(--color-canvas) 88%, transparent);
-	backdrop-filter: blur(4px);
-	touch-action: none;
-	cursor: crosshair;
+	overflow: hidden;
 }

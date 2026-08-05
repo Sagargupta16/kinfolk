@@ -46,10 +46,22 @@ import {
 } from "@/lib/tree/overview";
 import { cn } from "@/lib/utils";
 
-/** Fill per tone. See `OverviewTone` for why the vocabulary is this short. */
+/**
+ * Fill per tone. See `OverviewTone` for why the vocabulary is this short.
+ *
+ * `living` is deliberately NOT green here, for the reason the card's rail is not either:
+ * 93 of the 152 rects are living people, so a saturated fill made the whole map a strip
+ * of green dashes and the ONE accent rect that marks the viewer -- the single landmark
+ * this panel exists to provide -- had to compete with it. Measured on the screenshot
+ * rather than per element, which is the only way a 93-against-1 ratio shows up.
+ *
+ * So the majority state takes the neutral ink and the accent stays unique. `past` keeps
+ * its own quieter grey, since deceased is the minority and the contrast between the two
+ * greys still reads at 4px.
+ */
 const TONE_FILL: Record<OverviewTone, string> = {
 	self: "var(--color-accent)",
-	living: "var(--color-living)",
+	living: "var(--color-edge)",
 	past: "var(--color-past)",
 	unsure: "var(--color-hairline-strong)",
 	junction: "var(--color-hairline-strong)",

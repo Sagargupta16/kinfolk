@@ -11,6 +11,7 @@ import type { TreeView } from "@/lib/tree/view";
 import { cn } from "@/lib/utils";
 import { AccountBar } from "./AccountBar";
 import { DemoBanner } from "./DemoBanner";
+import { ThemeControls } from "./ThemeControls";
 import { TreeStage } from "./TreeStage";
 
 /** Mono stat, `tabular-nums` so digits do not jitter between values. */
@@ -108,6 +109,12 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 						short={view.isCombined ? "Both" : "Mine"}
 						long={view.isCombined ? "Showing combined graph" : "Showing my graph only"}
 					/>
+
+					{/* Theme and motion. Hidden below `sm` because a phone header cannot hold
+					    four more 44px targets beside the graph's own name -- and both are
+					    reachable there anyway: `t` switches the theme, and the motion switch is
+					    the one control a phone visitor is least likely to want mid-pan. */}
+					<ThemeControls className="hidden sm:flex" />
 
 					{/* Only for a real session. In demo mode there is nobody to sign out and
 					    nothing to share, so the control is absent rather than disabled. */}
