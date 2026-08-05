@@ -31,6 +31,18 @@ import { claimInvites, provisionGraph } from "@/lib/tree/provision";
  */
 const SESSION_COOKIE = "kinfolk.session-token";
 
+/**
+ * The mount path, so the session cookie is scoped to this app and not to the domain.
+ *
+ * Kinfolk is served at `sagargupta.online/kinfolk`, beside other projects on the SAME
+ * host. Cookies are scoped by host and path only -- never by port, and never by project
+ * -- so a session cookie at `path: "/"` is sent to every other project on that domain
+ * too. Namespacing the NAME (above) stops us reading a neighbour's; scoping the PATH
+ * stops a neighbour reading ours, which is the half that matters when the cookie is a
+ * live session token.
+ */
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
 	adapter: DrizzleAdapter(db, {
 		usersTable: users,
@@ -45,7 +57,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 	cookies: {
 		sessionToken: {
 			name: SESSION_COOKIE,
-			options: { httpOnly: true, sameSite: "lax", path: "/", secure: false },
+			options: {
+				httpOnly: true,
+				sameSite: "lax",
+				// Scoped to the mount on a shared domain, "/" when served at the root.
+				path: BASE_PATH || "/",
+				// Derived, not hardcoded false. This was `false` unconditionally, which is
+				// correct for `http://localhost` and wrong the moment the app is deployed:
+				// a session token without `Secure` is sent over plain HTTP, so anything
+				// that can downgrade a request can read it. Production is HTTPS-only.
+				secure: process.env.NODE_ENV === "production",
+			},
 		},
 	},
 	callbacks: {

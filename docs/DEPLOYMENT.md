@@ -22,6 +22,22 @@ Every `ƒ` needs a server at request time, and none of them can be exported:
 
 GitHub Pages serves static files only, so it would host the landing page and nothing that makes this an app. `prod/kalchar` reached the same conclusion and left its own Pages workflow dormant with a note recording why.
 
+## The URL: sagargupta.online/kinfolk
+
+The app is mounted at `/kinfolk` so it sits beside the other projects on that domain, matching `sagargupta.online/portfolio-react/`. `basePath` and `assetPrefix` in [`next.config.mjs`](../next.config.mjs) read `NEXT_PUBLIC_BASE_PATH`, so the same build serves the root locally and `/kinfolk` in production -- hardcoding it would make every local URL wrong.
+
+**The obstacle, measured rather than assumed.** `sagargupta.online` resolves to GitHub Pages (`185.199.108-111.153`, GoDaddy nameservers) and Pages serves static files only, so it cannot proxy `/kinfolk` to a server. The obvious workaround -- let Vercel own the apex and proxy everything else back to Pages -- does not work either: because `sagargupta16.github.io` has a `CNAME` file, it **301-redirects to the custom domain unconditionally**, verified including with a `Host` header override. Proxying back would be an infinite loop.
+
+So serving Kinfolk at `sagargupta.online/kinfolk` requires the **apex to move to Vercel**:
+
+1. Deploy Kinfolk to Vercel and confirm it works on its assigned origin first.
+2. Create a Vercel project for the apex site (`brand/sagargupta16.github.io`) and add `sagargupta.online` as its domain.
+3. Add rewrites there so existing paths keep working, `/kinfolk/*` reaches this project, and `/portfolio-react/*` still reaches the portfolio.
+4. Remove the `CNAME` file from the Pages repo, or Pages will keep claiming the domain.
+5. Point the GoDaddy DNS at Vercel (`A 76.76.21.21`, or the CNAME Vercel shows).
+
+**Until that migration happens**, deploy with `NEXT_PUBLIC_BASE_PATH` unset. The app then serves at the root of its Vercel origin and everything works; only the pretty URL is missing. Setting the base path without the rewrite in front of it produces a site whose every asset 404s.
+
 ## One-time setup
 
 ### 1. Import the repo into Vercel
@@ -38,9 +54,10 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. The **pooler** host is correct here -- the app talks over the serverless HTTP driver, and a serverless function opens a connection per invocation. |
 | `AUTH_SECRET` | A fresh 32+ byte random string. **Not** the one from `.env.local`: a local secret that leaks should not be able to forge production sessions. Generate with `node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"`. |
-| `AUTH_URL` | The deployed origin, e.g. `https://kinfolk.vercel.app`. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. |
+| `AUTH_URL` | The deployed origin Vercel gives you, with no trailing slash. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. Do NOT assume `kinfolk.vercel.app`: an unrelated project already answers there. |
 | `AUTH_GITHUB_ID` | From the production OAuth app below. |
 | `AUTH_GITHUB_SECRET` | Same. |
+| `NEXT_PUBLIC_BASE_PATH` | `/kinfolk` ONLY once the apex is on Vercel and rewriting. Leave UNSET until then: a base path with nothing routing to it serves a page whose every asset 404s. It also scopes the session and demo cookies to the mount, which is what stops them being sent to every other project on the shared domain. |
 
 `db:push` is the one thing that needs the **direct** (non-pooler) host, because drizzle-kit opens a plain TCP connection. That runs from a laptop, not from Vercel.
 
@@ -48,8 +65,8 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 
 The development app's callback points at `http://localhost:3007`, so it cannot serve the deployed site. Create a second one at [github.com/settings/developers](https://github.com/settings/developers):
 
-- **Homepage URL**: `https://kinfolk.vercel.app`
-- **Authorization callback URL**: `https://kinfolk.vercel.app/api/auth/callback/github`
+- **Homepage URL**: the origin Vercel assigned
+- **Authorization callback URL**: that origin plus `/api/auth/callback/github`
 
 The callback path is fixed by Auth.js. Do not shorten it.
 
@@ -62,7 +79,9 @@ For the workflows in [`.github/workflows/`](../.github/workflows):
 | Kind | Name | Purpose |
 | --- | --- | --- |
 | Secret | `DATABASE_URL` | Migrations only. Use the **direct** host: drizzle-kit needs TCP. |
-| Variable | `PRODUCTION_URL` | The deployed origin. Optional -- the health checks fall back to `https://kinfolk.vercel.app`. |
+| Variable | `PRODUCTION_URL` | The deployed origin, with no trailing slash. **Required**: the endpoint checks skip until it is set. |
+
+`PRODUCTION_URL` is required rather than defaulted, and that is a correction rather than caution. The first version of `deploy.yml` fell back to a guessed `https://kinfolk.vercel.app`, and its first real run reported **three green checks from an unrelated site** already answering on that hostname -- no `_next/static` anywhere in its markup, so not even a Next build. A check that silently probes somebody else's server is worse than no check, because it reports success for a deployment that does not exist. Both workflows now skip with `if: vars.PRODUCTION_URL != ''` instead.
 
 Create a **`production` GitHub Environment** and scope `DATABASE_URL` to it. That way only the migrate job can read it, and a required reviewer can be added later without touching the workflow.
 

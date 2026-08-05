@@ -20,10 +20,15 @@ jobs:
     name: public endpoints
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    # Required, not guessed. A fallback hostname here would probe whatever happens to
+    # answer at it -- the deploy workflow's guessed default returned three green checks
+    # from an unrelated site squatting `kinfolk.vercel.app`, which is a health check
+    # reporting on somebody else's server. Set the PRODUCTION_URL repository variable.
+    if: vars.PRODUCTION_URL != ''
     steps:
       - name: Probe production
         env:
-          BASE: ${{ vars.PRODUCTION_URL || 'https://kinfolk.vercel.app' }}
+          BASE: ${{ vars.PRODUCTION_URL }}
         run: |
           set -u
           fail=0
