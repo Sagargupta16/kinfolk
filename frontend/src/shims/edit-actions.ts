@@ -76,20 +76,25 @@ export const removeMember = action("removeMember");
  */
 
 /**
- * Leave a shared graph.
+ * SIGN OUT, despite the name.
  *
- * Returns `void`, not `Result`, and the frontend typecheck is what insisted: React's
- * `<form action={...}>` accepts `(formData) => void | Promise<void>`, so a shim
- * returning a value does not satisfy the prop even though it runs fine. The real
- * `leave()` returns void too, so matching it is also the correct shape.
+ * `leave` in `share-actions.ts` clears the demo cookie and calls Auth.js `signOut`
+ * -- it does not leave a shared graph, and `AccountMenu` renders it behind a button
+ * labelled "Sign out". The name misleads, and reading it as "leave a tree" was a
+ * real bug in the first version of this shim: it posted to the action dispatcher,
+ * which has no `leave` entry, so signing out would have 404'd silently.
  *
- * On success it navigates away, which is what the server action achieved with a
- * `redirect()`. A failure is swallowed for the same reason the real one has no error
- * channel: the component renders no place to put one.
+ * Here it revokes the session row through `/api/oauth/signout` and drops the local
+ * token, which is the same outcome by the only means available cross-origin.
+ *
+ * Returns `void` because React's `<form action={...}>` requires it, and because the
+ * real one does too. The frontend typecheck insisted on that, having been the only
+ * check that looks at this file.
  */
-export async function leave(form: FormData): Promise<void> {
-	const result = await call("leave", form);
-	if (result.ok) window.location.assign(import.meta.env.BASE_URL);
+export async function leave(_form: FormData): Promise<void> {
+	const { signOut } = await import("../auth");
+	await signOut();
+	window.location.assign(import.meta.env.BASE_URL);
 }
 
 /**
