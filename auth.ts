@@ -70,6 +70,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 			},
 		},
 	},
+	/**
+	 * Make a failed sign-in say WHY, in the server log.
+	 *
+	 * Auth.js answers every callback failure with `?error=Configuration` and a page
+	 * reading "There is a problem with the server configuration". That string is
+	 * generic to the point of being misleading: a nonexistent provider, a rejected
+	 * database insert and a genuinely absent secret all produce it, so a failure
+	 * cannot be told apart from outside. Diagnosing one meant probing endpoints and
+	 * inferring, because the only real error never left the process.
+	 *
+	 * `logger.error` writes the underlying cause to the platform log, where it is
+	 * one search away. Deliberately NOT `debug: true`: that logs every callback and
+	 * token exchange at info level, which on an auth route means access tokens and
+	 * profile payloads sitting in a log nobody intended as a secret store.
+	 */
+	logger: {
+		error(error) {
+			console.error("[auth]", error.name, error.message, error.cause ?? "");
+		},
+	},
 	callbacks: {
 		async session({ session, user }) {
 			// Expose the user id so server actions can authorise without a second

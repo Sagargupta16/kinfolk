@@ -68,15 +68,24 @@ jobs:
         # production -- it can drop a column it thinks is redundant. `migrate` runs
         # the committed SQL files in order and nothing else.
         #
-        # Skipped when there is no drizzle/ directory yet: the schema was created
-        # with `db:push` during development, so the first real migration has still
-        # to be generated. Failing here would block every deploy for a table that
-        # is already correct.
+        # Also skipped when DATABASE_URL is absent, and that guard is the point.
+        # The migrations exist now, so the old "is there a drizzle/ directory"
+        # check alone would start running `db:migrate` with an empty connection
+        # string on any repo that has not had the secret added -- turning a green
+        # deploy red for a schema that is already correct. A migration that cannot
+        # reach a database has nothing to say, so it is skipped loudly instead.
+        #
+        # The FIRST migration (0000) is a baseline of a schema created with
+        # `db:push`, so it must be recorded as applied rather than executed against
+        # the live database, whose tables it would try to CREATE. Do that once, by
+        # hand, before enabling this step: see docs/DEPLOYMENT.md.
         run: |
-          if [ -d drizzle ] && ls drizzle/*.sql >/dev/null 2>&1; then
-            pnpm db:migrate
+          if [ ! -d drizzle ] || ! ls drizzle/*.sql >/dev/null 2>&1; then
+            echo "No committed migrations -- skipping. Generate them with \`pnpm db:generate\`."
+          elif [ -z "$DATABASE_URL" ]; then
+            echo "::warning::DATABASE_URL is not set, so migrations were SKIPPED. Add the secret to the production environment to enable them."
           else
-            echo "No committed migrations yet -- skipping. Generate them with \`pnpm db:generate\` before the first schema change."
+            pnpm db:migrate
           fi
         env:
           # The DIRECT Neon host, not the -pooler one: drizzle-kit opens a plain TCP

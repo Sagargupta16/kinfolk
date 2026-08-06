@@ -164,7 +164,41 @@ Vercel's own Git integration builds and promotes on push. `deploy.yml` deliberat
 
 `deploy.yml` runs `pnpm db:migrate`, never `db:push`. Push diffs the live schema and applies whatever it infers, which is right for a scratch branch and dangerous in production -- it can drop a column it believes is redundant. `migrate` runs the committed SQL in `drizzle/` in order and nothing else.
 
-The schema was created with `db:push` during development, so `drizzle/` holds no SQL yet and the step skips with a note. **Before the first production schema change**, run:
+Two migrations are now committed, and the first one **must not be executed**.
+
+The schema was originally created with `db:push`, so `0000` is a BASELINE: a full
+`CREATE TABLE` script describing tables that already exist. Running it against the live
+database fails on its first statement, because drizzle generates bare `CREATE TABLE`
+without `IF NOT EXISTS`. It has to be recorded as applied instead.
+
+Drizzle tracks applied migrations in `drizzle.__drizzle_migrations`, keyed by the sha256 of
+each file's contents, and applies any migration whose journal timestamp is newer than the
+newest recorded row. So seeding one row for `0000` makes `migrate` skip it and run `0001`
+onwards normally.
+
+Do this ONCE, from a laptop with the direct (non-pooler) host in `DATABASE_URL`:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS drizzle;
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint);
+```
+
+Then insert the baseline's hash and its `when` value from
+[drizzle/meta/\_journal.json](../drizzle/meta/_journal.json), where the hash is the sha256
+of `drizzle/0000_*.sql` exactly as committed. Until that row exists, leave the production
+`DATABASE_URL` secret unset: `deploy.yml` skips migrations with a warning when it is absent,
+which is safer than a red deploy or a half-applied schema.
+
+`0001` drops `NOT NULL` from `users.email`, which is a real fix rather than housekeeping.
+GitHub does not always return an email -- Auth.js falls back to `GET /user/emails`, but that
+is skipped if the request fails -- and the adapter's insert was then rejected by Postgres,
+bouncing the visitor to `/api/auth/error?error=Configuration`. A message about server
+configuration for what is really a missing field on somebody's GitHub account.
+
+After any later schema change, run:
 
 ```bash
 pnpm db:generate
