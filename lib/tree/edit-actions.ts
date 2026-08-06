@@ -46,6 +46,7 @@ import {
 	ROLE_SEX,
 } from "./kin-plan";
 import { buildPersonPatch } from "./person-patch";
+import { checkPeopleBudget } from "./rate-limit";
 import { canonicalPair, RELATION_KINDS } from "./relations";
 
 export type Result = { ok: true; id?: string } | { ok: false; error: string };
@@ -123,6 +124,11 @@ export async function addPerson(form: FormData): Promise<Result> {
 	if (!givenName && !familyName) {
 		return { ok: false, error: "A person needs at least one name." };
 	}
+
+	// After the name check so an empty form is still refused for the right reason,
+	// and after auth so the count cannot be probed by an anonymous caller.
+	const budget = await checkPeopleBudget(auth.userId);
+	if (!budget.ok) return { ok: false, error: budget.error };
 
 	try {
 		const { assertCanEditTree } = await import("./authz");
@@ -561,6 +567,13 @@ export async function addRelative(form: FormData): Promise<Result> {
 		const plan = planKin(family, role, count);
 		if (plan.refusal) return { ok: false, error: plan.refusal };
 		if (plan.create.count === 0) return { ok: false, error: "Nothing to add." };
+
+		// Charged for the WHOLE batch, and only once the plan has said how many
+		// people it will really create. Checking `count` from the form instead would
+		// bill for a number the planner may have reduced, and checking one row at a
+		// time would let a batch of twelve slip past a budget with one left.
+		const budget = await checkPeopleBudget(auth.userId, plan.create.count);
+		if (!budget.ok) return { ok: false, error: budget.error };
 
 		// A name is optional here, unlike `addPerson`: a batch is created precisely because
 		// nobody knows the names yet, so a numbered placeholder stands in until they do.
