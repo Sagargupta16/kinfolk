@@ -21,6 +21,22 @@ minimumReleaseAgeExclude:
   - '@biomejs/cli-win32-x64@2.5.6'
   - postcss@8.5.24
 
-# Transitive deps drag in old esbuild builds; hold everything at the current line.
+# Transitive deps drag in old builds; hold everything at the current line.
+#
+# All three are NESTED under `next`, not direct dependencies -- `pnpm ls` showed
+# `next > postcss@8.4.31` and `next > sharp@0.34.5` while the top level already had
+# postcss 8.5.24. So the advisories are real but unreachable from our own code, and
+# the fix is to stop the old copies existing rather than to bump anything we import.
+#
+# postcss: four advisories, the highest HIGH, all fixed by >=8.5.23. Only ever runs
+# at build time here (Tailwind), so it never sees attacker input in production --
+# but a build-time parser reading arbitrary `.map` files is still worth closing.
+#
+# sharp: HIGH, fixed in >=0.35.0. Next uses it for image optimisation, which this
+# app does not do (avatars are initials, and `photoKey` has no route yet), so it is
+# shipped-but-unused. Held forward anyway: "we do not call it today" is a fact about
+# this week's code, not a property of the dependency.
 overrides:
   esbuild: ">=0.28.1"
+  postcss: ">=8.5.25"
+  sharp: ">=0.35.3"
