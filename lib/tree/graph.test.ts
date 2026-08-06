@@ -432,6 +432,64 @@ describe("toFlowGraph", () => {
 		const { edges } = toFlowGraph(graph);
 		expect(edges.filter((e) => e.kind === "child")).toHaveLength(0);
 	});
+
+	it("joins a CHILDLESS couple directly, with no junction dot", () => {
+		// The dot exists to be the point children descend from. With nobody
+		// descending, `card -- dot -- card` spends a node and two edges saying what
+		// one line between the two cards says more directly.
+		const graph = fuseTrees(
+			[slice("t1", [person("a", "t1"), person("b", "t1")], [union("u1", "t1", "a", "b", [])])],
+			[],
+		);
+
+		const { nodes, edges } = toFlowGraph(graph);
+
+		expect(nodes.filter((n) => n.type === "union")).toHaveLength(0);
+		const partner = edges.filter((e) => e.kind === "partner");
+		expect(partner).toHaveLength(1);
+		// Person to person, not person to junction.
+		expect(partner[0]?.source).toBe("a");
+		expect(partner[0]?.target).toBe("b");
+		// Still a layout edge, or ELK is free to put an unrelated node between them
+		// and the couple reads as two strangers.
+		expect(partner[0]?.layout).toBe(true);
+	});
+
+	it("keeps the dot as soon as the couple has a visible child", () => {
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("a", "t1"), person("b", "t1"), person("kid", "t1")],
+					[union("u1", "t1", "a", "b", ["kid"])],
+				),
+			],
+			[],
+		);
+
+		const { nodes, edges } = toFlowGraph(graph);
+		expect(nodes.filter((n) => n.type === "union")).toHaveLength(1);
+		expect(edges.filter((e) => e.kind === "partner")).toHaveLength(2);
+	});
+
+	it("keeps the dot when the only child is invisible, so the couple is not silently reshaped", () => {
+		// The child is in a tree the viewer cannot see. Collapsing to a direct edge
+		// here would make the graph's shape depend on who is looking, which is the
+		// one thing a projection must not do.
+		const graph = fuseTrees(
+			[
+				slice(
+					"t1",
+					[person("a", "t1"), person("b", "t1")],
+					[union("u1", "t1", "a", "b", ["ghost"])],
+				),
+			],
+			[],
+		);
+
+		const { nodes } = toFlowGraph(graph);
+		expect(nodes.filter((n) => n.type === "union")).toHaveLength(1);
+	});
 });
 
 describe("relation kinds", () => {

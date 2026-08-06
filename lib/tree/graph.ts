@@ -397,9 +397,21 @@ export type FlowEdge = {
 /**
  * Project a fused graph into nodes and edges.
  *
- * Unions get their own node rather than drawing partner-to-child edges
- * directly. With N children that would mean 2N crossing edges; via a union node
- * it is 2 + N, and siblings visibly share one origin point.
+ * Unions with children get their own node rather than drawing partner-to-child
+ * edges directly. With N children that would mean 2N crossing edges; via a union
+ * node it is 2 + N, and siblings visibly share one origin point.
+ *
+ * A CHILDLESS union gets no node, and the couple is joined by ONE edge instead.
+ * The dot exists to be the point children descend from, so with nobody descending
+ * it costs a node, two edges and a junction to say what a single line between two
+ * cards already says. On this graph that was three couples -- Jay and Juhi, and two
+ * married sisters -- each rendered as `card -- dot -- card` where `card -- card` is
+ * both quieter and more direct.
+ *
+ * Kinship is unaffected, which is what makes this safe: `indexFamily` in kinship.ts
+ * reads `graph.unions` directly, never the projected edges, so a marriage still
+ * produces "aunt by marriage" with no dot on screen. The same is true of
+ * `relatives.ts`, which lists a person's partners from the union rows.
  */
 export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: FlowEdge[] } {
 	const nodes: FlowNode[] = graph.people.map((p) => ({ id: p.id, type: "person", data: p }));
@@ -407,6 +419,30 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 	const known = new Set(graph.people.map((p) => p.id));
 
 	for (const union of graph.unions) {
+		// A couple with no children RECORDED, both partners visible: one edge, no
+		// junction.
+		//
+		// `childIds` rather than the visible subset, and a test pins the difference.
+		// Filtering by visibility first meant a couple whose only child sits in a tree
+		// the viewer cannot see collapsed to a direct edge -- so the graph's SHAPE
+		// depended on who was looking, and the same family drew differently for two
+		// people. A projection may hide a node; it must not restructure the family
+		// around the viewer.
+		const a = union.partnerAId;
+		const b = union.partnerBId;
+		if (union.childIds.length === 0 && a && b && known.has(a) && known.has(b)) {
+			edges.push({
+				id: `p:${union.id}:direct`,
+				source: a,
+				target: b,
+				kind: "partner",
+				// Still a layout edge: ELK has to keep the pair adjacent, and a couple
+				// pulled apart by an unrelated node reads as two strangers.
+				layout: true,
+			});
+			continue;
+		}
+
 		const unionNodeId = `union:${union.id}`;
 		nodes.push({ id: unionNodeId, type: "union", data: { union } });
 
