@@ -27,11 +27,30 @@ export default defineConfig({
 	plugins: [react(), tailwindcss()],
 
 	resolve: {
-		alias: {
-			// The same `@/` the Next app uses, pointed at the repo root, so a shared
-			// component's own imports resolve without editing them.
-			"@": path.resolve(import.meta.dirname, ".."),
-		},
+		/**
+		 * Order matters: Vite matches these in sequence, so the three REPLACEMENTS have
+		 * to come before the general `@` rule or `@/lib/tree/edit-actions` would resolve
+		 * to the real server actions and pull `next/headers` into the browser bundle.
+		 *
+		 * These four aliases are what let the components be shared rather than copied.
+		 * Two canvases would drift; `lib/tree/` staying free of React and database
+		 * imports is precisely what makes one canvas possible.
+		 */
+		alias: [
+			{
+				find: /^@\/lib\/tree\/(edit-actions|share-actions|demo-actions)$/,
+				replacement: path.resolve(import.meta.dirname, "src/shims/edit-actions.ts"),
+			},
+			{
+				find: /^next\/link$/,
+				replacement: path.resolve(import.meta.dirname, "src/shims/next-link.tsx"),
+			},
+			{
+				find: /^next\/navigation$/,
+				replacement: path.resolve(import.meta.dirname, "src/shims/next-navigation.ts"),
+			},
+			{ find: /^@\//, replacement: `${path.resolve(import.meta.dirname, "..")}/` },
+		],
 	},
 
 	build: {

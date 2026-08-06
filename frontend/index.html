@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-motion="on">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kinfolk</title>
+    <meta
+      name="description"
+      content="Relatives each keep their own tree, then link them, so the combined graph shows how several families actually join up."
+    />
+
+    <!--
+      Geist, from Google Fonts.
+
+      The Next app uses `next/font/google`, which self-hosts and inlines the CSS at
+      build time. Vite has no equivalent, so the stylesheet is linked instead and the
+      two `--font-geist-*` variables app/globals.css expects are declared below.
+
+      `preconnect` because a font request that waits on a fresh TLS handshake delays
+      first text. `display=swap` for the same reason: system text first, Geist when it
+      arrives, rather than a blank page. Both variables already carry system
+      fallbacks in globals.css, so a blocked request degrades rather than breaks.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --font-geist-sans: "Geist";
+        --font-geist-mono: "Geist Mono";
+      }
+    </style>
+
+    <!--
+      Theme before first paint.
+
+      Inlined here rather than imported, because this file has no build step and the
+      script must execute where it sits: deferring it past first paint is the white
+      flash it exists to prevent. Kept byte-identical in behaviour to THEME_SCRIPT in
+      lib/theme.ts -- if that changes, this changes.
+    -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("kinfolk.theme") || "system";
+          var m = localStorage.getItem("kinfolk.motion") || "on";
+          var dark =
+            t === "dark" ||
+            (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+          document.documentElement.setAttribute("data-motion", m);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

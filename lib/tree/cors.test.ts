@@ -7,6 +7,26 @@ describe("corsHeaders", () => {
 		expect(h["Access-Control-Allow-Origin"]).toBe("https://sagargupta.online");
 	});
 
+	it("allows Vite's own port, so the SPA can be run locally against the deployed API", () => {
+		// Regression: this was missing while `redirect-allow.ts` had it, so sign-in was
+		// permitted and every data fetch was blocked. The browser calls that "could not
+		// reach the server", which points at the wrong thing entirely.
+		expect(corsHeaders("http://localhost:5173")["Access-Control-Allow-Origin"]).toBe(
+			"http://localhost:5173",
+		);
+	});
+
+	it("keeps the two origin allow lists in agreement", async () => {
+		// The two files serve different purposes -- one gates CORS, one gates a redirect
+		// target -- but a request allowed to sign in and then refused its data is a
+		// broken app, so anything in one belongs in the other.
+		const { allowedRedirect } = await import("./redirect-allow");
+		for (const origin of ["https://sagargupta.online", "http://localhost:5173"]) {
+			expect(isAllowedOrigin(origin), `${origin} must pass CORS`).toBe(true);
+			expect(allowedRedirect(`${origin}/kinfolk/`), `${origin} must pass redirect`).toBeTruthy();
+		}
+	});
+
 	it("omits Allow-Origin for anything else, rather than reflecting it", () => {
 		for (const origin of [
 			"https://evil.example",

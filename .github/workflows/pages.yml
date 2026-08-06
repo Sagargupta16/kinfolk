@@ -1,24 +1,32 @@
-name: Deploy landing page
+name: Deploy the UI to Pages
 
-# The PAGE, not the app.
+# The static UI, built from `frontend/` and published to
+# sagargupta.online/kinfolk/ -- the same arrangement as ledger-sync, where Pages
+# serves the interface and a separate deployment serves the API.
 #
-# GitHub Pages serves `docs/index.html` at sagargupta.online/kinfolk/ -- the public front
-# door, matching how sagargupta.online/portfolio-react/ is served. It deliberately does
-# NOT serve Kinfolk itself: `pnpm build` emits four dynamic routes because /tree reads
-# Neon per request, /demo is a route handler that sets an httpOnly cookie, and every write
-# is a server action. Pages serves static files only, so the app lives on Vercel and this
-# page links to it.
+# This replaces publishing `docs/`, which was a hand-written landing page. That page
+# was a copy of words the app already had, in a file with its own colour values, and
+# it drifted -- which is what a duplicate always does. The app's own landing screen
+# is now the page, so there is nothing to keep in sync.
 #
-# That split also lets the repository stay private while this page is public, because
-# Pages publishes only what is under docs/.
+# The repository can stay private because Pages publishes only the BUILD OUTPUT.
+# Source is never uploaded, which is also why `sourcemap: false` matters in
+# vite.config.ts.
 
 on:
   push:
     branches: [main]
-    # Only when the page itself changes. Application code has its own workflow and must
-    # not trigger a Pages deploy.
+    # Everything the bundle is built from. `components/`, `lib/` and `app/globals.css`
+    # are included because the SPA aliases them -- a change to the canvas or to a
+    # design token has to reach Pages, and listing only `frontend/` would silently
+    # serve a stale UI after a component change.
     paths:
-      - "docs/**"
+      - "frontend/**"
+      - "components/**"
+      - "lib/**"
+      - "app/globals.css"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -32,16 +40,71 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    name: build the SPA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # From the repo root, not `frontend/`: it is a workspace package, so its
+      # dependencies resolve through the root lockfile.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Guard the API base URL
+        # The SPA is useless without it -- every fetch would go to the Pages origin,
+        # which has no API, and the canvas would show "could not reach the server".
+        # Failing here names the cause; shipping would leave it to a visitor to find.
+        run: |
+          if [ -z "${{ vars.VITE_API_BASE_URL }}" ]; then
+            echo "::error::VITE_API_BASE_URL is not set. Add it as a repository variable."
+            exit 1
+          fi
+          case "${{ vars.VITE_API_BASE_URL }}" in
+            https://*) echo "api: ${{ vars.VITE_API_BASE_URL }}" ;;
+            *) echo "::error::VITE_API_BASE_URL must be an https origin."; exit 1 ;;
+          esac
+
+      - name: Build
+        working-directory: frontend
+        env:
+          # Switches Vite's `base` to /kinfolk/, which is the subpath Pages serves.
+          GITHUB_PAGES: "true"
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: pnpm build
+
+      - name: Copy index.html to 404.html for SPA routing
+        # Pages has no rewrite rules, so a deep link like /kinfolk/tree would 404. The
+        # 404 page IS the app, which then reads the path and renders the right screen.
+        # Same technique ledger-sync uses.
+        run: cp frontend/dist/index.html frontend/dist/404.html
+
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload the build
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: frontend/dist
+
   deploy:
-    name: publish docs/
+    name: publish
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # All THREE, because a job-level `permissions` block REPLACES the workflow default
-      # rather than adding to it. Listing only the two Pages scopes dropped
-      # `contents: read`, and on a private repository checkout then fails with
-      # "fatal: repository not found" -- which reads like a wrong URL and is actually the
-      # token having no permission to see the repo at all.
+      # All THREE, because a job-level `permissions` block REPLACES the workflow
+      # default rather than adding to it. Listing only the two Pages scopes dropped
+      # `contents: read`, and on a private repository checkout then failed with
+      # "fatal: repository not found" -- which reads like a wrong URL and is actually
+      # the token having no permission to see the repo at all.
       contents: read
       pages: write
       id-token: write
@@ -49,32 +112,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Guard against a dead app link
-        # The two app buttons are hidden until APP_URL is set, so a half-configured page
-        # never renders a link that 404s. This asserts the inverse: that APP_URL, once
-        # set, is a real absolute URL rather than a placeholder somebody left behind.
-        run: |
-          url=$(grep -oE 'const APP_URL = "[^"]*"' docs/index.html | sed 's/.*"\(.*\)"/\1/')
-          if [ -n "$url" ]; then
-            case "$url" in
-              https://*) echo "app link: $url" ;;
-              *) echo "::error::APP_URL is set to '$url', which is not an https URL."; exit 1 ;;
-            esac
-          else
-            echo "APP_URL is empty, so the app buttons stay hidden. Set it once the Vercel deployment exists."
-          fi
-
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-
-      - name: Upload docs/
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
-        with:
-          # Only this directory is published, which is what keeps a private repo's source
-          # private while the landing page is public.
-          path: docs/
-
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
