@@ -4,7 +4,8 @@ Collaborative family tree maker. Build your own branch, invite relatives, and se
 combined tree looks like once everyone's branch is stitched together.
 
 **[sagargupta.online/kinfolk](https://sagargupta.online/kinfolk/)** -- the landing page.
-Private repo.
+**[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the live app, with a
+sample tree you can explore without an account. Private repo.
 
 ## Why this is not just a tree widget
 
@@ -128,20 +129,20 @@ directory is what lets this repository stay private while the page is public.
 
 The **app** cannot go on Pages. `pnpm build` emits four dynamic routes -- `/tree` reads
 Neon per request, `/demo` is a route handler that sets an httpOnly cookie -- and every
-write is a server action. Pages serves static files, so the app runs on Vercel and the
-landing page links to it.
+write is a server action. Pages serves static files, so the app runs on Vercel at
+[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/) and the landing page links to
+it.
 
-The Vercel project exists but is not yet connected to the repository, so the app is not
-live. Finishing it needs three dashboard steps, none of which can be done through an API:
+Use that hostname, not the other aliases Vercel assigned:
+`kinfolk-sagargupta16s-projects.vercel.app` sits behind Vercel's SSO protection and
+redirects every visitor to a Vercel login, and `kinfolk.vercel.app` belongs to an
+unrelated project.
 
-1. Install the Vercel GitHub App for this private repo, then link it to the `kinfolk`
-   project.
-2. Set `DATABASE_URL` and `AUTH_SECRET` in Vercel's environment variables.
-3. Add the deployment's callback URL to the GitHub OAuth app.
-
-Then set `APP_URL` in [docs/index.html](docs/index.html) and the two app buttons appear.
-They stay hidden while it is empty, because a link to a deployment that does not exist is
-worse than no link.
+The sample tree works today. **Sign-in does not yet**, because it needs four secrets set
+in Vercel by hand -- `DATABASE_URL` (the direct Neon host), `AUTH_SECRET`,
+`AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` -- plus the production callback URL added to
+the GitHub OAuth app. `/api/auth/providers` returning 500 is that state, and is the
+canary: it answers 200 only once the secret and the provider are both configured.
 
 Details in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Changes are in
 [CHANGELOG.md](CHANGELOG.md).

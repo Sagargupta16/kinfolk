@@ -6,6 +6,37 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 2026-08-06
+
+### Deployed
+
+- **The app is LIVE** at <https://kinfolk-neon.vercel.app>. Once the Vercel GitHub App was
+  installed by hand, the same `gitSource` deployment call that had been refused four times
+  succeeded and built on the first attempt -- so the 400 never named its real cause.
+  Verified live: `/demo` 307s to `/tree` and the canvas renders 151 nodes, 150 edges and
+  34 union junctions from sample data.
+- **The landing page's two app buttons now appear**, pointing at that host. They were
+  hidden while `APP_URL` was empty, because a link to a deployment that does not exist is
+  worse than no link.
+- `PRODUCTION_URL` is set as a repo variable, so the deploy-verify and daily health jobs
+  stop skipping.
+
+### Fixed
+
+- **Picked the right alias out of three.** Vercel assigned
+  `kinfolk-sagargupta16s-projects.vercel.app`, which sits behind SSO protection and 302s
+  every request to a Vercel login -- a public visitor would meet a sign-in for an account
+  they do not have, and when probed it looks exactly like a broken deployment.
+  `kinfolk.vercel.app` belongs to an unrelated project. Only `kinfolk-neon` answers 200.
+
+### Known gap
+
+- **Sign-in is not live yet.** It needs `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID`
+  and `AUTH_GITHUB_SECRET` set in Vercel by their owner, plus the production callback URL
+  added to the GitHub OAuth app. `/api/auth/providers` returns 500 until then, which is
+  the expected shape rather than a fault. `AUTH_TRUST_HOST` and `AUTH_URL` are set, both
+  being non-secret.
+
 ## 2026-08-05
 
 ### Deployed
