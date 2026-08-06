@@ -49,14 +49,39 @@ export async function GET(request: NextRequest) {
 		showRelations: params.get("relations") !== "0",
 	};
 
-	const userId = await userIdFromBearer(request.headers.get("authorization"));
+	// Both database calls are wrapped, and the absence of this was a real defect: an
+	// unhandled throw here answered 500 with an EMPTY BODY, so a failing query was
+	// indistinguishable from a crashed function. The stage marker exists for the same
+	// reason it does in the OAuth callback -- two calls, one handler, and from outside
+	// they look identical.
+	let stage = "session lookup";
+	try {
+		const userId = await userIdFromBearer(request.headers.get("authorization"));
 
-	if (userId) {
-		const view = await loadTreeView(userId, options);
-		// A signed-in user with no tree yet is a new account, not an error. 200 with
-		// a null view lets the client render its empty state; a 404 would say the
-		// ROUTE was missing, which is a different problem with a different fix.
-		return NextResponse.json({ view: view ? serialiseTreeView(view) : null }, { headers: cors });
+		if (userId) {
+			stage = "load tree";
+			const view = await loadTreeView(userId, options);
+			// A signed-in user with no tree yet is a new account, not an error. 200 with
+			// a null view lets the client render its empty state; a 404 would say the
+			// ROUTE was missing, which is a different problem with a different fix.
+			return NextResponse.json({ view: view ? serialiseTreeView(view) : null }, { headers: cors });
+		}
+	} catch (error) {
+		// `cause` carries the real Postgres error; drizzle's own message holds only the
+		// statement. Reporting the statement without the reason is a symptom without a
+		// diagnosis, which cost a full round of investigation on the OAuth callback.
+		console.error(`[tree] failed at ${stage}`, error);
+		const detail = error instanceof Error ? error.message : "unknown error";
+		const cause =
+			error instanceof Error && error.cause instanceof Error
+				? error.cause.message
+				: error instanceof Error && error.cause
+					? String(error.cause)
+					: null;
+		return NextResponse.json(
+			{ error: `could not read your graph (${stage}: ${detail})`, cause },
+			{ status: 500, headers: cors },
+		);
 	}
 
 	// No token: the sample tree, if the caller asked for it the same way the page
