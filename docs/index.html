@@ -325,14 +325,20 @@
       /*
        * Where the app lives.
        *
-       * Set this once the Vercel deployment exists and the two buttons appear. Left empty
-       * they stay hidden, because a link to a deployment that does not exist is worse than
-       * no link: it reports the project as live and then 404s.
+       * Left empty the two buttons stay hidden, because a link to a deployment that does
+       * not exist is worse than no link: it reports the project as live and then 404s.
+       *
+       * This host is deliberate and NOT interchangeable with the other aliases Vercel
+       * assigned. `kinfolk-sagargupta16s-projects.vercel.app` sits behind Vercel's SSO
+       * protection and 302s every visitor to a Vercel login, so it would send the public
+       * to a sign-in for an account they do not have. `kinfolk.vercel.app` belongs to an
+       * unrelated project entirely. Verified live: this one answers 200 and serves the
+       * sample tree at 151 nodes.
        *
        * Not a build-time constant, because this page has no build step -- Pages serves
        * /docs verbatim. One string to edit, in one place.
        */
-      const APP_URL = "";
+      const APP_URL = "https://kinfolk-neon.vercel.app";
 
       if (APP_URL) {
         const app = document.getElementById("app");
