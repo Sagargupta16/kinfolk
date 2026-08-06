@@ -117,9 +117,26 @@ export async function POST(request: NextRequest) {
 		// -- because the alternative is a visitor who can only report "it failed" and a
 		// maintainer who cannot get at the platform log. A misconfigured deployment is
 		// not a secret worth protecting at the cost of being undiagnosable.
+		// `cause` matters more than `message` here, and the last attempt proved it.
+		// Drizzle reports a failed query as "Failed query: select ..." with the real
+		// Postgres error nested in `cause` -- so echoing only the message named the
+		// STATEMENT while hiding the reason, which is the half that identifies the
+		// fault. A statement without its error is a symptom without a diagnosis.
 		const detail = error instanceof Error ? error.message : "unknown error";
+		const cause =
+			error instanceof Error && error.cause instanceof Error
+				? error.cause.message
+				: error instanceof Error && error.cause
+					? String(error.cause)
+					: null;
+
 		return NextResponse.json(
-			{ error: `could not complete sign-in (${stage}: ${detail})` },
+			{
+				error: `could not complete sign-in (${stage}: ${detail})`,
+				// Separate field rather than concatenated: the statement is long, and a
+				// single string buries the one line worth reading.
+				cause,
+			},
 			{ status: 500, headers: cors },
 		);
 	}

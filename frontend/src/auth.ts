@@ -98,12 +98,19 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 	const body = (await response.json()) as {
 		token?: string;
 		error?: string;
+		cause?: string | null;
 		isNewUser?: boolean;
 		user?: CompletedSignIn["user"];
 	};
 
 	if (!response.ok || !body.token) {
-		throw new Error(body.error ?? "Could not complete sign-in.");
+		// `cause` is appended when the API sends one. Drizzle nests the real Postgres
+		// error there while `message` holds only the statement, so showing the message
+		// alone reports a symptom and withholds the diagnosis -- which cost a round of
+		// this exact investigation.
+		throw new Error(
+			[body.error ?? "Could not complete sign-in.", body.cause].filter(Boolean).join(" -- "),
+		);
 	}
 
 	setToken(body.token);
