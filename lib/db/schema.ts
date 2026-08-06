@@ -176,7 +176,23 @@ export const visibilityEnum = pgEnum("visibility", [
 export const users = pgTable("users", {
 	id: uuid("id").defaultRandom().primaryKey(),
 	name: text("name"),
-	email: text("email").notNull().unique(),
+	/**
+	 * Nullable, because GitHub does not always give us one.
+	 *
+	 * Auth.js asks for the `user:email` scope and falls back to `GET /user/emails`
+	 * when the profile has no public address, but that fallback is not guaranteed:
+	 * it is skipped when the request fails, and it reads `emails[0]` when nothing is
+	 * marked primary, so an account with no verified address yields `undefined`.
+	 * With `NOT NULL` here the adapter's `createUser` insert is then rejected by
+	 * Postgres, and the visitor is bounced to `/api/auth/error?error=Configuration`
+	 * -- a message about server configuration for what is really a missing field on
+	 * their GitHub account.
+	 *
+	 * Left UNIQUE: two accounts sharing an address would be two people claiming one
+	 * identity, and Postgres treats NULLs as distinct, so several address-less users
+	 * coexist without colliding.
+	 */
+	email: text("email").unique(),
 	emailVerified: timestamp("email_verified", { withTimezone: true }),
 	image: text("image"),
 	/** GitHub handle, cached for the invite-by-username flow. */
