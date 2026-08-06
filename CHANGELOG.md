@@ -6,6 +6,59 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 2026-08-06 (production hardening)
+
+### Security
+
+- **5 dependency vulnerabilities closed**, 3 of them HIGH: four in postcss, one in
+  sharp. Both nested under `next` rather than imported here, so the fix is a pnpm
+  override that stops the old copies existing. postcss runs only at build time and
+  sharp is shipped-but-unused, but "we do not call it today" is a fact about this
+  week's code, not a property of the dependency.
+- **Security headers**, where only HSTS was set. Added `nosniff`, a referrer policy,
+  a permissions policy, `X-Frame-Options` and a Content Security Policy with
+  `default-src 'self'`, a `connect-src` naming the only two hosts this app may reach,
+  `frame-ancestors 'none'`, `object-src 'none'` and `base-uri 'self'`.
+- **A write budget**: 500 people per hour per owner, counted in Postgres. The API
+  previously accepted unbounded authenticated writes, so one token could create rows
+  until Neon stopped it.
+
+### Two CSP attempts that broke the app, both caught in a browser
+
+Worth recording because the header looked correct in both cases.
+
+`'strict-dynamic'` disables host-based allowlisting by design, so `'self'` stopped
+applying and every `/_next/static/chunks/*.js` was blocked. The shell rendered, the
+theme script ran, and the canvas came up with **zero nodes** -- which reads as a data
+bug rather than a policy one. It cannot work here regardless: it bootstraps from a
+nonce, and these pages are cached rather than rendered per request.
+
+Then a sha256 hash of the theme script alongside `'unsafe-inline'`. The browser said
+it outright: a hash makes `'unsafe-inline'` ignored, so adding the hash **blocked
+every other inline script** instead of narrowing anything. Those others are React's
+streaming payload, emitted per render and unhashable, and Next's own inline bootstrap
+needs the allowance anyway -- so externalising our own script would not have helped.
+
+`script-src` therefore keeps `'unsafe-inline'`, and the comment says so plainly
+rather than implying the policy is stricter than it is.
+
+### Verified
+
+Live in production: all six headers present, all five endpoints answering, the canvas
+rendering 151 nodes and 150 edges with **zero console errors**. The rate limit was
+proven against the real database -- at the limit refused, a different user unaffected,
+5-left/want-5 allowed while want-6 refused. Mobile re-checked at the `max-width: 640px`
+breakpoint: detail sheet at 55% of viewport height, no horizontal overflow, and no
+contact value anywhere in the panel.
+
+### Not fixed, and why
+
+A static export is **impossible** without deleting the auth flow, which was measured
+rather than assumed: `output: "export"` fails on `/demo`, and `/api/auth/*` plus the
+server-side `signIn()` redirect cannot exist in a static file. Hosting the UI on Pages
+would mean rebuilding sign-in as a client-side OAuth dance and putting a bearer token
+in `localStorage`, which is less secure than what exists now.
+
 ## 2026-08-06 (one environment, and no builds for docs)
 
 ### Changed
