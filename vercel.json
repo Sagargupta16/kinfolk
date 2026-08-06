@@ -6,5 +6,6 @@
 	"regions": ["sin1"],
 	"github": {
 		"silent": true
-	}
+	},
+	"ignoreCommand": "bash scripts/vercel-ignore-build.sh"
 }

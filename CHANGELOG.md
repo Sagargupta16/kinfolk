@@ -6,6 +6,27 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 2026-08-06 (one environment, and no builds for docs)
+
+### Changed
+
+- **Preview deployments are off.** There is one environment now, production. A pull request
+  was producing its own deployment alongside the production one, so the dashboard listed
+  three environments for a project that only ever serves from one.
+- **A commit touching only documentation no longer builds.** `ignoreCommand` runs
+  [scripts/vercel-ignore-build.sh](scripts/vercel-ignore-build.sh), which skips when every
+  changed path is under `docs/`, `drizzle/`, `.github/`, `.claude/` or is markdown.
+  Measured on PR #11: one changed markdown file produced a full production-grade build and a
+  preview deployment, which on a Hobby plan is the single concurrent build slot spent on a
+  file the runtime never reads. It also put a "Deployment has completed" check on a pull
+  request whose deployment proved nothing.
+
+The filter is a DENY list rather than an allow list, deliberately: a new top-level directory
+builds until somebody decides otherwise, because a wrongly skipped deploy is a deployment
+that silently never happens. Production always builds, and so does any commit the script
+cannot diff. Verified against 13 path combinations plus the real docs-only commit that
+wasted a build earlier.
+
 ## 2026-08-06 (sign-in configured)
 
 ### Added
