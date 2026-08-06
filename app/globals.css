@@ -1,6 +1,29 @@
 @import "tailwindcss";
 
 /*
+ * Where to look for class names.
+ *
+ * Tailwind 4 auto-detects sources relative to the stylesheet, which is enough for
+ * the Next build because this file sits inside the project it scans. It is NOT
+ * enough for the Vite build in `frontend/`: there the CSS is imported from another
+ * package, so `components/` and `lib/` fall outside the detected root and every
+ * utility used by a shared component is dropped from the output.
+ *
+ * The symptom is worth recording, because it does not look like a CSS problem. The
+ * canvas mounted with all 151 nodes in the DOM and rendered as unstyled overflowing
+ * text -- so the bug reads as a broken layout or a failed data load, when in fact the
+ * markup was perfect and the stylesheet was missing half its rules.
+ *
+ * Paths are relative to this file. Harmless duplication for the Next build, which
+ * would have found these anyway.
+ */
+@source "../components";
+@source "../lib";
+@source "../app";
+@source "../frontend/src";
+@source "../frontend/index.html";
+
+/*
  * ============================================================================
  * Kinfolk design tokens
  * ============================================================================

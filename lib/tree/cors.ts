@@ -31,6 +31,12 @@
  */
 const ALLOWED_ORIGINS = new Set([
 	"https://sagargupta.online",
+	// Vite's dev and preview server, where the SPA runs locally. Its absence here was
+	// a real defect rather than an oversight worth glossing: the redirect allow list
+	// in redirect-allow.ts already had it, so sign-in would have been permitted while
+	// every data fetch was blocked -- and the browser reports that as "could not reach
+	// the server", which reads as the API being down rather than as a policy refusal.
+	"http://localhost:5173",
 	"http://localhost:3007",
 	"https://localhost:3007",
 ]);

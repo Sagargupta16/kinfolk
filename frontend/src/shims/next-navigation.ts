@@ -43,6 +43,22 @@ export function useRouter() {
 	};
 }
 
+/**
+ * `redirect()`, as a navigation.
+ *
+ * In Next this throws a control-flow signal that unwinds the render and sends a
+ * Location header. Here it navigates, which is the closest honest equivalent -- and
+ * it must NOT return, because the callers (`lib/tree/demo-actions.ts`) treat
+ * everything after it as unreachable.
+ */
+export function redirect(url: string): never {
+	const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+	window.location.assign(url.startsWith("/") ? `${base}${url}` : url);
+	// `assign` does not stop execution, so this keeps the `never` contract that the
+	// callers rely on for their own control flow.
+	throw new Error(`Redirecting to ${url}`);
+}
+
 export function usePathname() {
 	return window.location.pathname;
 }
