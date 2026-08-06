@@ -70,6 +70,13 @@ export async function POST(request: NextRequest) {
 		);
 	}
 
+	// Which step we reached, so a 500 says WHERE it failed rather than only that it
+	// did. Three network-or-database stages sit inside one try, and from outside they
+	// are indistinguishable -- which is the same "generic error" problem the Auth.js
+	// `?error=Configuration` page has, reinvented one layer down. The value is echoed
+	// in the response because the alternative is asking somebody to fetch a log.
+	let stage = "exchange";
+
 	try {
 		const accessToken = await exchangeCode(code, redirectUri);
 		if (!accessToken) {
@@ -81,6 +88,7 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		stage = "profile";
 		const profile = await fetchProfile(accessToken);
 		if (!profile) {
 			return NextResponse.json(
@@ -89,6 +97,7 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		stage = "session";
 		const result = await signInWithGitHub(profile);
 		return NextResponse.json(
 			{
@@ -100,12 +109,17 @@ export async function POST(request: NextRequest) {
 			{ headers: cors },
 		);
 	} catch (error) {
-		// The access token is never logged. `error` here is a database or config
-		// failure, and the log line exists so the next one names itself instead of
-		// being inferred from a generic page.
-		console.error("[oauth] callback failed", error);
+		// The access token is never logged, and neither is the code.
+		console.error(`[oauth] callback failed at ${stage}`, error);
+
+		// The message reaches the browser, which is a deliberate trade. It names the
+		// stage and the thrown message -- never a token, a code or a connection string
+		// -- because the alternative is a visitor who can only report "it failed" and a
+		// maintainer who cannot get at the platform log. A misconfigured deployment is
+		// not a secret worth protecting at the cost of being undiagnosable.
+		const detail = error instanceof Error ? error.message : "unknown error";
 		return NextResponse.json(
-			{ error: "could not complete sign-in" },
+			{ error: `could not complete sign-in (${stage}: ${detail})` },
 			{ status: 500, headers: cors },
 		);
 	}
