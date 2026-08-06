@@ -6,6 +6,38 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 2026-08-06 (sign-in configured)
+
+### Added
+
+- **Sign-in is configured and the app is fully live.** `/api/auth/providers` returns 200
+  and reports the GitHub provider, so the daily health check now passes all five probes
+  where it previously failed that one.
+- `DATABASE_URL` comes from **Vercel's native Neon integration** rather than a pasted
+  string. The credential is provisioned into the project and rotated by Vercel, so it never
+  passes through a terminal, a transcript or a third-party API -- strictly better than any
+  copy-paste route. The integration also sets `POSTGRES_*`, `PG*` and
+  `DATABASE_URL_UNPOOLED`, which are unused and harmless here.
+- `AUTH_GITHUB_ID` is stored as `plain`, not `sensitive`. An OAuth client id is public by
+  specification (RFC 6749 section 2.2) and appears in the authorize URL every user's browser
+  visits, so encrypting it would imply a secrecy it does not have.
+
+### Verified, not assumed
+
+- The `callbackUrl` Auth.js reports matches the OAuth app's registered callback exactly,
+  which is what rules out `redirect_uri_mismatch`.
+- Clicking "Continue with GitHub" reaches GitHub's own login with PKCE (`S256`) and
+  `scope=read:user user:email`. GitHub **accepted** the redirect URI rather than rejecting
+  it, which is the assertion that matters.
+- `/api/auth/session` returns `null` rather than an `AdapterError`, proving the Drizzle
+  adapter reached Postgres. A broken connection surfaces there first.
+- `pnpm db:smoke` passes all 22 live checks, including fusion across two graphs, kinship
+  terms, and a private phone number never reaching a linked viewer.
+
+The final keystroke of a sign-in is deliberately not automated: minting a real session for
+a real account to test with is forbidden, so provisioning is proven by the smoke script
+against the same database.
+
 ## 2026-08-06 (later)
 
 ### Fixed

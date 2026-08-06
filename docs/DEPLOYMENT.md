@@ -4,20 +4,36 @@ Local setup is [SETUP.md](SETUP.md). This is the production path.
 
 ## Live state, 2026-08-06
 
-Both surfaces are deployed. One thing is still missing, and it is named here rather than
-left to be discovered halfway down the page.
+Fully configured. All five health probes pass.
 
 | Surface | State |
 | --- | --- |
 | Landing page, <https://sagargupta.online/kinfolk/> | **Live.** Both app buttons visible. |
 | App, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree renders 151 nodes and 150 edges. |
-| Sign-in | **NOT working.** Needs `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`, which only their owner may set. |
+| Sign-in | **Configured.** `/api/auth/providers` returns 200 and reports the GitHub provider. |
 
-`/api/auth/providers` returns 500 until those four exist, and the daily health check fails
-on that one probe while the other four pass. That is the check working, not a regression:
-the endpoint answers 200 only when the secret and the provider are both present.
+`DATABASE_URL` comes from **Vercel's native Neon integration** rather than a pasted string,
+which is the better route: the credential is provisioned into the project and rotated by
+Vercel, so it never passes through a terminal, a transcript or a third-party API. The
+integration also sets `POSTGRES_*`, `PG*` and `DATABASE_URL_UNPOOLED` alongside it; those
+are unused here and harmless, since this app reads only `DATABASE_URL`.
 
-`AUTH_URL` and `AUTH_TRUST_HOST` are already set, both being non-secret.
+What was verified after the secrets landed, rather than assumed:
+
+- `/api/auth/providers` reports a `callbackUrl` of
+  `https://kinfolk-neon.vercel.app/api/auth/callback/github`, matching the OAuth app's
+  registered callback exactly -- which is what rules out `redirect_uri_mismatch`.
+- Clicking "Continue with GitHub" reaches GitHub's own login with
+  `code_challenge_method=S256` and `scope=read:user user:email`. GitHub ACCEPTED the
+  redirect URI rather than rejecting it, which is the check that matters.
+- `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
+  proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
+- `pnpm db:smoke` passes all 22 live checks against the branch.
+
+The last step of a sign-in -- entering GitHub credentials -- is deliberately NOT automated.
+Minting a real session for a real account to test with is forbidden by the workspace rules,
+so provisioning (one graph, one self node reading kinship "you") is proven by
+`scripts/smoke-db.mts` against the same database instead.
 
 ## Why Vercel and not GitHub Pages
 

@@ -138,11 +138,10 @@ Use that hostname, not the other aliases Vercel assigned:
 redirects every visitor to a Vercel login, and `kinfolk.vercel.app` belongs to an
 unrelated project.
 
-The sample tree works today. **Sign-in does not yet**, because it needs four secrets set
-in Vercel by hand -- `DATABASE_URL` (the direct Neon host), `AUTH_SECRET`,
-`AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` -- plus the production callback URL added to
-the GitHub OAuth app. `/api/auth/providers` returning 500 is that state, and is the
-canary: it answers 200 only once the secret and the provider are both configured.
+Both the sample tree and GitHub sign-in work. `/api/auth/providers` returns 200, which is
+the canary for a fully configured deployment: it answers 200 only when `AUTH_SECRET` and
+the GitHub provider are both present. `DATABASE_URL` comes from Vercel's native Neon
+integration, so the credential is provisioned and rotated by Vercel rather than pasted.
 
 Details in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Changes are in
 [CHANGELOG.md](CHANGELOG.md).
