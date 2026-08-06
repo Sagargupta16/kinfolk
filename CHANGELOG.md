@@ -6,6 +6,28 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 2026-08-06 (later)
+
+### Fixed
+
+- **`AUTH_URL` pointed at the SSO-gated alias**, which would have broken sign-in even once
+  the secrets were added: Auth.js builds its callback from that value, so GitHub would have
+  rejected the redirect. Now `https://kinfolk-neon.vercel.app`, matching the callback the
+  OAuth app must register. Found by listing the project's variables rather than trusting
+  what was set an hour earlier.
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) said "the origin Vercel gives you"**, which
+  was fine when there was one and misleading now there are three and two are unusable. The
+  exact hostname is written out in both the variable table and the OAuth app steps.
+- Recorded that `DATABASE_URL` on Vercel wants the **pooler** host while `drizzle-kit push`
+  wants the **direct** one. Opposite requirements, easy to conflate, and stated wrongly
+  once in conversation.
+
+### Known gap, unchanged
+
+- Sign-in still needs four secrets only their owner may set. The daily health check fails
+  on `/api/auth/providers` alone and passes its other four probes, which is the check
+  working rather than a regression.
+
 ## 2026-08-06
 
 ### Deployed

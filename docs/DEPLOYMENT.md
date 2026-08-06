@@ -2,6 +2,23 @@
 
 Local setup is [SETUP.md](SETUP.md). This is the production path.
 
+## Live state, 2026-08-06
+
+Both surfaces are deployed. One thing is still missing, and it is named here rather than
+left to be discovered halfway down the page.
+
+| Surface | State |
+| --- | --- |
+| Landing page, <https://sagargupta.online/kinfolk/> | **Live.** Both app buttons visible. |
+| App, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree renders 151 nodes and 150 edges. |
+| Sign-in | **NOT working.** Needs `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`, which only their owner may set. |
+
+`/api/auth/providers` returns 500 until those four exist, and the daily health check fails
+on that one probe while the other four pass. That is the check working, not a regression:
+the endpoint answers 200 only when the secret and the provider are both present.
+
+`AUTH_URL` and `AUTH_TRUST_HOST` are already set, both being non-secret.
+
 ## Why Vercel and not GitHub Pages
 
 `pnpm build` reports four DYNAMIC routes:
@@ -67,7 +84,8 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. The **pooler** host is correct here -- the app talks over the serverless HTTP driver, and a serverless function opens a connection per invocation. |
 | `AUTH_SECRET` | A fresh 32+ byte random string. **Not** the one from `.env.local`: a local secret that leaks should not be able to forge production sessions. Generate with `node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"`. |
-| `AUTH_URL` | The deployed origin Vercel gives you, with no trailing slash. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. Do NOT assume `kinfolk.vercel.app`: an unrelated project already answers there. |
+| `AUTH_URL` | **`https://kinfolk-neon.vercel.app`**, with no trailing slash. Already set. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. Vercel assigned THREE aliases and only this one is usable: `kinfolk-sagargupta16s-projects.vercel.app` is SSO-gated and 302s every request to a Vercel login, and `kinfolk.vercel.app` belongs to an unrelated project. |
+| `AUTH_TRUST_HOST` | `true`. Already set. Auth.js is behind Vercel's proxy and will not trust the forwarded host without it, so sign-in fails even with every other value correct. |
 | `AUTH_GITHUB_ID` | From the production OAuth app below. |
 | `AUTH_GITHUB_SECRET` | Same. |
 | `NEXT_PUBLIC_BASE_PATH` | `/kinfolk` ONLY once the apex is on Vercel and rewriting. Leave UNSET until then: a base path with nothing routing to it serves a page whose every asset 404s. It also scopes the session and demo cookies to the mount, which is what stops them being sent to every other project on the shared domain. |
@@ -78,10 +96,11 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 
 The development app's callback points at `http://localhost:3007`, so it cannot serve the deployed site. Create a second one at [github.com/settings/developers](https://github.com/settings/developers):
 
-- **Homepage URL**: the origin Vercel assigned
-- **Authorization callback URL**: that origin plus `/api/auth/callback/github`
+- **Homepage URL**: `https://kinfolk-neon.vercel.app`
+- **Authorization callback URL**: `https://kinfolk-neon.vercel.app/api/auth/callback/github`
 
-The callback path is fixed by Auth.js. Do not shorten it.
+The callback path is fixed by Auth.js. Do not shorten it. It must match `AUTH_URL` exactly,
+including the scheme and the absence of a trailing slash.
 
 Two apps rather than two callbacks on one, so revoking local access cannot lock out production.
 
