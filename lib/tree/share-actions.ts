@@ -18,6 +18,7 @@ import { sessionOrNull, signOut } from "@/auth";
 import { db } from "../db/client";
 import { treeInvites, treeMembers, trees, users } from "../db/schema";
 import { assertCanEditTree, NotAllowedError } from "./authz";
+import { userIdFromBearer } from "./bearer";
 import { DEMO_COOKIE } from "./demo";
 import type { Result } from "./edit-actions";
 
@@ -44,15 +45,22 @@ export async function leave(): Promise<void> {
 }
 
 async function sharer(): Promise<{ userId: string } | { error: string }> {
-	const { cookies } = await import("next/headers");
+	const { cookies, headers } = await import("next/headers");
 	const store = await cookies();
 	if (store.get(DEMO_COOKIE)) {
 		return { error: "This is sample data. Sign in to share a graph of your own." };
 	}
 	const session = await sessionOrNull();
 	const userId = session?.user?.id;
-	if (!userId) return { error: "Sign in to share." };
-	return { userId };
+	if (userId) return { userId };
+
+	// A bearer token, for a UI served from another origin. Same reasoning as
+	// `editor()` in edit-actions.ts: the cookie is tried first, so the
+	// server-rendered path is untouched.
+	const bearer = await userIdFromBearer((await headers()).get("authorization"));
+	if (bearer) return { userId: bearer };
+
+	return { error: "Sign in to share." };
 }
 
 /**

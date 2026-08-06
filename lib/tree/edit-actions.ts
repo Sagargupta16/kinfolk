@@ -35,6 +35,7 @@ import {
 	type Visibility,
 } from "../db/schema";
 import { assertSameTree, NotAllowedError, treeIdForEditablePerson } from "./authz";
+import { userIdFromBearer } from "./bearer";
 import { DEMO_COOKIE } from "./demo";
 import {
 	birthYearColumns,
@@ -55,9 +56,19 @@ export type Result = { ok: true; id?: string } | { ok: false; error: string };
  * Demo mode is rejected here rather than in each action: the demo is sample data with
  * no owner, so there is nothing to write to and no user to attribute it to. Doing this
  * check once means a new action cannot forget it.
+ *
+ * TWO credentials are accepted, and the order matters. A same-origin form post
+ * carries the session cookie; a call from the Pages-hosted UI carries a bearer
+ * token, because that origin cannot send this app's cookie without it becoming
+ * `SameSite=None` and losing its CSRF protection (see lib/tree/bearer.ts).
+ *
+ * The cookie is tried FIRST so the server-rendered UI is unaffected, and the
+ * bearer path is reached only when there is no session. Both resolve to the same
+ * kind of value -- a user id proven against the database -- so every action keeps
+ * its single auth line and none of them need to know which arrived.
  */
 async function editor(): Promise<{ userId: string } | { error: string }> {
-	const { cookies } = await import("next/headers");
+	const { cookies, headers } = await import("next/headers");
 	const store = await cookies();
 	if (store.get(DEMO_COOKIE)) {
 		return { error: "This is sample data. Sign in to build your own graph." };
@@ -65,8 +76,12 @@ async function editor(): Promise<{ userId: string } | { error: string }> {
 
 	const session = await sessionOrNull();
 	const userId = session?.user?.id;
-	if (!userId) return { error: "Sign in to make changes." };
-	return { userId };
+	if (userId) return { userId };
+
+	const bearer = await userIdFromBearer((await headers()).get("authorization"));
+	if (bearer) return { userId: bearer };
+
+	return { error: "Sign in to make changes." };
 }
 
 /** Turns a thrown NotAllowedError into a message; anything else is a real bug. */
