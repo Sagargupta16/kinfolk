@@ -5,7 +5,8 @@
 			"name": "kinfolk",
 			"runtimeExecutable": "pnpm",
 			"runtimeArgs": ["dev", "--port", "3007"],
-			"port": 3007
+			"port": 3007,
+			"autoPort": false
 		}
 	]
 }
