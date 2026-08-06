@@ -96,11 +96,25 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 
 The development app's callback points at `http://localhost:3007`, so it cannot serve the deployed site. Create a second one at [github.com/settings/developers](https://github.com/settings/developers):
 
-- **Homepage URL**: `https://kinfolk-neon.vercel.app`
+- **Application name**: `Kinfolk (Prod)`
+- **Homepage URL**: `https://sagargupta.online/kinfolk/`
 - **Authorization callback URL**: `https://kinfolk-neon.vercel.app/api/auth/callback/github`
+- **Enable Device Flow**: leave OFF
 
-The callback path is fixed by Auth.js. Do not shorten it. It must match `AUTH_URL` exactly,
-including the scheme and the absence of a trailing slash.
+The homepage and the callback point at DIFFERENT hosts, and that is correct rather than an
+oversight. GitHub renders the homepage URL on the consent screen, so it should be the public
+front door a relative recognises -- and asking somebody to trust a `vercel.app` subdomain
+while inviting them to record family data is a worse first impression than the domain the
+invitation came from. Only the callback is load-bearing in the OAuth exchange.
+
+The callback path is fixed by Auth.js: the route lives at `app/api/auth/[...nextauth]/` and
+nothing overrides `basePath`, so `/api/auth/callback/github` is the whole of it. Do not
+shorten it. Its origin must match `AUTH_URL` exactly, including the scheme and the absence
+of a trailing slash, or sign-in fails with `redirect_uri_mismatch`.
+
+Device Flow stays off because it exists for inputless devices (a CLI, a TV) that cannot host
+a browser redirect. Kinfolk is a web app with a callback, so enabling it would add a second
+way to mint tokens that nothing here uses.
 
 Two apps rather than two callbacks on one, so revoking local access cannot lock out production.
 
