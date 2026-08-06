@@ -44,6 +44,18 @@ jobs:
     name: build the SPA
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      # BOTH, and the `pages` scope is the one that is easy to miss. This job runs
+      # `configure-pages`, which READS the Pages site configuration through the API,
+      # so `contents: read` alone fails with "Resource not accessible by integration"
+      # -- a message about the integration rather than about a missing scope, which
+      # sends you looking at repository visibility instead.
+      #
+      # It is the same trap as the deploy job below: a job-level `permissions` block
+      # REPLACES the workflow default rather than adding to it, so every scope a job
+      # needs has to be listed even when the workflow already granted one.
+      contents: read
+      pages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
