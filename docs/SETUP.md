@@ -47,11 +47,10 @@ On Windows this prints `[✓] Changes applied` and then crashes with
 schema is already committed by the time it happens. Confirm with:
 
 ```bash
-pnpm db:smoke
+pnpm db:studio
 ```
 
-That seeds two small graphs, reads them back through the real query path,
-asserts 22 invariants, and deletes everything it made. All 22 passing means the
+That opens Drizzle Studio against the same URL; all 12 tables listed means the
 database half is done.
 
 ## 2. `AUTH_SECRET` -- generated locally

@@ -3,9 +3,8 @@
 Collaborative family tree maker. Build your own branch, invite relatives, and see what the
 combined tree looks like once everyone's branch is stitched together.
 
-**[sagargupta.online/kinfolk](https://sagargupta.online/kinfolk/)** -- the public SPA.
-**[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
-server-rendered fallback, with a sample tree you can explore without an account. Private repo.
+**[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the app, with a
+sample tree you can explore without an account. Private repo.
 
 ## Why this is not just a tree widget
 
@@ -31,13 +30,12 @@ the layout engine.
 | Layer | Choice |
 | --- | --- |
 | Framework | Next.js 16 (App Router) + React 19, TypeScript strict |
-| Static frontend | Vite 8 + React 19, sharing the graph components and domain logic |
 | Database | Neon Postgres via Drizzle |
 | Auth | Auth.js v5, GitHub OAuth |
 | Graph canvas | React Flow (`@xyflow/react`) with ELK layered layout |
 | Styling | Tailwind 4 |
 | Motion | Motion 12, for chrome only |
-| Tooling | pnpm, Biome, Vitest |
+| Tooling | pnpm, Biome |
 
 Same shape as `prod/kalchar`, so the conventions carry over.
 
@@ -72,11 +70,7 @@ pooler endpoint will not serve.
 
 Full setup, click by click, is in [docs/SETUP.md](docs/SETUP.md).
 
-## Test
-
-```bash
-pnpm test
-```
+## Checks
 
 ```bash
 pnpm typecheck
@@ -86,24 +80,9 @@ pnpm typecheck
 pnpm lint
 ```
 
-328 unit tests, all offline. Graph maths lives in `lib/tree/` with no React or database
-imports precisely so it stays testable -- two defects that were invisible on screen were
-found by writing those tests, because a person who vanishes from a canvas does not
-announce that they were dropped for the wrong reason.
-
-Two suites need a real database and are deliberately kept out of Vitest, since a suite
-that fails on a fresh clone for want of a database tells you nothing about the code:
-
-```bash
-pnpm db:smoke
-```
-
-```bash
-pnpm db:smoke:kin
-```
-
-The second one found a defect nothing offline could: the Neon HTTP driver has no
-transaction support, so `db.transaction()` type-checks perfectly and throws at runtime.
+The unit suite and the live smoke scripts were removed in the 0.2.0 consolidation. Graph
+maths still lives in `lib/tree/` with no React or database imports, so it can be exercised
+in isolation, and CI runs lint, typecheck and the production build on every push.
 
 ## Data model
 
@@ -124,15 +103,10 @@ server-side and never reach the canvas, because a canvas gets screenshotted.
 
 ## Deployment
 
-GitHub Pages builds `frontend/` and serves the public SPA at
-[sagargupta.online/kinfolk](https://sagargupta.online/kinfolk/). It reuses the same graph
-components and domain code as the Next app, then calls the JSON API on Vercel. Pages uploads
-only `frontend/dist`, so the private source repository is not published.
-
-Vercel serves the API, OAuth exchange, database writes, and the server-rendered fallback at
-[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/). The SPA keeps its bearer token
-in `sessionStorage`; the Vercel app keeps the stronger httpOnly-cookie flow available. This
-split is necessary because Pages cannot run Auth.js, query Neon, or execute server actions.
+One Next.js app on Vercel at [kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/),
+backed by Neon Postgres. Reads come from server components calling `loadTreeView()`, and
+every write is a server action authorised against the httpOnly session cookie -- there is
+no JSON API.
 
 Use that hostname, not the other aliases Vercel assigned:
 `kinfolk-sagargupta16s-projects.vercel.app` sits behind Vercel's SSO protection and

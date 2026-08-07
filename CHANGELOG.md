@@ -6,6 +6,80 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.0 -- 2026-08-07 (one app)
+
+The architecture consolidation. Kinfolk is now a single Next.js app on Vercel, and
+everything that existed only so a second, static frontend could serve the same UI
+is gone. The data model, the graph engine and the canvas are untouched.
+
+### Removed
+
+- **The `frontend/` Vite SPA and its GitHub Pages deployment** (`pages.yml`). One UI
+  now, rendered by the server that owns the data -- no shims, no duplicate pinned
+  dependencies, no second theme bootstrap, no second CSP.
+- **The hand-rolled OAuth bridge the SPA needed**: `app/api/oauth/authorize`,
+  `/callback` and `/signout`, plus `lib/tree/oauth-github.ts`, `oauth-session.ts`,
+  `oauth-state.ts` and `redirect-allow.ts`. Auth.js's own round trip on the app
+  origin replaces all of it, which also retires the second sign-in implementation
+  that had to write adapter-identical rows by hand.
+- **The bearer-token JSON API** (`app/api/tree`, `app/api/share`,
+  `app/api/action/[name]`) and its supporting layers: `bearer.ts`,
+  `bearer-header.ts`, `cors.ts`, `serialise.ts`. Reads are server components
+  calling `loadTreeView()`; writes are server actions carrying the httpOnly session
+  cookie. No cross-origin surface remains, so there is nothing for CORS to allow.
+- **The unit suite (26 files, 328 tests), vitest, and both live smoke scripts**,
+  deliberately, to keep the working surface small while the product is reshaped.
+  `scripts/check-migrations.mts` stays because the deploy workflow runs it, and
+  graph maths stays React-free and database-free in `lib/tree/` so a suite can
+  return later without restructuring.
+- **The hardening layers**: the security-header/CSP block in `next.config.mjs`, the
+  gitleaks CI job, and the people-per-hour write budget (`lib/tree/rate-limit.ts`).
+  Authorization is not hardening and stays: every write still starts in
+  `lib/tree/authz.ts`, and contact visibility is still filtered server-side.
+- **`NEXT_PUBLIC_BASE_PATH` mount support.** The app owns its origin, so the session
+  and demo cookies scope to `/` and no route applies a base path by hand.
+
+### Changed
+
+- **`/signin` has a real "Continue with GitHub" button again.** It was a link to the
+  static site, because the OAuth app's single callback URL was registered there.
+  Sign-in is now one form action calling `signIn("github")`.
+- `/tree` redirects signed-out visitors to `/signin` without the `from` param the
+  sign-in page had already stopped reading.
+- CI is one job: lint, typecheck, the production build, and the dead-Tailwind
+  guard. The Tailwind `@source` roots now name `components/`, `lib/` and `app/`
+  explicitly instead of the deleted `frontend/` paths.
+
+### Added
+
+- `app/icon.svg` -- the favicon the SPA had and the Next app never did. Found by the
+  smoke pass below as the only console error on a clean load.
+
+### Also recorded here, shipped earlier and missing from this log
+
+- A childless couple is joined by one direct line instead of a union dot pointing at
+  nobody (#29, 2026-08-07).
+
+### Verified
+
+- Biome, `tsc`, and the production build all pass; the route table is `/` static
+  plus `/tree`, `/signin`, `/demo` and the Auth.js handler served on demand.
+- Live in a browser against the dev server: the landing page renders, the demo
+  cookie flow lands on `/tree` with **151 nodes and 150 edges** (the same counts the
+  deployed site serves), the demo banner shows, and the console is clean.
+- "Continue with GitHub" reaches GitHub's own authorize page with the
+  `redirect_uri` ACCEPTED (PKCE `S256`, callback on the app origin). The final
+  keystroke of a sign-in is deliberately not automated.
+- The lockfile shrank by 78 packages.
+
+### Production note
+
+Sign-in on the deployed site needs one manual change: the GitHub OAuth app's
+authorization callback URL must become
+`https://kinfolk-neon.vercel.app/api/auth/callback/github`. Until then production
+sign-in fails with `redirect_uri_mismatch`; the demo and every signed-out page are
+unaffected.
+
 ## 2026-08-07 (security and deployment audit)
 
 ### Fixed
