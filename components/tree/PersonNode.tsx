@@ -556,26 +556,46 @@ function FoldButton({
 export const PersonNode = memo(PersonNodeInner);
 
 /**
- * The union junction: a dot, not a box.
+ * The union junction, sitting ON the marriage line.
  *
- * Sized near-zero in the layout so a couple reads as a couple rather than as three
- * nodes. Never draggable and never a tab stop -- a junction is structural, not somebody
+ * Layout places it at the couple's mid-card height (see `placeUnionJunctions`),
+ * so the bead reads as a point on the line rather than a third node -- which is
+ * why it takes the line's own colour. Status is drawn with the genogram's
+ * conventions, because they are the ones relatives who have seen a family chart
+ * already know: a divorce or separation is two slashes THROUGH the line, a
+ * widowing hollows the bead, and an intact partnership is a solid point.
+ *
+ * Never draggable and never a tab stop -- a junction is structural, not somebody
  * you can visit.
  */
 function UnionNodeInner({ data }: NodeProps & { data: { union: { status?: string } } }) {
 	const status = data.union.status;
 	const ended = status === "separated" || status === "divorced";
+	const widowed = status === "widowed";
 
 	return (
 		<div className="group flex size-3 items-center justify-center">
 			<Handle type="target" position={Position.Top} isConnectable={false} />
-			<div
-				className={cn(
-					"size-1.5 rounded-full transition-transform duration-(--duration-fast)",
-					"ease-(--ease-spring) group-hover:scale-200",
-					ended ? "bg-accent-dim" : "bg-hairline-strong",
-				)}
-			/>
+			{ended ? (
+				// The genogram double-slash: the line is interrupted, which is the fact.
+				<span
+					aria-hidden
+					className="relative block h-3 w-3 transition-transform duration-(--duration-fast) ease-(--ease-spring) group-hover:scale-150"
+				>
+					<span className="absolute left-0.5 top-1/2 h-3 w-px -translate-y-1/2 rotate-[28deg] bg-past" />
+					<span className="absolute right-0.5 top-1/2 h-3 w-px -translate-y-1/2 rotate-[28deg] bg-past" />
+				</span>
+			) : (
+				<div
+					className={cn(
+						"size-1.5 rounded-full transition-transform duration-(--duration-fast)",
+						"ease-(--ease-spring) group-hover:scale-200",
+						// Hollow for a widowed partnership: one side of the line has ended
+						// without the line itself being severed.
+						widowed ? "border border-edge bg-canvas" : "bg-edge",
+					)}
+				/>
+			)}
 			<Handle type="source" position={Position.Bottom} isConnectable={false} />
 		</div>
 	);

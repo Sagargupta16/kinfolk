@@ -614,6 +614,20 @@ export async function addRelative(form: FormData): Promise<Result> {
 		 * somebody stranded on the canvas with nothing to say why they are there. Failing early
 		 * leaves less mess than failing late.
 		 */
+		/*
+		 * How the couple is recorded, honoured only when this add CREATES the union.
+		 *
+		 * The field exists on the partner form because the canvas now draws the fact --
+		 * a solid bead for an intact partnership, the genogram double-slash for a
+		 * divorce. An EXISTING union's status is that union's record and not this
+		 * form's to overwrite, so `plan.union.kind === "existing"` ignores it. Parsed
+		 * from an allow-list for the same reason invite roles are: a form value is a
+		 * client value.
+		 */
+		const postedStatus = orNull(form.get("unionStatus"));
+		const unionStatus: "married" | "partnered" | "unknown" =
+			postedStatus === "married" || postedStatus === "partnered" ? postedStatus : "unknown";
+
 		let unionId: string | null = null;
 		if (plan.union.kind === "existing") {
 			unionId = plan.union.unionId;
@@ -624,7 +638,7 @@ export async function addRelative(form: FormData): Promise<Result> {
 					treeId,
 					partnerAId: plan.union.partnerAId,
 					partnerBId: plan.union.partnerBId,
-					status: "unknown",
+					status: unionStatus,
 				})
 				.returning({ id: unions.id });
 			unionId = row?.id ?? null;

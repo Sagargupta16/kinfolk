@@ -55,6 +55,47 @@ is gone. The data model, the graph engine and the canvas are untouched.
 - `app/icon.svg` -- the favicon the SPA had and the Next app never did. Found by the
   smoke pass below as the only console error on a clean load.
 
+### The graph, redrawn (same day, same version)
+
+How partners connect and how children descend were rebuilt to the convention
+every hand-drawn pedigree uses, after checking it against published charting
+guides: a couple is joined by ONE horizontal marriage line at mid-card height,
+and their children descend from a single stem at its midpoint. Before this,
+both partners dropped separate lines to a dot floating in the generation gap --
+structurally correct and visually nothing a relative has ever seen on a family
+chart.
+
+- `placeUnionJunctions()` (layout.ts) puts a couple's junction ON the line: x at
+  the couple's midpoint, y at their averaged mid-card height. A single-parent
+  union stays in the gap, centred under its one parent, so the drop is a
+  straight vertical.
+- `partnerPath()` (paths.ts) draws the line card-centre to card-centre; the run
+  behind each opaque card is hidden, so the visible line spans exactly the
+  gutter. A cross-generation couple gets rounded corners at each end instead of
+  a line through somebody's row.
+- The junction bead wears the line's own colour and the genogram's status
+  language: solid for an intact partnership, hollow for widowed, and a double
+  slash THROUGH the line for separated or divorced.
+- Measured on the live canvas at two detail levels, not eyeballed: 68 of 68
+  partner edges are flat marriage lines, 34 of 34 beads sit on their line
+  (worst offset 0px), 82 of 82 child drops leave the bead's centre, 0 NaN
+  paths, and the orbit arrangement is untouched.
+
+Adding a person was reworked around the same research (Gramps' per-card add is
+the reference): the role picker now leads with WHERE the person will land
+(parents above, partner and siblings beside, children below), says "both
+parents recorded" instead of offering a button that ends in a refusal, and
+shows counts for everything else. The fast path is role, name, Enter --
+surname, birth year, gender and living status sit behind a More-details
+disclosure and submit their defaults untouched. Adding a partner now asks how
+the couple is recorded (married / partners / not known), because the canvas
+draws that fact; the status applies only when the add CREATES the union, never
+to one that already exists.
+
+The picker and the partnership status were verified by compile, typecheck and
+build; the write path could not be exercised live, because the demo canvas
+renders no editor and minting a real session to test with is forbidden.
+
 ### Also recorded here, shipped earlier and missing from this log
 
 - A childless couple is joined by one direct line instead of a union dot pointing at
