@@ -6,6 +6,50 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.1 -- 2026-08-07 (a screenshot audit of every surface)
+
+A full UI sweep with a live browser -- landing, sign-in, the canvas at three
+detail levels, the detail panel, the legend, both themes, 1440px and 375px, and
+the SPA -- measuring rather than eyeballing. Three real defects and one
+under-sized control came out of it, all fixed and re-measured.
+
+### Fixed
+
+- **Five junction beads sat on people's faces.** The marriage-line placement put
+  a couple's bead at their midpoint, which is only clear space when the couple
+  is laid out adjacent -- with somebody between them (a remarriage chain, a
+  fused graph) the midpoint is the middle of that person's card, and union
+  nodes painted above cards. Measured: 5 of 34 beads. Two-part fix: the bead's
+  x is clamped to the nearest clear gutter between the partners
+  (`nearestClearPoint()` in layout.ts), and person cards now carry a higher
+  node z-index than junctions so a couple with NO clear gutter hides its bead
+  behind a card instead of wearing it. After: 0 of 34, with the marriage-line
+  geometry unchanged (68/68 flat, 82/82 drops from the bead centre, 0 NaN).
+- **Every right-edge control died while the detail panel was open.** The
+  desktop panel is a 22rem rail pinned to the same edge as the arrangement,
+  detail-level and legend controls, and it is deliberately non-modal -- so the
+  controls underneath it swallowed every click (proved by a click that timed
+  out, not by eye). The cluster now slides 22.75rem left while the panel is
+  open and slides back when it closes; on a phone the panel is a bottom sheet
+  and nothing moves.
+- **The overview map floated 152 bare dashes over the canvas.** No backdrop, so
+  in a busy corner it read as rendering garbage. It now sits on the same opaque
+  bordered surface as the legend.
+- **Icon-only toolbar buttons were 35px wide on a phone** (labels hide below
+  `sm`), under the 44px floor every other control on this canvas clears. Now
+  `min-w-11`.
+
+### Verified
+
+- Re-measured live after each fix, in the Next app and through the SPA: 0 beads
+  on cards, 0 NaN paths, marriage lines and child drops byte-identical to
+  before the clamp, the KEY/arrangement/detail controls clickable with the
+  panel open, clean consoles, and both production builds green.
+- Also checked and found healthy: landing and sign-in at both sizes and themes,
+  the mobile bottom sheet (55dvh, subject card visible), search, breadcrumbs,
+  fold controls, the fixed-frame minimap projection, and horizontal overflow
+  (none anywhere).
+
 ## 0.2.0 -- 2026-08-07 (leaner, redrawn, and staying on the ledger-sync shape)
 
 Three things happened in one release: the working surface got smaller (tests and

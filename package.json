@@ -1,6 +1,6 @@
 {
 	"name": "kinfolk",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"private": true,
 	"description": "Collaborative family tree maker: build your branch, connect it to relatives, see the combined tree",
 	"packageManager": "pnpm@11.10.0",

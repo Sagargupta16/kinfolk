@@ -105,6 +105,19 @@ export function TreeStage({
 	const [goTo, setGoTo] = useState<{ id: string } | null>(null);
 	const onGoTo = useCallback((id: string) => setGoTo({ id }), []);
 
+	/**
+	 * Whether the person detail panel is open, reported by the canvas.
+	 *
+	 * On a desktop that panel is a full-height 22rem rail pinned to the RIGHT -- the
+	 * same edge this stage parks the arrangement, detail and legend controls on. The
+	 * panel is deliberately non-modal, so leaving the controls underneath it made
+	 * them dead while it was open (measured: every click landed on the panel). They
+	 * slide left instead of stacking above it, because chrome floating OVER a panel
+	 * of text is noise, and a control that moved aside is still where the eye saw it
+	 * go.
+	 */
+	const [detailOpen, setDetailOpen] = useState(false);
+
 	/*
 	 * Computed here rather than in each consumer: the canvas draws presence rings from it
 	 * and search ranks namesakes by it, and doing it twice over 151 nodes on every render
@@ -148,6 +161,7 @@ export function TreeStage({
 				showRelations={showRelations}
 				onFocusSearch={onFocusSearch}
 				onPick={setPicked}
+				onDetailOpenChange={setDetailOpen}
 				quickAddRequest={quickAddRequest}
 				onQuickAddHandled={() => setQuickAddRequest(null)}
 			/>
@@ -167,8 +181,16 @@ export function TreeStage({
 
 			{/* Top-right: React Flow puts its own zoom controls bottom-left, and the two must
 			    not share an edge on a phone. z-30 beats the search dropdown's z-20 -- both can
-			    be open at once on a phone, and the one just clicked has to be on top. */}
-			<div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5">
+			    be open at once on a phone, and the one just clicked has to be on top. Slides
+			    left when the desktop detail panel opens, since the panel owns this edge then;
+			    on a phone the panel is a bottom sheet and nothing needs to move. */}
+			<div
+				className={cn(
+					"absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5",
+					"transition-transform duration-(--duration-base) ease-(--ease-out)",
+					detailOpen && "sm:-translate-x-[22.75rem]",
+				)}
+			>
 				{/* Arrangement first, because it changes what the detail control is describing:
 				    "cards / rows / dots" applies to either view, but the reader picks the shape
 				    before they pick how much of each person to draw.
@@ -196,8 +218,9 @@ export function TreeStage({
 							aria-pressed={lod === value}
 							title={hint}
 							className={cn(
-								// 44px tall: this is a primary control on a touch screen.
-								"flex min-h-11 items-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
+								// 44px tall AND wide: this is a primary control on a touch screen, and
+								// below `sm` the label is hidden so the icon alone carried only 35px.
+								"flex min-h-11 min-w-11 items-center justify-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
 								"font-mono text-[0.625rem] uppercase tracking-wider",
 								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 								lod === value
