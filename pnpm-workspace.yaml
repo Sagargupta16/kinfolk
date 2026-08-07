@@ -1,5 +1,9 @@
 packages:
   - "."
+  # The static UI, published to GitHub Pages. Its own package because it has its own
+  # toolchain: Vite and React where the root has Next, and no database or server
+  # dependencies at all. Same arrangement as `apps/ledger-sync/frontend`.
+  - "frontend"
 
 # pnpm 11 reads build-script approval from here, not from package.json.
 allowBuilds:

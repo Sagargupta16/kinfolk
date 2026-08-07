@@ -9,7 +9,7 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { sessionOrNull, signIn } from "@/auth";
+import { sessionOrNull } from "@/auth";
 import { GitHubIcon } from "@/components/ui/GitHubIcon";
 import { enterDemo } from "@/lib/tree/demo-actions";
 
@@ -18,6 +18,8 @@ export const metadata = { title: "Sign in -- Kinfolk" };
 export default async function SignInPage({
 	searchParams,
 }: {
+	// `from` is gone with the sign-in button: it existed to carry a post-sign-in
+	// destination into `signIn()`, and sign-in now happens on the public site.
 	searchParams: Promise<{ error?: string }>;
 }) {
 	const { error } = await searchParams;
@@ -58,25 +60,26 @@ export default async function SignInPage({
 
 				<div className="space-y-3">
 					{/*
-					 * One provider, one flow. The callback is this origin's own
-					 * `/api/auth/callback/github`, so the whole round trip is Auth.js's:
-					 * no hand-rolled state, no token in the browser, an httpOnly session
-					 * cookie at the end.
+					 * Sign-in happens on the PUBLIC SITE, not here.
+					 *
+					 * A GitHub OAuth App allows exactly ONE callback URL, and it is registered
+					 * to sagargupta.online/kinfolk/auth/callback/github so the browser stays on
+					 * the visitor's own domain for the whole flow. That means the Auth.js
+					 * callback on this origin is no longer registered, and the button that used
+					 * to be here would fail with `redirect_uri_mismatch` -- a control that
+					 * cannot work is worse than one that is absent, because the visitor blames
+					 * their own account.
+					 *
+					 * A link rather than a redirect, so somebody who reached this page by an
+					 * old bookmark can see where sign-in moved to instead of being bounced.
 					 */}
-					<form
-						action={async () => {
-							"use server";
-							await signIn("github", { redirectTo: "/tree" });
-						}}
+					<a
+						href="https://sagargupta.online/kinfolk/"
+						className="flex min-h-11 w-full items-center justify-center gap-2.5 rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-(--duration-fast) ease-(--ease-out) hover:-translate-y-px active:translate-y-0"
 					>
-						<button
-							type="submit"
-							className="flex min-h-11 w-full items-center justify-center gap-2.5 rounded-md bg-ink px-4 text-sm font-medium text-canvas transition-transform duration-(--duration-fast) ease-(--ease-out) hover:-translate-y-px active:translate-y-0"
-						>
-							<GitHubIcon className="size-4" />
-							Continue with GitHub
-						</button>
-					</form>
+						<GitHubIcon className="size-4" />
+						Continue on sagargupta.online
+					</a>
 
 					<form action={enterDemo}>
 						<button

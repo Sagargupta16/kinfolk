@@ -31,5 +31,9 @@
 		".next/types/**/*.ts",
 		".next/dev/types/**/*.ts"
 	],
-	"exclude": ["node_modules"]
+	// `frontend/` is its own package with its own tsconfig, dependencies and
+	// `pnpm typecheck`. Leaving it in this project's graph makes the root typecheck
+	// fail on Vite and Tailwind types that are installed over there, and on
+	// `import.meta.env`, which only exists under Vite's client types.
+	"exclude": ["node_modules", "frontend"]
 }

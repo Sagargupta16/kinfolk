@@ -1,13 +1,20 @@
 @import "tailwindcss";
 
 /*
- * Explicit source roots for Tailwind's scanner, relative to this file. Kept
- * explicit rather than relying on auto-detection so a moved file never silently
- * drops the utilities a shared component uses.
+ * Where to look for class names.
+ *
+ * Tailwind 4 auto-detects sources relative to the stylesheet, which is enough for
+ * the Next build because this file sits inside the project it scans. It is NOT
+ * enough for the Vite build in `frontend/`: there the CSS is imported from another
+ * package, so `components/` and `lib/` fall outside the detected root and every
+ * utility used by a shared component is dropped from the output. Paths are
+ * relative to this file; harmless duplication for the Next build.
  */
 @source "../components";
 @source "../lib";
 @source "../app";
+@source "../frontend/src";
+@source "../frontend/index.html";
 
 /*
  * ============================================================================

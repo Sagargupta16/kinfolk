@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-motion="on">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kinfolk</title>
+    <meta
+      name="description"
+      content="Relatives each keep their own tree, then link them, so the combined graph shows how several families actually join up."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; connect-src 'self' https://kinfolk-neon.vercel.app http://localhost:3007 https://localhost:3007 ws://localhost:5173; font-src 'self' data: https://fonts.gstatic.com; form-action 'self'; frame-src 'none'; img-src 'self' data: https://avatars.githubusercontent.com; media-src 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; worker-src 'self' blob:"
+    />
+
+    <!--
+      Geist, from Google Fonts.
+
+      The Next app uses `next/font/google`, which self-hosts and inlines the CSS at
+      build time. Vite has no equivalent, so the stylesheet is linked instead and the
+      two `--font-geist-*` variables app/globals.css expects are declared in
+      src/frontend.css.
+
+      `preconnect` because a font request that waits on a fresh TLS handshake delays
+      first text. `display=swap` for the same reason: system text first, Geist when it
+      arrives, rather than a blank page. Both variables already carry system
+      fallbacks in globals.css, so a blocked request degrades rather than breaks.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!--
+      Theme before first paint.
+
+      Kept as a blocking external script so it still runs before paint while the CSP
+      can reject inline JavaScript. Its behaviour mirrors THEME_SCRIPT in lib/theme.ts.
+    -->
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
