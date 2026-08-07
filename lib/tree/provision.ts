@@ -14,9 +14,10 @@
  * Called from the `createUser` event in auth.ts, so it runs once per account inside
  * Auth.js's own sign-in flow.
  */
-import { and, eq, gt, isNotNull, or } from "drizzle-orm";
+import { and, eq, gt, ilike, isNotNull, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { people, treeInvites, treeMembers, trees } from "../db/schema";
+import { normalizeGitHubLogin } from "./invite";
 
 /**
  * A url-safe slug from a display name.
@@ -119,12 +120,12 @@ export async function claimInvites(
 ): Promise<number> {
 	try {
 		const address = email?.trim().toLowerCase() ?? null;
-		const login = githubLogin?.trim().replace(/^@/, "") ?? null;
+		const login = normalizeGitHubLogin(githubLogin);
 		if (!address && !login) return 0;
 
 		const matchers = [
 			address ? eq(treeInvites.email, address) : undefined,
-			login ? eq(treeInvites.githubLogin, login) : undefined,
+			login ? ilike(treeInvites.githubLogin, login) : undefined,
 		].filter((clause) => clause !== undefined);
 
 		const pending = await db

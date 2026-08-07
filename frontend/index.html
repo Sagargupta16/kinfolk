@@ -8,13 +8,20 @@
       name="description"
       content="Relatives each keep their own tree, then link them, so the combined graph shows how several families actually join up."
     />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; connect-src 'self' https://kinfolk-neon.vercel.app http://localhost:3007 https://localhost:3007 ws://localhost:5173; font-src 'self' data: https://fonts.gstatic.com; form-action 'self'; frame-src 'none'; img-src 'self' data: https://avatars.githubusercontent.com; media-src 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; worker-src 'self' blob:"
+    />
 
     <!--
       Geist, from Google Fonts.
 
       The Next app uses `next/font/google`, which self-hosts and inlines the CSS at
       build time. Vite has no equivalent, so the stylesheet is linked instead and the
-      two `--font-geist-*` variables app/globals.css expects are declared below.
+      two `--font-geist-*` variables app/globals.css expects are declared in
+      src/frontend.css.
 
       `preconnect` because a font request that waits on a fresh TLS handshake delays
       first text. `display=swap` for the same reason: system text first, Geist when it
@@ -28,34 +35,13 @@
       rel="stylesheet"
     />
 
-    <style>
-      :root {
-        --font-geist-sans: "Geist";
-        --font-geist-mono: "Geist Mono";
-      }
-    </style>
-
     <!--
       Theme before first paint.
 
-      Inlined here rather than imported, because this file has no build step and the
-      script must execute where it sits: deferring it past first paint is the white
-      flash it exists to prevent. Kept byte-identical in behaviour to THEME_SCRIPT in
-      lib/theme.ts -- if that changes, this changes.
+      Kept as a blocking external script so it still runs before paint while the CSP
+      can reject inline JavaScript. Its behaviour mirrors THEME_SCRIPT in lib/theme.ts.
     -->
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem("kinfolk.theme") || "system";
-          var m = localStorage.getItem("kinfolk.motion") || "on";
-          var dark =
-            t === "dark" ||
-            (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-          document.documentElement.setAttribute("data-motion", m);
-        } catch (e) {}
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

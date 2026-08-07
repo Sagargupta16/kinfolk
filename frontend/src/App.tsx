@@ -31,7 +31,10 @@ function route(): "landing" | "callback" | "tree" {
 	return "landing";
 }
 
-type Data = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; view: TreeView };
+type Data =
+	| { state: "loading" }
+	| { state: "error"; message: string }
+	| { state: "ready"; view: TreeView };
 
 export function App() {
 	const screen = route();

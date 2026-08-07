@@ -80,6 +80,10 @@ export function TreeStage({
 
 	/** The card most recently clicked, which pre-fills the editor's "from" field. */
 	const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
+	const [quickAddRequest, setQuickAddRequest] = useState<{
+		id: string;
+		nonce: number;
+	} | null>(null);
 
 	/**
 	 * People the pickers can offer, derived from the nodes already on screen.
@@ -144,6 +148,8 @@ export function TreeStage({
 				showRelations={showRelations}
 				onFocusSearch={onFocusSearch}
 				onPick={setPicked}
+				quickAddRequest={quickAddRequest}
+				onQuickAddHandled={() => setQuickAddRequest(null)}
 			/>
 
 			{/* Top-left, opposite the detail control. Capped and NOT full width on a phone:
@@ -234,6 +240,9 @@ export function TreeStage({
 						people={pickable}
 						selectedId={picked?.id}
 						selectedName={picked?.name}
+						onQuickAdd={
+							picked ? () => setQuickAddRequest({ id: picked.id, nonce: Date.now() }) : undefined
+						}
 					/>
 				</div>
 			)}

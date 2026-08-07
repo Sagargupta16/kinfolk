@@ -13,7 +13,19 @@
  * says whose relative it is adding in its own heading -- a form that says "Add father" with
  * no name attached is how you record a father for the wrong person.
  */
-import { Check, Loader2, Plus, X } from "lucide-react";
+import {
+	ArrowLeft,
+	Baby,
+	Check,
+	GitBranch,
+	Heart,
+	Loader2,
+	Minus,
+	Plus,
+	UserRound,
+	Users,
+	X,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { addRelative } from "@/lib/tree/edit-actions";
@@ -29,9 +41,14 @@ import { cn } from "@/lib/utils";
  * forbids. The neutral option sits alongside rather than replacing them, for the cases where
  * it genuinely is not known.
  */
-const GROUPS: { label: string; roles: { role: KinRole; label: string }[] }[] = [
+const GROUPS: {
+	label: string;
+	Icon: typeof UserRound;
+	roles: { role: KinRole; label: string }[];
+}[] = [
 	{
 		label: "Parents",
+		Icon: UserRound,
 		roles: [
 			{ role: "father", label: "Father" },
 			{ role: "mother", label: "Mother" },
@@ -39,10 +56,12 @@ const GROUPS: { label: string; roles: { role: KinRole; label: string }[] }[] = [
 	},
 	{
 		label: "Partner",
+		Icon: Heart,
 		roles: [{ role: "partner", label: "Partner" }],
 	},
 	{
 		label: "Children",
+		Icon: Baby,
 		roles: [
 			{ role: "son", label: "Son" },
 			{ role: "daughter", label: "Daughter" },
@@ -51,6 +70,7 @@ const GROUPS: { label: string; roles: { role: KinRole; label: string }[] }[] = [
 	},
 	{
 		label: "Siblings",
+		Icon: Users,
 		roles: [
 			{ role: "brother", label: "Brother" },
 			{ role: "sister", label: "Sister" },
@@ -61,6 +81,14 @@ const GROUPS: { label: string; roles: { role: KinRole; label: string }[] }[] = [
 
 /** Roles a batch makes sense for: you can have five children, not five fathers. */
 const BATCHABLE = new Set<KinRole>(["son", "daughter", "child", "brother", "sister", "sibling"]);
+
+const field = cn(
+	"min-h-11 w-full rounded-lg border border-hairline bg-surface px-3 text-[0.875rem] text-ink",
+	"placeholder:text-ink-faint transition-colors duration-(--duration-fast) ease-(--ease-out)",
+	"focus:border-hairline-strong focus:outline-none",
+);
+
+const fieldLabel = "mb-1.5 block text-[0.6875rem] font-medium text-ink-muted";
 
 /**
  * Gender options, for the roles that do not already state one.
@@ -141,65 +169,85 @@ export function QuickAdd({
 
 	return (
 		<motion.div
+			role="dialog"
+			aria-modal="false"
 			aria-labelledby={titleId}
 			initial={{ opacity: 0, y: 8, scale: 0.98 }}
 			animate={{ opacity: 1, y: 0, scale: 1 }}
 			exit={{ opacity: 0, y: 8, scale: 0.98 }}
-			transition={{ type: "spring", stiffness: 380, damping: 30 }}
-			className="kf-glass w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl"
+			transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+			className="kf-glass w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-lg"
 		>
-			<div className="flex items-start gap-2 border-b border-hairline px-3 pb-2.5 pt-3">
+			<div className="flex items-center gap-3 border-b border-hairline px-3 py-3">
+				<div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent-ink">
+					<GitBranch className="size-4" strokeWidth={1.75} aria-hidden="true" />
+				</div>
 				<div className="min-w-0 flex-1">
-					<h2
-						id={titleId}
-						className="font-mono text-[0.625rem] uppercase tracking-wider text-ink-faint"
-					>
-						Add to
-					</h2>
+					<p className="font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-ink-faint">
+						New family connection
+					</p>
 					{/* The subject, named. Without it this sheet is "Add father" with no answer to
 					    "whose", which is how a father lands on the wrong person. */}
-					<p className="truncate text-[0.875rem] font-medium text-ink">{subjectName}</p>
+					<h2 id={titleId} className="truncate text-[0.9375rem] font-medium text-ink">
+						Add to {subjectName}
+					</h2>
 				</div>
 				<button
 					type="button"
 					onClick={onClose}
-					aria-label="Close"
-					className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
+					aria-label="Close add relative"
+					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 				>
-					<X className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+					<X className="size-4" strokeWidth={1.75} aria-hidden="true" />
 				</button>
 			</div>
 
 			{role === null ? (
-				<div className="max-h-[60vh] overflow-y-auto overscroll-contain p-2">
-					{GROUPS.map((group) => (
-						<div key={group.label} className="mb-2 last:mb-0">
-							<p className="px-1.5 pb-1 font-mono text-[0.5625rem] uppercase tracking-wider text-ink-faint">
-								{group.label}
-							</p>
-							<div className="flex flex-wrap gap-1">
-								{group.roles.map((option) => (
+				<div className="max-h-[min(70dvh,34rem)] overflow-y-auto overscroll-contain p-3">
+					<p className="mb-3 text-[0.75rem] leading-relaxed text-ink-muted">
+						Who are you adding to this branch?
+					</p>
+					{GROUPS.map(({ label, roles, Icon }) => (
+						<section key={label} className="mb-3 last:mb-0">
+							<h3 className="mb-1.5 flex items-center gap-1.5 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-ink-faint">
+								<Icon className="size-3" strokeWidth={1.5} aria-hidden="true" />
+								{label}
+							</h3>
+							<div
+								className={cn(
+									"grid gap-1.5",
+									roles.length === 1
+										? "grid-cols-1"
+										: roles.length === 2
+											? "grid-cols-2"
+											: "grid-cols-3",
+								)}
+							>
+								{roles.map((option) => (
 									<button
 										key={option.role}
 										type="button"
 										onClick={() => setRole(option.role)}
 										className={cn(
 											// 44px, because this is the primary control of the whole editor.
-											"flex min-h-11 flex-1 items-center justify-center rounded-lg border px-3",
-											"border-hairline bg-surface text-[0.8125rem] text-ink-muted",
+											"flex min-h-11 items-center justify-center rounded-lg border px-2",
+											"border-hairline bg-surface text-[0.75rem] font-medium text-ink-muted",
 											"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-											"hover:border-hairline-strong hover:bg-surface-raised hover:text-ink",
+											"hover:border-accent/40 hover:bg-accent/8 hover:text-accent-ink",
 										)}
 									>
 										{option.label}
 									</button>
 								))}
 							</div>
-						</div>
+						</section>
 					))}
 				</div>
 			) : (
-				<form action={submit} className="p-3">
+				<form
+					action={submit}
+					className="max-h-[min(70dvh,36rem)] overflow-y-auto overscroll-contain p-3"
+				>
 					<button
 						type="button"
 						onClick={() => {
@@ -207,10 +255,58 @@ export function QuickAdd({
 							setError(null);
 							setCount(1);
 						}}
-						className="mb-2 font-mono text-[0.625rem] uppercase tracking-wider text-accent-ink hover:underline"
+						className="mb-3 flex min-h-11 items-center gap-2 rounded-md pr-2 text-[0.75rem] font-medium text-accent-ink hover:text-accent"
 					>
-						{roleLabel(role)} -- change
+						<ArrowLeft className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+						Change relationship
 					</button>
+
+					<div className="mb-3 flex items-baseline justify-between gap-3 border-b border-hairline pb-3">
+						<div>
+							<p className="font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-ink-faint">
+								Adding
+							</p>
+							<p className="text-base font-medium text-ink">{roleLabel(role)}</p>
+						</div>
+						<p className="min-w-0 truncate text-[0.6875rem] text-ink-muted">to {subjectName}</p>
+					</div>
+
+					{batchable && (
+						<fieldset className="mb-3">
+							<legend className={fieldLabel}>People to add</legend>
+							<div className="flex items-center gap-2">
+								<div className="flex items-center overflow-hidden rounded-lg border border-hairline bg-surface">
+									<button
+										type="button"
+										onClick={() => setCount((current) => Math.max(1, current - 1))}
+										disabled={count === 1}
+										aria-label="Add one fewer person"
+										className="flex size-11 items-center justify-center text-ink-muted hover:bg-surface-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
+									>
+										<Minus className="size-3.5" strokeWidth={2} aria-hidden="true" />
+									</button>
+									<output
+										aria-live="polite"
+										className="tabular w-8 text-center text-[0.875rem] font-medium text-ink"
+									>
+										{count}
+									</output>
+									<button
+										type="button"
+										onClick={() => setCount((current) => Math.min(MAX_BATCH, current + 1))}
+										disabled={count === MAX_BATCH}
+										aria-label="Add one more person"
+										className="flex size-11 items-center justify-center text-ink-muted hover:bg-surface-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
+									>
+										<Plus className="size-3.5" strokeWidth={2} aria-hidden="true" />
+									</button>
+								</div>
+								<span className="text-[0.6875rem] leading-snug text-ink-faint">
+									{count === 1 ? "person" : "numbered people to name later"}
+								</span>
+							</div>
+						</fieldset>
+					)}
 
 					{/*
 					 * Four fields, and no more. The full record (places, occupation, provenance,
@@ -219,34 +315,28 @@ export function QuickAdd({
 					 * needs to stay fast.
 					 */}
 					<label className="block">
-						<span className="sr-only">Name</span>
+						<span className={fieldLabel}>
+							Given name <span className="font-normal text-ink-faint">(optional)</span>
+						</span>
 						<input
 							ref={nameRef}
 							name="givenName"
-							placeholder={batchable && count > 1 ? "Surname only, for all of them" : "Name"}
+							placeholder={count > 1 ? "Numbered automatically" : "First or preferred name"}
 							autoComplete="off"
-							className={cn(
-								"h-11 w-full rounded-lg border border-hairline bg-surface px-3",
-								"text-[0.875rem] text-ink placeholder:text-ink-faint",
-							)}
+							disabled={count > 1}
+							className={cn(field, count > 1 && "cursor-not-allowed opacity-45")}
 						/>
 					</label>
 
-					<div className="mt-2 flex gap-2">
-						<label className="flex-1">
-							<span className="sr-only">Family name</span>
-							<input
-								name="familyName"
-								placeholder="Family name"
-								autoComplete="off"
-								className={cn(
-									"h-11 w-full rounded-lg border border-hairline bg-surface px-3",
-									"text-[0.875rem] text-ink placeholder:text-ink-faint",
-								)}
-							/>
+					<div className="mt-3 grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
+						<label className="min-w-0">
+							<span className={fieldLabel}>
+								Family name <span className="font-normal text-ink-faint">(optional)</span>
+							</span>
+							<input name="familyName" placeholder="Surname" autoComplete="off" className={field} />
 						</label>
-						<label className="w-24">
-							<span className="sr-only">Birth year</span>
+						<label>
+							<span className={fieldLabel}>Birth year</span>
 							{/* A YEAR, not a date. It is written to the fuzzy column, because coercing
 							    "1952" into 1952-01-01 invents a birthday nobody recorded. */}
 							<input
@@ -256,11 +346,7 @@ export function QuickAdd({
 								autoComplete="off"
 								disabled={count > 1}
 								title={count > 1 ? "A batch cannot share one birth year" : undefined}
-								className={cn(
-									"tabular h-11 w-full rounded-lg border border-hairline bg-surface px-3",
-									"text-[0.875rem] text-ink placeholder:text-ink-faint",
-									count > 1 && "cursor-not-allowed opacity-40",
-								)}
+								className={cn(field, "tabular", count > 1 && "cursor-not-allowed opacity-40")}
 							/>
 						</label>
 					</div>
@@ -274,17 +360,15 @@ export function QuickAdd({
 					 * like it works and does not.
 					 */}
 					{asksSex && (
-						<fieldset className="mt-2">
-							<legend className="mb-1 font-mono text-[0.5625rem] uppercase tracking-wider text-ink-faint">
-								Gender
-							</legend>
+						<fieldset className="mt-3">
+							<legend className={fieldLabel}>Gender</legend>
 							<div className="flex overflow-hidden rounded-lg border border-hairline">
 								{SEXES.map((option, index) => (
 									<label
 										key={option.value}
 										className={cn(
 											"flex min-h-11 flex-1 cursor-pointer items-center justify-center px-1",
-											"text-center text-[0.75rem] text-ink-muted",
+											"text-center text-[0.6875rem] text-ink-muted",
 											"has-checked:bg-surface-raised has-checked:text-accent-ink",
 											index > 0 && "border-l border-hairline",
 										)}
@@ -305,8 +389,8 @@ export function QuickAdd({
 
 					{/* Living status, as a real tri-state. "unknown" is a stored value here, not a
 					    missing one: most people in a genealogy have neither date recorded. */}
-					<fieldset className="mt-2">
-						<legend className="sr-only">Living status</legend>
+					<fieldset className="mt-3">
+						<legend className={fieldLabel}>Living status</legend>
 						<div className="flex overflow-hidden rounded-lg border border-hairline">
 							{(
 								[
@@ -337,36 +421,11 @@ export function QuickAdd({
 						</div>
 					</fieldset>
 
-					{batchable && (
-						<label className="mt-2 flex items-center gap-2">
-							<span className="font-mono text-[0.625rem] uppercase tracking-wider text-ink-faint">
-								How many
-							</span>
-							{/*
-							 * A batch creates numbered placeholders ("Son 1", "Son 2") for somebody to
-							 * fill in later. "I have five children" is one fact, and entering it five
-							 * times is five times the work for no extra information.
-							 */}
-							<input
-								type="number"
-								min={1}
-								max={MAX_BATCH}
-								value={count}
-								onChange={(event) =>
-									setCount(Math.max(1, Math.min(MAX_BATCH, Number(event.target.value) || 1)))
-								}
-								className="tabular h-11 w-16 rounded-lg border border-hairline bg-surface px-2 text-center text-[0.875rem] text-ink"
-							/>
-							{count > 1 && (
-								<span className="text-[0.6875rem] leading-snug text-ink-faint">
-									Adds {count} placeholders to name later
-								</span>
-							)}
-						</label>
-					)}
-
 					{error && (
-						<p role="alert" className="mt-2 text-[0.75rem] leading-snug text-danger">
+						<p
+							role="alert"
+							className="mt-3 rounded-md border border-danger/35 bg-danger/5 px-3 py-2 text-[0.75rem] leading-snug text-danger"
+						>
 							{error}
 						</p>
 					)}
@@ -376,9 +435,9 @@ export function QuickAdd({
 						disabled={pending}
 						className={cn(
 							"mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg",
-							"border border-accent/40 bg-accent/10 text-[0.8125rem] font-medium text-accent-ink",
-							"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-							"hover:bg-accent/20 disabled:cursor-wait disabled:opacity-60",
+							"bg-ink text-[0.8125rem] font-medium text-canvas",
+							"transition-transform duration-(--duration-fast) ease-(--ease-out)",
+							"hover:-translate-y-px active:translate-y-0 disabled:cursor-wait disabled:opacity-60",
 						)}
 					>
 						{pending ? (
@@ -386,7 +445,7 @@ export function QuickAdd({
 						) : (
 							<Check className="size-4" strokeWidth={2} aria-hidden="true" />
 						)}
-						{pending ? "Adding" : `Add ${count > 1 ? `${count} ` : ""}${roleLabel(role, count)}`}
+						{pending ? "Adding..." : `Add ${count > 1 ? `${count} ` : ""}${roleLabel(role, count)}`}
 					</button>
 				</form>
 			)}
@@ -441,7 +500,8 @@ export function QuickAddButton({
 			aria-label="Add a relative"
 			title="Add a relative"
 			className={cn(
-				"nodrag flex items-center justify-center rounded-full border border-hairline",
+				"nodrag relative flex items-center justify-center rounded-full border border-hairline",
+				"before:absolute before:-inset-2.5 before:content-['']",
 				"bg-surface-raised text-ink-faint shadow-(--kf-shadow-card)",
 				"transition-all duration-(--duration-fast) ease-(--ease-out)",
 				"hover:border-accent/50 hover:text-accent-ink focus-visible:opacity-100",

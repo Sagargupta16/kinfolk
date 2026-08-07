@@ -64,6 +64,7 @@ export function AccountMenu({
 			<button
 				type="button"
 				onClick={() => setOpen((current) => !current)}
+				aria-label={`Account menu for ${label}`}
 				aria-expanded={open}
 				aria-haspopup="menu"
 				className={cn(
@@ -120,7 +121,7 @@ export function AccountMenu({
 							)}
 						>
 							<Share2 aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
-							Share this graph
+							Family access
 						</button>
 					)}
 

@@ -6,6 +6,42 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 2026-08-07 (security and deployment audit)
+
+### Fixed
+
+- Invite roles are now parsed from an allow list, so a forged form cannot grant
+  `owner`. Postgres enforces the same rule on both pending invites and memberships.
+- GitHub usernames are normalized case-insensitively before invites are stored or
+  claimed.
+- Attaching an existing child now refuses an edge that would make somebody their own
+  ancestor.
+- The live database had schema changes but no trustworthy migration history. Migration
+  `0000` was safely baselined, `0001` made Auth.js email nullable, and `0002` added the
+  role constraints. A preflight checker now verifies that live history is an exact
+  prefix of committed migrations before deploys can write.
+- The Pages SPA now has a script CSP with its no-flash theme bootstrap in an external
+  file, plus a favicon so a clean page load produces no console errors.
+
+### Deployment
+
+- CI now typechecks and builds both the Next and Vite frontends, and Biome covers the
+  Vite source and public scripts.
+- Deploys check migration history before and after `drizzle-kit migrate`.
+- Deployment docs now describe the actual split: `frontend/` on Pages, with the API,
+  OAuth exchange and server-rendered fallback on Vercel. `DATABASE_URL` is a manual
+  encrypted variable pointing at the existing Neon project, not a native integration.
+
+### Verified
+
+- 328 unit tests across 26 files, Biome, both TypeScript projects, and both production
+  builds pass.
+- `pnpm audit --prod` reports no vulnerabilities.
+- All 3 committed migrations are applied, and both live Neon smoke suites pass and
+  clean up.
+- Production probes return the expected 200/307 statuses. The Pages SPA was checked at
+  desktop and mobile sizes in light and dark themes with zero console errors.
+
 ## 2026-08-06 (production hardening)
 
 ### Security

@@ -12,6 +12,7 @@
  * opposite of what a development warning should do.
  */
 import { createRoot } from "react-dom/client";
+import "./frontend.css";
 import "@/app/globals.css";
 import "@xyflow/react/dist/style.css";
 import { App } from "./App";

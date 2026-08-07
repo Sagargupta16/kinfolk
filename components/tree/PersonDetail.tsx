@@ -23,11 +23,14 @@ import {
 	BookOpen,
 	Briefcase,
 	Calendar,
+	Crosshair,
+	GitBranch,
 	Globe,
 	Heart,
 	Home,
 	Link2,
 	MapPin,
+	Pencil,
 	Phone,
 	Quote,
 	Users,
@@ -41,7 +44,7 @@ import type { Kinship } from "@/lib/tree/kinship";
 import type { FamilyIndex, Relatives } from "@/lib/tree/relatives";
 import { relativesOf } from "@/lib/tree/relatives";
 import { cn } from "@/lib/utils";
-import { EditButton, PersonEditSheet } from "./PersonEdit";
+import { PersonEditSheet } from "./PersonEdit";
 import { PROVENANCE, SEX_MARKS } from "./PersonNode";
 
 /** Channel glyphs. Phone and WhatsApp share one, since both are "a number to ring". */
@@ -76,6 +79,8 @@ export function PersonDetail({
 	onSaved,
 	onClose,
 	onGoTo,
+	onAddRelative,
+	onCenter,
 }: {
 	/** Null closes the panel. Passed rather than held, so the canvas owns selection. */
 	person: FusedPerson | null;
@@ -91,6 +96,10 @@ export function PersonDetail({
 	onClose: () => void;
 	/** Travel to a relative named in the panel. This is the breadcrumb trail's engine. */
 	onGoTo: (personId: string) => void;
+	/** Grow this person's branch through the relationship-first composer. */
+	onAddRelative?: () => void;
+	/** Re-frame this person without closing the panel. */
+	onCenter?: () => void;
 }) {
 	const titleId = useId();
 	/**
@@ -175,10 +184,18 @@ export function PersonDetail({
 						person={person}
 						kinship={kinship?.get(person.id)}
 						titleId={titleId}
-						canEdit={Boolean(editableTreeIds?.length)}
-						onEdit={() => setEditing(true)}
 						onClose={onClose}
 					/>
+
+					<div className="flex border-b border-hairline">
+						{onAddRelative && (
+							<ActionButton label="Add relative" Icon={GitBranch} onClick={onAddRelative} primary />
+						)}
+						{Boolean(editableTreeIds?.length) && (
+							<ActionButton label="Edit" Icon={Pencil} onClick={() => setEditing(true)} />
+						)}
+						{onCenter && <ActionButton label="Center" Icon={Crosshair} onClick={onCenter} />}
+					</div>
 
 					{/*
 					 * The edit form, over this panel's own content rather than beside it.
@@ -252,15 +269,11 @@ function Header({
 	person,
 	kinship,
 	titleId,
-	canEdit,
-	onEdit,
 	onClose,
 }: {
 	person: FusedPerson;
 	kinship?: Kinship;
 	titleId: string;
-	canEdit: boolean;
-	onEdit: () => void;
 	onClose: () => void;
 }) {
 	const primary = person.primary;
@@ -306,10 +319,6 @@ function Header({
 				</p>
 			</div>
 
-			{/* Absent rather than disabled for a read-only viewer: a greyed pencil advertises an
-			    action that can never work here. */}
-			{canEdit && <EditButton onOpen={onEdit} label={`Edit ${name}`} />}
-
 			<button
 				type="button"
 				onClick={onClose}
@@ -323,6 +332,36 @@ function Header({
 				<X className="size-4" strokeWidth={1.5} aria-hidden="true" />
 			</button>
 		</div>
+	);
+}
+
+function ActionButton({
+	label,
+	Icon,
+	onClick,
+	primary = false,
+}: {
+	label: string;
+	Icon: typeof GitBranch;
+	onClick: () => void;
+	primary?: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 border-r border-hairline px-2",
+				"last:border-r-0 text-[0.75rem] font-medium transition-colors",
+				"duration-(--duration-fast) ease-(--ease-out)",
+				primary
+					? "bg-accent/8 text-accent-ink hover:bg-accent/14"
+					: "text-ink-muted hover:bg-surface-raised hover:text-ink",
+			)}
+		>
+			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+			{label}
+		</button>
 	);
 }
 
