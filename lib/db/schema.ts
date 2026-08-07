@@ -19,9 +19,10 @@
  * That third table is what makes "see how the combined family tree looks"
  * possible without either side losing ownership of their own data.
  */
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	boolean,
+	check,
 	date,
 	index,
 	integer,
@@ -271,7 +272,10 @@ export const treeMembers = pgTable(
 		invitedById: uuid("invited_by_id").references(() => users.id, { onDelete: "set null" }),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
-	(t) => [primaryKey({ columns: [t.treeId, t.userId] })],
+	(t) => [
+		primaryKey({ columns: [t.treeId, t.userId] }),
+		check("tree_members_grant_role_check", sql`${t.role} <> 'owner'`),
+	],
 );
 
 /**
@@ -298,7 +302,10 @@ export const treeInvites = pgTable(
 		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
-	(t) => [index("tree_invites_lookup_idx").on(t.email, t.githubLogin, t.status)],
+	(t) => [
+		index("tree_invites_lookup_idx").on(t.email, t.githubLogin, t.status),
+		check("tree_invites_grant_role_check", sql`${t.role} <> 'owner'`),
+	],
 );
 
 /* -------------------------------------------------------------------------- */

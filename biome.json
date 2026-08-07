@@ -9,6 +9,9 @@
 		"includes": [
 			"app/**/*.{ts,tsx}",
 			"components/**/*.{ts,tsx}",
+			"frontend/src/**/*.{ts,tsx}",
+			"frontend/public/**/*.js",
+			"frontend/*.ts",
 			"lib/**/*.{ts,tsx,mjs}",
 			"scripts/**/*.{js,mjs,mts,ts}",
 			"*.json",

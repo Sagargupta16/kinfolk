@@ -34,6 +34,7 @@ import {
 	unions,
 	type Visibility,
 } from "../db/schema";
+import { wouldCreateAncestryCycle } from "./acyclic";
 import { assertSameTree, NotAllowedError, treeIdForEditablePerson } from "./authz";
 import { userIdFromBearer } from "./bearer";
 import { DEMO_COOKIE } from "./demo";
@@ -415,6 +416,27 @@ export async function addChild(form: FormData): Promise<Result> {
 			.limit(1);
 		if (union && (union.a === childId || union.b === childId)) {
 			return { ok: false, error: "Somebody cannot be their own parent." };
+		}
+
+		const ancestryRows = await db
+			.select({
+				childId: unionChildren.childId,
+				partnerAId: unions.partnerAId,
+				partnerBId: unions.partnerBId,
+			})
+			.from(unionChildren)
+			.innerJoin(unions, eq(unionChildren.unionId, unions.id))
+			.where(eq(unions.treeId, unionTreeId));
+		const parentEdges = ancestryRows.flatMap((row) =>
+			[row.partnerAId, row.partnerBId]
+				.filter((parentId): parentId is string => parentId !== null)
+				.map((parentId) => ({ parentId, childId: row.childId })),
+		);
+		const proposedParents = [union?.a, union?.b].filter(
+			(parentId): parentId is string => parentId !== null && parentId !== undefined,
+		);
+		if (wouldCreateAncestryCycle(parentEdges, proposedParents, childId)) {
+			return { ok: false, error: "That would make somebody their own ancestor." };
 		}
 
 		await db

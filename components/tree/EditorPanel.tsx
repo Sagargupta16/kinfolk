@@ -20,7 +20,7 @@
  *   3. Every write is a server action from lib/tree/edit-actions.ts. Nothing here decides
  *      what is allowed; it only reports what the server refused.
  */
-import { Link2, Plus, UserPlus, X } from "lucide-react";
+import { GitBranch, Link2, MoreHorizontal, Plus, UserPlus, X } from "lucide-react";
 import { useEffect, useId, useState, useTransition } from "react";
 import { addPerson, addRelation, addUnion, type Result } from "@/lib/tree/edit-actions";
 import { kindsByCategory, RELATION_KINDS } from "@/lib/tree/relations";
@@ -75,12 +75,15 @@ export function EditorPanel({
 	/** The card most recently selected on the canvas, pre-filling the "from" side. */
 	selectedId,
 	selectedName,
+	onQuickAdd,
 }: {
 	/** The graph being edited. Absent in demo mode, where the panel is not rendered. */
 	treeId: string;
 	people: PickablePerson[];
 	selectedId?: string | null;
 	selectedName?: string | null;
+	/** Relationship-first path for the selected person. */
+	onQuickAdd?: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [tab, setTab] = useState<Tab>("person");
@@ -118,6 +121,43 @@ export function EditorPanel({
 	}
 
 	if (!open) {
+		if (selectedName && onQuickAdd) {
+			return (
+				<div className="pointer-events-auto flex max-w-[min(22rem,calc(100vw-1.5rem))] items-stretch gap-1.5">
+					<button
+						type="button"
+						onClick={onQuickAdd}
+						className={cn(
+							"flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-ink px-3.5 text-canvas",
+							"shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-transform",
+							"duration-(--duration-fast) ease-(--ease-out)",
+							"hover:-translate-y-px active:translate-y-0",
+						)}
+					>
+						<GitBranch aria-hidden className="size-4 shrink-0" strokeWidth={1.8} />
+						<span className="min-w-0 text-left">
+							<span className="block text-[0.8125rem] font-medium leading-tight">Add relative</span>
+							<span className="block truncate text-[0.625rem] leading-tight opacity-65">
+								to {selectedName}
+							</span>
+						</span>
+					</button>
+					<button
+						type="button"
+						onClick={() => setOpen(true)}
+						aria-label="More ways to add or connect people"
+						title="More ways to add or connect people"
+						className={cn(
+							"kf-glass flex size-11 shrink-0 items-center justify-center rounded-lg",
+							"text-ink-faint transition-colors hover:text-ink",
+						)}
+					>
+						<MoreHorizontal aria-hidden className="size-4" strokeWidth={1.75} />
+					</button>
+				</div>
+			);
+		}
+
 		return (
 			<button
 				type="button"

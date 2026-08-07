@@ -272,6 +272,10 @@ type Props = {
 	onFocusSearch?: () => void;
 	/** Called with the clicked person, so the editor can pre-fill its "from" field. */
 	onPick?: (person: { id: string; name: string } | null) => void;
+	/** Opens relationship-first add for a selected fused person. */
+	quickAddRequest?: { id: string; nonce: number } | null;
+	/** Clears the request after the canvas has resolved its editable source row. */
+	onQuickAddHandled?: () => void;
 };
 
 function Canvas({
@@ -290,6 +294,8 @@ function Canvas({
 	kinship,
 	onFocusSearch,
 	onPick,
+	quickAddRequest,
+	onQuickAddHandled,
 }: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	/**
@@ -544,6 +550,13 @@ function Canvas({
 		},
 		[editableTreeIds],
 	);
+
+	useEffect(() => {
+		if (!quickAddRequest) return;
+		const person = people.get(quickAddRequest.id);
+		if (person) openQuickAdd(person);
+		onQuickAddHandled?.();
+	}, [quickAddRequest, people, openQuickAdd, onQuickAddHandled]);
 
 	/**
 	 * The relation edges to actually DRAW -- only those touching the revealed person.
@@ -1093,7 +1106,8 @@ function Canvas({
 		setFocusedId(null);
 		setPinnedId(null);
 		setDetailId(null);
-	}, []);
+		onPick?.(null);
+	}, [onPick]);
 
 	/**
 	 * A click focuses, PINS, opens the panel and names the person.
@@ -1381,6 +1395,8 @@ function Canvas({
 				index={relativeIndex}
 				kinship={kinship}
 				editableTreeIds={editableTreeIds}
+				onAddRelative={detailPerson && canEdit ? () => openQuickAdd(detailPerson) : undefined}
+				onCenter={detailPerson ? () => travelTo(detailPerson.id) : undefined}
 				// Re-read from the server rather than patching locally: the write happened there, so
 				// there is what knows the new graph -- and fusion, kinship and layout all derive
 				// from it.

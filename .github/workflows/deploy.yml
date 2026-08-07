@@ -24,8 +24,11 @@ on:
       - "drizzle/**"
       - "auth.ts"
       - "next.config.mjs"
+      - "drizzle.config.ts"
+      - "scripts/check-migrations.mts"
       - "package.json"
       - "pnpm-lock.yaml"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -85,7 +88,9 @@ jobs:
           elif [ -z "$DATABASE_URL" ]; then
             echo "::warning::DATABASE_URL is not set, so migrations were SKIPPED. Add the secret to the production environment to enable them."
           else
+            pnpm db:check-migrations
             pnpm db:migrate
+            pnpm db:check-migrations --complete
           fi
         env:
           # The DIRECT Neon host, not the -pooler one: drizzle-kit opens a plain TCP

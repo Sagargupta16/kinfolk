@@ -6,6 +6,7 @@
  * a reload, and it means switching to mine-only genuinely re-fetches a smaller
  * dataset rather than hiding nodes the browser already received.
  */
+import { GitMerge, Link2 } from "lucide-react";
 import Link from "next/link";
 import type { TreeView } from "@/lib/tree/view";
 import { cn } from "@/lib/utils";
@@ -14,42 +15,37 @@ import { DemoBanner } from "./DemoBanner";
 import { ThemeControls } from "./ThemeControls";
 import { TreeStage } from "./TreeStage";
 
-/** Mono stat, `tabular-nums` so digits do not jitter between values. */
-function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-	return (
-		<div className="flex items-center gap-1.5">
-			<dt className="text-ink-faint">{label}</dt>
-			<dd className={cn("tabular", accent ? "text-accent" : "text-ink")}>{value}</dd>
-		</div>
-	);
-}
-
 function Toggle({
 	href,
 	active,
-	short,
-	long,
+	label,
+	hint,
+	Icon,
 }: {
 	href: string;
 	active: boolean;
-	short: string;
-	long: string;
+	label: string;
+	hint: string;
+	Icon: typeof Link2;
 }) {
 	return (
 		<Link
 			href={href}
 			scroll={false}
 			aria-pressed={active}
+			aria-label={label}
+			title={hint}
 			className={cn(
-				"flex min-h-11 items-center rounded-md border px-3.5 text-xs font-medium",
+				"flex size-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium",
+				"xl:w-auto xl:px-3",
 				"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 				active
-					? "border-hairline-strong bg-surface-raised text-ink"
+					? "border-hairline-strong bg-surface-raised text-accent-ink"
 					: "border-hairline text-ink-muted hover:border-hairline-strong hover:text-ink",
 			)}
 		>
-			<span className="sm:hidden">{short}</span>
-			<span className="hidden sm:inline">{long}</span>
+			<Icon className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
+			<span className="hidden xl:inline">{label}</span>
 		</Link>
 	);
 }
@@ -62,59 +58,49 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 	const relationsHref = view.showRelations
 		? `/tree?relations=0${view.isCombined ? "" : "&combined=0"}`
 		: `/tree${view.isCombined ? "" : "?combined=0"}`;
+	const context = view.isDemo
+		? `${stats.people} people, sample family`
+		: view.isCombined && stats.trees > 1
+			? `${stats.people} people, ${stats.trees} family trees together`
+			: `${stats.people} people, private family record`;
 
 	return (
 		<main className="flex h-dvh flex-col bg-canvas">
-			{/* One row on a phone, not three. A canvas app cannot spend half a phone
-			    screen on chrome, so the stats drop to the two that matter and the
-			    toggles shorten rather than wrapping onto their own line. */}
-			<header className="flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-2.5 sm:gap-6 sm:px-6 sm:py-3">
+			{/* The family name and one plain-language summary carry the context. Detailed
+			    counts belong in the canvas key, not in the scarcest row on a phone. */}
+			<header className="flex shrink-0 items-center gap-3 border-b border-hairline px-3 py-2.5 sm:px-5 sm:py-3">
 				<div className="min-w-0 flex-1">
-					<h1 className="truncate text-sm font-medium tracking-[-0.01em] text-ink">
-						{view.treeNames[0] ?? "Your graph"}
+					<h1 className="truncate text-sm font-medium text-ink">
+						{view.treeNames[0] ?? "Your family tree"}
 					</h1>
-					<p className="truncate font-mono text-[0.6875rem] text-ink-faint">
-						{view.isDemo
-							? "sample data, no database"
-							: stats.trees > 1
-								? `${stats.trees} graphs joined`
-								: "your records"}
-					</p>
+					<p className="tabular truncate text-[0.6875rem] text-ink-faint">{context}</p>
 				</div>
-
-				{/* On a phone only `merged` survives: it is the one number you cannot get
-				    by looking at the canvas, and every stat kept here is width taken from
-				    the tree's own name. */}
-				<dl className="flex shrink-0 items-center gap-3 font-mono text-[0.6875rem] text-ink-muted sm:gap-4">
-					<div className="hidden sm:contents">
-						<Stat label="people" value={stats.people} />
-						<Stat label="from rows" value={stats.rows} />
-					</div>
-					<Stat label="merged" value={stats.merged} accent />
-					<div className="hidden sm:contents">
-						<Stat label="links" value={stats.relations} />
-					</div>
-				</dl>
 
 				<div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
 					<Toggle
 						href={relationsHref}
 						active={view.showRelations}
-						short="Links"
-						long="Social links"
+						label="Connections"
+						hint={view.showRelations ? "Hide social connections" : "Show social connections"}
+						Icon={Link2}
 					/>
 					<Toggle
 						href={combinedHref}
 						active={view.isCombined}
-						short={view.isCombined ? "Both" : "Mine"}
-						long={view.isCombined ? "Showing combined graph" : "Showing my graph only"}
+						label={view.isCombined ? "All trees" : "My tree"}
+						hint={
+							view.isCombined
+								? "Show only your own family tree"
+								: "Show every family tree shared with you"
+						}
+						Icon={GitMerge}
 					/>
 
-					{/* Theme and motion. Hidden below `sm` because a phone header cannot hold
-					    four more 44px targets beside the graph's own name -- and both are
+					{/* Theme and motion. Hidden below `lg` because a compact header cannot hold
+					    four more 44px targets beside the tree's own name -- and both are
 					    reachable there anyway: `t` switches the theme, and the motion switch is
 					    the one control a phone visitor is least likely to want mid-pan. */}
-					<ThemeControls className="hidden sm:flex" />
+					<ThemeControls className="hidden lg:flex" />
 
 					{/* Only for a real session. In demo mode there is nobody to sign out and
 					    nothing to share, so the control is absent rather than disabled. */}

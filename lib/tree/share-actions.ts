@@ -21,6 +21,7 @@ import { assertCanEditTree, NotAllowedError } from "./authz";
 import { userIdFromBearer } from "./bearer";
 import { DEMO_COOKIE } from "./demo";
 import type { Result } from "./edit-actions";
+import { normalizeGitHubLogin, parseInviteRole } from "./invite";
 
 /** How long an unclaimed invite stays valid. */
 const INVITE_DAYS = 14;
@@ -89,15 +90,17 @@ export async function invite(form: FormData): Promise<Result> {
 	const email = String(form.get("email") ?? "")
 		.trim()
 		.toLowerCase();
-	const githubLogin = String(form.get("githubLogin") ?? "")
-		.trim()
-		.replace(/^@/, "");
-	const role = String(form.get("role") ?? "viewer") as "viewer" | "editor";
+	const githubLoginValue = form.get("githubLogin");
+	const githubLogin = normalizeGitHubLogin(
+		typeof githubLoginValue === "string" ? githubLoginValue : null,
+	);
+	const role = parseInviteRole(form.get("role"));
 
 	if (!treeId) return { ok: false, error: "Which graph?" };
 	if (!email && !githubLogin) {
 		return { ok: false, error: "An email address or a GitHub username, so we know who to invite." };
 	}
+	if (!role) return { ok: false, error: "Invite access must be viewer or editor." };
 	if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
 		return { ok: false, error: "That does not look like an email address." };
 	}

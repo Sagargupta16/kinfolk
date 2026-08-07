@@ -71,8 +71,10 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Typecheck both frontends
+        run: |
+          pnpm typecheck
+          pnpm --dir frontend typecheck
 
       - name: Test
         # The whole suite is pure and offline -- no Neon, no browser -- so it runs
@@ -80,7 +82,7 @@ jobs:
         # waiting for Next to compile.
         run: pnpm test
 
-      - name: Build
+      - name: Build Next app
         run: pnpm build
         env:
           # Deliberately NOT the real secrets.
@@ -94,6 +96,12 @@ jobs:
           # AUTH_SECRET is set to a throwaway because Auth.js logs `MissingSecret` at
           # import; the value is never used to sign anything here.
           AUTH_SECRET: build-only-not-a-real-secret
+
+      - name: Build Pages app
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: https://kinfolk-neon.vercel.app
+        run: pnpm build
 
       - name: Dead Tailwind utility guard
         # A Tailwind 4 arbitrary value needs PARENTHESES to read a CSS variable.

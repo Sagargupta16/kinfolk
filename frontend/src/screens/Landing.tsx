@@ -32,9 +32,9 @@ export function Landing() {
 				</h1>
 
 				<p className="mx-auto mt-5 max-w-md leading-relaxed text-ink-muted">
-					Two people who have never met can both record the same grandparent. Kinfolk merges
-					those records without either side losing their own, so the combined graph shows how
-					several families actually connect.
+					Two people who have never met can both record the same grandparent. Kinfolk merges those
+					records without either side losing their own, so the combined graph shows how several
+					families actually connect.
 				</p>
 
 				<div className="mt-8 flex flex-wrap justify-center gap-2.5">
@@ -70,16 +70,16 @@ export function Landing() {
 
 				<div className="mx-auto mt-11 grid max-w-md gap-2 text-left">
 					<Fact n="01" title="A tree is not a tree">
-						It is a graph. Remarriages, half-siblings, single parents and adoption all fall out
-						of the model instead of each needing a special case.
+						It is a graph. Remarriages, half-siblings, single parents and adoption all fall out of
+						the model instead of each needing a special case.
 					</Fact>
 					<Fact n="02" title="Merging never overwrites">
-						Agreeing that two records describe the same person is a consent-gated link, so
-						unlinking restores both families' own views intact.
+						Agreeing that two records describe the same person is a consent-gated link, so unlinking
+						restores both families' own views intact.
 					</Fact>
 					<Fact n="03" title="A contact graph too">
-						Anyone can be a node -- a friend, a colleague, a neighbour -- and a friendship
-						carries no generation, so it never distorts the family layout.
+						Anyone can be a node -- a friend, a colleague, a neighbour -- and a friendship carries
+						no generation, so it never distorts the family layout.
 					</Fact>
 				</div>
 

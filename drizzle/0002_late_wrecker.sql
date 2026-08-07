@@ -1,0 +1,2 @@
+ALTER TABLE "tree_invites" ADD CONSTRAINT "tree_invites_grant_role_check" CHECK ("tree_invites"."role" <> 'owner');--> statement-breakpoint
+ALTER TABLE "tree_members" ADD CONSTRAINT "tree_members_grant_role_check" CHECK ("tree_members"."role" <> 'owner');

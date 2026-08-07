@@ -2,21 +2,20 @@
 
 Local setup is [SETUP.md](SETUP.md). This is the production path.
 
-## Live state, 2026-08-06
+## Live state, 2026-08-07
 
 Fully configured. All five health probes pass.
 
 | Surface | State |
 | --- | --- |
-| Landing page, <https://sagargupta.online/kinfolk/> | **Live.** Both app buttons visible. |
-| App, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree renders 151 nodes and 150 edges. |
+| Static SPA, <https://sagargupta.online/kinfolk/> | **Live.** Built from `frontend/` and backed by the Vercel API. |
+| API and Next fallback, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree and authenticated API answer. |
 | Sign-in | **Configured.** `/api/auth/providers` returns 200 and reports the GitHub provider. |
 
-`DATABASE_URL` comes from **Vercel's native Neon integration** rather than a pasted string,
-which is the better route: the credential is provisioned into the project and rotated by
-Vercel, so it never passes through a terminal, a transcript or a third-party API. The
-integration also sets `POSTGRES_*`, `PG*` and `DATABASE_URL_UNPOOLED` alongside it; those
-are unused here and harmless, since this app reads only `DATABASE_URL`.
+`DATABASE_URL` is a manually configured encrypted Vercel variable pointing at the existing
+Neon project. The native integration was disconnected after it provisioned a separate empty
+database, which made production fail with missing-table errors while the intended database
+remained healthy.
 
 What was verified after the secrets landed, rather than assumed:
 
@@ -28,16 +27,17 @@ What was verified after the secrets landed, rather than assumed:
   redirect URI rather than rejecting it, which is the check that matters.
 - `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
   proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
-- `pnpm db:smoke` passes all 22 live checks against the branch.
+- `pnpm db:check-migrations --complete` reports all 3 committed migrations applied.
+- `pnpm db:smoke` and `pnpm db:smoke:kin` pass against the live branch and clean up.
 
 The last step of a sign-in -- entering GitHub credentials -- is deliberately NOT automated.
 Minting a real session for a real account to test with is forbidden by the workspace rules,
 so provisioning (one graph, one self node reading kinship "you") is proven by
 `scripts/smoke-db.mts` against the same database instead.
 
-## Why Vercel and not GitHub Pages
+## Why the deployment is split
 
-`pnpm build` reports four DYNAMIC routes:
+The Next build still reports dynamic routes:
 
 ```
 ┌ ○ /                          static
@@ -47,42 +47,38 @@ so provisioning (one graph, one self node reading kinship "you") is proven by
 └ ƒ /tree                      server-rendered on demand
 ```
 
-Every `ƒ` needs a server at request time, and none of them can be exported:
+Every `ƒ` needs a server at request time:
 
 - `/tree` reads Neon per request and resolves an Auth.js **database** session.
 - `/demo` is a route handler that sets an httpOnly cookie. A static file cannot set one, which is why it is a route rather than a page.
 - Every write is a server action (`lib/tree/edit-actions.ts`), authorised server-side in `lib/tree/authz.ts`.
 
-GitHub Pages serves static files only, so it would host the landing page and nothing that makes this an app. `prod/kalchar` reached the same conclusion and left its own Pages workflow dormant with a note recording why.
+GitHub Pages therefore serves the Vite SPA, not the Next build. The SPA calls Vercel's JSON
+API and OAuth exchange, while the same graph components and domain logic are shared by both
+frontends. The SPA stores its bearer token in `sessionStorage`; the Next fallback retains the
+httpOnly-cookie flow for users who prefer it.
 
 ## Two things are deployed, to two places
 
 | What | Where | URL |
 | --- | --- | --- |
-| The landing page (`docs/index.html`) | GitHub Pages | `https://sagargupta.online/kinfolk/` |
-| The app itself | Vercel | the origin Vercel assigns |
+| The Vite SPA (`frontend/dist`) | GitHub Pages | `https://sagargupta.online/kinfolk/` |
+| API, OAuth exchange and Next fallback | Vercel | `https://kinfolk-neon.vercel.app` |
 
 Pages already resolves this repository to the domain subpath -- `gh api repos/Sagargupta16/kinfolk/pages` reports `html_url: http://sagargupta.online/kinfolk/`, and the existing certificate covers `sagargupta.online`. So the front door is at the URL you want with no DNS work at all.
 
-The page publishes from `docs/`, which is also what lets this repository stay **private** while the page is public: Pages serves only that directory, never the source.
-
-The two app buttons on that page are hidden until `APP_URL` is set in `docs/index.html`. That is deliberate -- a link to a deployment that does not exist is worse than no link, because it reports the project as live and then 404s. `pages.yml` also fails the build if `APP_URL` is set to something that is not an `https://` URL, so a placeholder cannot ship.
+The Pages workflow uploads only the built `frontend/dist` artifact, never repository source
+or source maps. Set the repository variable `VITE_API_BASE_URL` to the Vercel origin; the
+workflow refuses to publish when it is missing or is not HTTPS.
 
 ## The URL: sagargupta.online/kinfolk
 
-The app is mounted at `/kinfolk` so it sits beside the other projects on that domain, matching `sagargupta.online/portfolio-react/`. `basePath` and `assetPrefix` in [`next.config.mjs`](../next.config.mjs) read `NEXT_PUBLIC_BASE_PATH`, so the same build serves the root locally and `/kinfolk` in production -- hardcoding it would make every local URL wrong.
+The Pages build sets `GITHUB_PAGES=true`, which makes Vite emit assets under `/kinfolk/`.
+The workflow also copies `index.html` to `404.html`, so direct links such as
+`/kinfolk/tree` return the SPA instead of a Pages 404.
 
-**The obstacle, measured rather than assumed.** `sagargupta.online` resolves to GitHub Pages (`185.199.108-111.153`, GoDaddy nameservers) and Pages serves static files only, so it cannot proxy `/kinfolk` to a server. The obvious workaround -- let Vercel own the apex and proxy everything else back to Pages -- does not work either: because `sagargupta16.github.io` has a `CNAME` file, it **301-redirects to the custom domain unconditionally**, verified including with a `Host` header override. Proxying back would be an infinite loop.
-
-So serving Kinfolk at `sagargupta.online/kinfolk` requires the **apex to move to Vercel**:
-
-1. Deploy Kinfolk to Vercel and confirm it works on its assigned origin first.
-2. Create a Vercel project for the apex site (`brand/sagargupta16.github.io`) and add `sagargupta.online` as its domain.
-3. Add rewrites there so existing paths keep working, `/kinfolk/*` reaches this project, and `/portfolio-react/*` still reaches the portfolio.
-4. Remove the `CNAME` file from the Pages repo, or Pages will keep claiming the domain.
-5. Point the GoDaddy DNS at Vercel (`A 76.76.21.21`, or the CNAME Vercel shows).
-
-**Until that migration happens**, deploy with `NEXT_PUBLIC_BASE_PATH` unset. The app then serves at the root of its Vercel origin and everything works; only the pretty URL is missing. Setting the base path without the rewrite in front of it produces a site whose every asset 404s.
+Vercel remains at its own origin with `NEXT_PUBLIC_BASE_PATH` unset. The Pages app calls it
+through `VITE_API_BASE_URL`; no DNS proxy or apex migration is required.
 
 ## One-time setup
 
@@ -106,7 +102,11 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 | `AUTH_GITHUB_SECRET` | Same. |
 | `NEXT_PUBLIC_BASE_PATH` | `/kinfolk` ONLY once the apex is on Vercel and rewriting. Leave UNSET until then: a base path with nothing routing to it serves a page whose every asset 404s. It also scopes the session and demo cookies to the mount, which is what stops them being sent to every other project on the shared domain. |
 
-`db:push` is the one thing that needs the **direct** (non-pooler) host, because drizzle-kit opens a plain TCP connection. That runs from a laptop, not from Vercel.
+Leave `NEXT_PUBLIC_BASE_PATH` unset for the current deployment. The `/kinfolk/` mount belongs
+to the Vite build on Pages, not to the Vercel origin.
+
+`db:push`, `db:migrate`, and the GitHub migration workflow need the **direct**
+(non-pooler) host. The running Vercel app uses the pooler host.
 
 ### 3. A SEPARATE GitHub OAuth app for production
 
@@ -114,19 +114,13 @@ The development app's callback points at `http://localhost:3007`, so it cannot s
 
 - **Application name**: `Kinfolk (Prod)`
 - **Homepage URL**: `https://sagargupta.online/kinfolk/`
-- **Authorization callback URL**: `https://kinfolk-neon.vercel.app/api/auth/callback/github`
+- **Authorization callback URL**: `https://sagargupta.online/kinfolk/auth/callback/github`
 - **Enable Device Flow**: leave OFF
 
-The homepage and the callback point at DIFFERENT hosts, and that is correct rather than an
-oversight. GitHub renders the homepage URL on the consent screen, so it should be the public
-front door a relative recognises -- and asking somebody to trust a `vercel.app` subdomain
-while inviting them to record family data is a worse first impression than the domain the
-invitation came from. Only the callback is load-bearing in the OAuth exchange.
-
-The callback path is fixed by Auth.js: the route lives at `app/api/auth/[...nextauth]/` and
-nothing overrides `basePath`, so `/api/auth/callback/github` is the whole of it. Do not
-shorten it. Its origin must match `AUTH_URL` exactly, including the scheme and the absence
-of a trailing slash, or sign-in fails with `redirect_uri_mismatch`.
+The callback is the SPA's own route. It posts GitHub's one-time code to Vercel's
+`/api/oauth/callback` endpoint, where the secret exchange and session creation happen.
+Keep the Vercel Auth.js callback registered as a second callback only if the
+server-rendered fallback sign-in remains public.
 
 Device Flow stays off because it exists for inputless devices (a CLI, a TV) that cannot host
 a browser redirect. Kinfolk is a web app with a callback, so enabling it would add a second
@@ -142,6 +136,7 @@ For the workflows in [`.github/workflows/`](../.github/workflows):
 | --- | --- | --- |
 | Secret | `DATABASE_URL` | Migrations only. Use the **direct** host: drizzle-kit needs TCP. |
 | Variable | `PRODUCTION_URL` | The deployed origin, with no trailing slash. **Required**: the endpoint checks skip until it is set. |
+| Variable | `VITE_API_BASE_URL` | Vercel origin used by the Pages SPA. **Required** by `pages.yml`. |
 
 `PRODUCTION_URL` is required rather than defaulted, and that is a correction rather than caution. The first version of `deploy.yml` fell back to a guessed `https://kinfolk.vercel.app`, and its first real run reported **three green checks from an unrelated site** already answering on that hostname -- no `_next/static` anywhere in its markup, so not even a Next build. A check that silently probes somebody else's server is worse than no check, because it reports success for a deployment that does not exist. Both workflows now skip with `if: vars.PRODUCTION_URL != ''` instead.
 
@@ -153,10 +148,10 @@ CI needs no secrets at all. `lib/db/client.ts` is built to import cleanly with n
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | every PR and push to `main` | gitleaks over full history, then lint, typecheck, 279 tests, build, and a guard against dead Tailwind utilities in the built CSS |
+| [`ci.yml`](../.github/workflows/ci.yml) | every PR and push to `main` | gitleaks over full history, lint, both typechecks, 328 tests, both builds, and a guard against dead Tailwind utilities in the built CSS |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | push to `main` touching app code | applies committed migrations to Neon, waits, then probes the live endpoints |
 | [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC | probes production, to catch a suspended Neon branch or a rotated secret |
-| [`pages.yml`](../.github/workflows/pages.yml) | push to `main` touching `docs/**` | publishes the landing page to GitHub Pages at `sagargupta.online/kinfolk/` |
+| [`pages.yml`](../.github/workflows/pages.yml) | push to `main` touching SPA/shared UI code | builds and publishes `frontend/` to GitHub Pages at `sagargupta.online/kinfolk/` |
 
 Vercel's own Git integration builds and promotes on push. `deploy.yml` deliberately does **not** duplicate that; it does the two things Vercel cannot: get the schema ahead of the code that depends on it, and assert afterwards that the deployment actually answers.
 
@@ -164,7 +159,9 @@ Vercel's own Git integration builds and promotes on push. `deploy.yml` deliberat
 
 `deploy.yml` runs `pnpm db:migrate`, never `db:push`. Push diffs the live schema and applies whatever it infers, which is right for a scratch branch and dangerous in production -- it can drop a column it believes is redundant. `migrate` runs the committed SQL in `drizzle/` in order and nothing else.
 
-Two migrations are now committed, and the first one **must not be executed**.
+Three migrations are now committed. The live database is at `3/3`; the baseline procedure
+below is historical and must only be used for a fresh database that predates migration
+tracking.
 
 The schema was originally created with `db:push`, so `0000` is a BASELINE: a full
 `CREATE TABLE` script describing tables that already exist. Running it against the live
@@ -198,13 +195,22 @@ is skipped if the request fails -- and the adapter's insert was then rejected by
 bouncing the visitor to `/api/auth/error?error=Configuration`. A message about server
 configuration for what is really a missing field on somebody's GitHub account.
 
+Migration `0002` adds database checks that prevent `owner` from being granted through
+`tree_members` or `tree_invites`; ownership remains represented by `trees.owner_id`.
+
 After any later schema change, run:
 
 ```bash
 pnpm db:generate
 ```
 
-and commit the generated file.
+and commit the generated file. Before and after applying it, run:
+
+```bash
+pnpm db:check-migrations
+pnpm db:migrate
+pnpm db:check-migrations --complete
+```
 
 ### What the checks assert
 
