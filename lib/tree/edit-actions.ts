@@ -36,7 +36,6 @@ import {
 } from "../db/schema";
 import { wouldCreateAncestryCycle } from "./acyclic";
 import { assertSameTree, NotAllowedError, treeIdForEditablePerson } from "./authz";
-import { userIdFromBearer } from "./bearer";
 import { DEMO_COOKIE } from "./demo";
 import {
 	birthYearColumns,
@@ -47,7 +46,6 @@ import {
 	ROLE_SEX,
 } from "./kin-plan";
 import { buildPersonPatch } from "./person-patch";
-import { checkPeopleBudget } from "./rate-limit";
 import { canonicalPair, RELATION_KINDS } from "./relations";
 
 export type Result = { ok: true; id?: string } | { ok: false; error: string };
@@ -58,19 +56,9 @@ export type Result = { ok: true; id?: string } | { ok: false; error: string };
  * Demo mode is rejected here rather than in each action: the demo is sample data with
  * no owner, so there is nothing to write to and no user to attribute it to. Doing this
  * check once means a new action cannot forget it.
- *
- * TWO credentials are accepted, and the order matters. A same-origin form post
- * carries the session cookie; a call from the Pages-hosted UI carries a bearer
- * token, because that origin cannot send this app's cookie without it becoming
- * `SameSite=None` and losing its CSRF protection (see lib/tree/bearer.ts).
- *
- * The cookie is tried FIRST so the server-rendered UI is unaffected, and the
- * bearer path is reached only when there is no session. Both resolve to the same
- * kind of value -- a user id proven against the database -- so every action keeps
- * its single auth line and none of them need to know which arrived.
  */
 async function editor(): Promise<{ userId: string } | { error: string }> {
-	const { cookies, headers } = await import("next/headers");
+	const { cookies } = await import("next/headers");
 	const store = await cookies();
 	if (store.get(DEMO_COOKIE)) {
 		return { error: "This is sample data. Sign in to build your own graph." };
@@ -79,9 +67,6 @@ async function editor(): Promise<{ userId: string } | { error: string }> {
 	const session = await sessionOrNull();
 	const userId = session?.user?.id;
 	if (userId) return { userId };
-
-	const bearer = await userIdFromBearer((await headers()).get("authorization"));
-	if (bearer) return { userId: bearer };
 
 	return { error: "Sign in to make changes." };
 }
@@ -125,11 +110,6 @@ export async function addPerson(form: FormData): Promise<Result> {
 	if (!givenName && !familyName) {
 		return { ok: false, error: "A person needs at least one name." };
 	}
-
-	// After the name check so an empty form is still refused for the right reason,
-	// and after auth so the count cannot be probed by an anonymous caller.
-	const budget = await checkPeopleBudget(auth.userId);
-	if (!budget.ok) return { ok: false, error: budget.error };
 
 	try {
 		const { assertCanEditTree } = await import("./authz");
@@ -589,13 +569,6 @@ export async function addRelative(form: FormData): Promise<Result> {
 		const plan = planKin(family, role, count);
 		if (plan.refusal) return { ok: false, error: plan.refusal };
 		if (plan.create.count === 0) return { ok: false, error: "Nothing to add." };
-
-		// Charged for the WHOLE batch, and only once the plan has said how many
-		// people it will really create. Checking `count` from the form instead would
-		// bill for a number the planner may have reduced, and checking one row at a
-		// time would let a batch of twelve slip past a budget with one left.
-		const budget = await checkPeopleBudget(auth.userId, plan.create.count);
-		if (!budget.ok) return { ok: false, error: budget.error };
 
 		// A name is optional here, unlike `addPerson`: a batch is created precisely because
 		// nobody knows the names yet, so a numbered placeholder stands in until they do.

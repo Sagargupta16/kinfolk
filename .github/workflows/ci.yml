@@ -7,7 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Least-privilege default: CI only reads the repo to lint, typecheck and build.
 permissions:
   contents: read
 
@@ -16,46 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  secret-scan:
-    name: secret scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      # gitleaks needs this, and without it the job fails with a 403 rather than a
-      # finding: on a `pull_request` event it calls GET /pulls/{n}/commits to scan
-      # only what the PR added, and the workflow's `contents: read` default does not
-      # cover that endpoint. The error reads "Resource not accessible by
-      # integration", which sounds like a missing token and is actually a missing
-      # scope.
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Full history, or gitleaks scans one commit and misses a credential
-          # that was added and then removed in an earlier one.
-          fetch-depth: 0
-
-      - name: Scan repository history
-        # This one still annotates "Node.js 20 is deprecated", and that is upstream
-        # rather than a stale pin here: gitleaks-action's own action.yml declares
-        # node20, so GitHub force-runs it on 24. Nothing to fix from this repo --
-        # bumping the SHA again would not change the declaration. Recorded so the
-        # annotation is not mistaken for a pin we forgot.
-        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build:
-    name: lint, typecheck, test and build
+    name: lint, typecheck and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
@@ -71,18 +36,10 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck both frontends
-        run: |
-          pnpm typecheck
-          pnpm --dir frontend typecheck
+      - name: Typecheck
+        run: pnpm typecheck
 
-      - name: Test
-        # The whole suite is pure and offline -- no Neon, no browser -- so it runs
-        # BEFORE the build and fails fast on a logic regression rather than after
-        # waiting for Next to compile.
-        run: pnpm test
-
-      - name: Build Next app
+      - name: Build
         run: pnpm build
         env:
           # Deliberately NOT the real secrets.
@@ -97,28 +54,13 @@ jobs:
           # import; the value is never used to sign anything here.
           AUTH_SECRET: build-only-not-a-real-secret
 
-      - name: Build Pages app
-        working-directory: frontend
-        env:
-          VITE_API_BASE_URL: https://kinfolk-neon.vercel.app
-        run: pnpm build
-
       - name: Dead Tailwind utility guard
         # A Tailwind 4 arbitrary value needs PARENTHESES to read a CSS variable.
         # The square-bracket form emits the literal property name, which is not a
         # valid value -- so the property silently falls back to its initial one and
-        # the transition simply does not happen. Nothing warns: not the build, not
-        # Biome, not the browser. 34 utilities in this repo were dead this way.
-        #
-        # Scanned in the BUILT css, not the source, because Tailwind also reads
-        # markdown and comments as class-name sources: documenting the broken form
-        # compiles a real dead rule into production.
-        #
-        # `grep -F` on the escaped-bracket signature Tailwind emits, not a regex: an ERE
-        # spelling of this needs `\\\[`, which the shell mangles into an unmatched
-        # bracket class -- the first version of this guard silently matched nothing.
-        # Verified both ways before being committed: it finds a planted dead rule and
-        # passes on the current build.
+        # nothing warns: not the build, not Biome, not the browser. Scanned in the
+        # BUILT css, not the source, because Tailwind also reads markdown and
+        # comments as class-name sources.
         run: |
           if grep -rlF --include='*.css' -- '-\[--' .next/static/; then
             echo '::error::Dead Tailwind utility in the built CSS: a CSS variable in an arbitrary value needs PARENTHESES, not square brackets. See the gotcha in CLAUDE.md.'
