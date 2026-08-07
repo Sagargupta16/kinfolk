@@ -14,14 +14,18 @@
  * no name attached is how you record a father for the wrong person.
  */
 import {
+	ArrowDown,
 	ArrowLeft,
+	ArrowUp,
 	Baby,
 	Check,
 	GitBranch,
 	Heart,
 	Loader2,
 	Minus,
+	MoveHorizontal,
 	Plus,
+	SlidersHorizontal,
 	UserRound,
 	Users,
 	X,
@@ -33,48 +37,83 @@ import { type KinRole, MAX_BATCH, ROLE_SEX } from "@/lib/tree/kin-plan";
 import { cn } from "@/lib/utils";
 
 /**
- * The roles offered, grouped the way a family is described rather than the way it is
- * stored.
+ * What the subject's family already holds, for the picker to be honest about.
  *
- * Gendered words because "add father" is what somebody means, and the role is an explicit
- * statement about the person being added -- unlike guessing sex from a name, which this repo
- * forbids. The neutral option sits alongside rather than replacing them, for the cases where
- * it genuinely is not known.
+ * The Gramps pattern: a role that cannot be added is SAID to be unavailable
+ * rather than offered and refused after the form is filled. Only parents are
+ * ever exhausted (a union holds two); partners, children and siblings show a
+ * count instead, because a remarriage or a sixth child is ordinary data.
+ */
+export type FamilyCounts = {
+	parents: number;
+	partners: number;
+	children: number;
+	siblings: number;
+};
+
+/**
+ * The roles offered, grouped by WHERE the person will appear on the canvas.
+ *
+ * "Above / beside / below" is the promise the button makes: the graph is laid
+ * out in generations, so the direction and the relationship are the same fact.
+ * Leading with it means somebody who has never seen the data model still knows
+ * what pressing the button will do to the picture.
+ *
+ * Gendered words because "add father" is what somebody means, and the role is an
+ * explicit statement about the person being added -- unlike guessing sex from a
+ * name, which this repo forbids. The neutral option sits alongside rather than
+ * replacing them, for the cases where it genuinely is not known.
  */
 const GROUPS: {
+	key: keyof FamilyCounts;
 	label: string;
+	/** Where the new card lands, relative to the subject. */
+	place: string;
 	Icon: typeof UserRound;
+	PlaceIcon: typeof ArrowUp;
 	roles: { role: KinRole; label: string }[];
 }[] = [
 	{
+		key: "parents",
 		label: "Parents",
+		place: "above",
 		Icon: UserRound,
+		PlaceIcon: ArrowUp,
 		roles: [
 			{ role: "father", label: "Father" },
 			{ role: "mother", label: "Mother" },
 		],
 	},
 	{
+		key: "partners",
 		label: "Partner",
+		place: "beside",
 		Icon: Heart,
+		PlaceIcon: MoveHorizontal,
 		roles: [{ role: "partner", label: "Partner" }],
 	},
 	{
-		label: "Children",
-		Icon: Baby,
-		roles: [
-			{ role: "son", label: "Son" },
-			{ role: "daughter", label: "Daughter" },
-			{ role: "child", label: "Child" },
-		],
-	},
-	{
+		key: "siblings",
 		label: "Siblings",
+		place: "beside",
 		Icon: Users,
+		PlaceIcon: MoveHorizontal,
 		roles: [
 			{ role: "brother", label: "Brother" },
 			{ role: "sister", label: "Sister" },
 			{ role: "sibling", label: "Sibling" },
+		],
+	},
+	{
+		key: "children",
+		label: "Children",
+		place: "below",
+		Icon: Baby,
+		PlaceIcon: ArrowDown,
+		roles: [
+			{ role: "son", label: "Son" },
+			{ role: "daughter", label: "Daughter" },
+			{ role: "child", label: "Child" },
 		],
 	},
 ];
@@ -106,11 +145,14 @@ const SEXES = [
 export function QuickAdd({
 	subjectId,
 	subjectName,
+	family,
 	onDone,
 	onClose,
 }: {
 	subjectId: string;
 	subjectName: string;
+	/** What the subject already has, so the picker never offers a refusal. */
+	family?: FamilyCounts;
 	/** Called after a successful write, so the canvas can refresh. */
 	onDone?: () => void;
 	onClose: () => void;
@@ -205,43 +247,66 @@ export function QuickAdd({
 			{role === null ? (
 				<div className="max-h-[min(70dvh,34rem)] overflow-y-auto overscroll-contain p-3">
 					<p className="mb-3 text-[0.75rem] leading-relaxed text-ink-muted">
-						Who are you adding to this branch?
+						Who are you adding? The direction is where they will appear on the tree.
 					</p>
-					{GROUPS.map(({ label, roles, Icon }) => (
-						<section key={label} className="mb-3 last:mb-0">
-							<h3 className="mb-1.5 flex items-center gap-1.5 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-ink-faint">
-								<Icon className="size-3" strokeWidth={1.5} aria-hidden="true" />
-								{label}
-							</h3>
-							<div
-								className={cn(
-									"grid gap-1.5",
-									roles.length === 1
-										? "grid-cols-1"
-										: roles.length === 2
-											? "grid-cols-2"
-											: "grid-cols-3",
-								)}
-							>
-								{roles.map((option) => (
-									<button
-										key={option.role}
-										type="button"
-										onClick={() => setRole(option.role)}
+					{GROUPS.map(({ key, label, place, roles, Icon, PlaceIcon }) => {
+						// Only parents ever run out: a union holds two. Everything else shows a
+						// count, because a remarriage or a sixth child is ordinary data.
+						const count = family?.[key] ?? 0;
+						const exhausted = key === "parents" && count >= 2;
+
+						return (
+							<section key={label} className="mb-3 last:mb-0">
+								<h3 className="mb-1.5 flex items-center gap-1.5 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-ink-faint">
+									<Icon className="size-3" strokeWidth={1.5} aria-hidden="true" />
+									{label}
+									<span className="flex items-center gap-0.5 normal-case tracking-normal text-ink-faint/80">
+										<PlaceIcon className="size-2.5" strokeWidth={1.5} aria-hidden="true" />
+										{place}
+									</span>
+									{count > 0 && (
+										<span className="tabular ml-auto normal-case tracking-normal">
+											{exhausted ? "both recorded" : `${count} recorded`}
+										</span>
+									)}
+								</h3>
+								{exhausted ? (
+									<p className="rounded-lg border border-hairline bg-surface px-3 py-2.5 text-[0.6875rem] leading-snug text-ink-faint">
+										Both parents are already on the tree. Open a parent's card to add THEIR
+										relatives.
+									</p>
+								) : (
+									<div
 										className={cn(
-											// 44px, because this is the primary control of the whole editor.
-											"flex min-h-11 items-center justify-center rounded-lg border px-2",
-											"border-hairline bg-surface text-[0.75rem] font-medium text-ink-muted",
-											"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-											"hover:border-accent/40 hover:bg-accent/8 hover:text-accent-ink",
+											"grid gap-1.5",
+											roles.length === 1
+												? "grid-cols-1"
+												: roles.length === 2
+													? "grid-cols-2"
+													: "grid-cols-3",
 										)}
 									>
-										{option.label}
-									</button>
-								))}
-							</div>
-						</section>
-					))}
+										{roles.map((option) => (
+											<button
+												key={option.role}
+												type="button"
+												onClick={() => setRole(option.role)}
+												className={cn(
+													// 44px, because this is the primary control of the whole editor.
+													"flex min-h-11 items-center justify-center rounded-lg border px-2",
+													"border-hairline bg-surface text-[0.75rem] font-medium text-ink-muted",
+													"transition-colors duration-(--duration-fast) ease-(--ease-out)",
+													"hover:border-accent/40 hover:bg-accent/8 hover:text-accent-ink",
+												)}
+											>
+												{option.label}
+											</button>
+										))}
+									</div>
+								)}
+							</section>
+						);
+					})}
 				</div>
 			) : (
 				<form
@@ -309,10 +374,11 @@ export function QuickAdd({
 					)}
 
 					{/*
-					 * Four fields, and no more. The full record (places, occupation, provenance,
-					 * contacts) belongs on the detail panel where there is room to read it -- asking
-					 * for it here would put a twelve-field form in front of the one gesture that
-					 * needs to stay fast.
+					 * Name first, everything else optional. The fast path is role -> name ->
+					 * Enter; the fields below live behind the disclosure so the common gesture
+					 * is two decisions rather than a form. They still submit with their
+					 * defaults when the disclosure stays shut, because a closed <details> is
+					 * hidden, not absent.
 					 */}
 					<label className="block">
 						<span className={fieldLabel}>
@@ -328,98 +394,163 @@ export function QuickAdd({
 						/>
 					</label>
 
-					<div className="mt-3 grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
-						<label className="min-w-0">
-							<span className={fieldLabel}>
-								Family name <span className="font-normal text-ink-faint">(optional)</span>
-							</span>
-							<input name="familyName" placeholder="Surname" autoComplete="off" className={field} />
-						</label>
-						<label>
-							<span className={fieldLabel}>Birth year</span>
-							{/* A YEAR, not a date. It is written to the fuzzy column, because coercing
-							    "1952" into 1952-01-01 invents a birthday nobody recorded. */}
-							<input
-								name="birthYear"
-								inputMode="numeric"
-								placeholder="Year"
-								autoComplete="off"
-								disabled={count > 1}
-								title={count > 1 ? "A batch cannot share one birth year" : undefined}
-								className={cn(field, "tabular", count > 1 && "cursor-not-allowed opacity-40")}
-							/>
-						</label>
-					</div>
-
 					{/*
-					 * Gender, for the three roles that do not state one.
+					 * How the couple is recorded, for the partner role only.
 					 *
-					 * Absent for father, mother, son, daughter, brother and sister: those words are
-					 * themselves a statement about the person being added, and `addRelative` ignores
-					 * a posted `sex` for them -- so drawing the field would be a control that looks
-					 * like it works and does not.
+					 * On the picker's fast path rather than behind the disclosure, because the
+					 * canvas now DRAWS this fact: an intact partnership is a solid bead on the
+					 * marriage line and a divorce is the genogram's double slash through it, so
+					 * the answer changes the picture the moment it lands.
 					 */}
-					{asksSex && (
+					{role === "partner" && (
 						<fieldset className="mt-3">
-							<legend className={fieldLabel}>Gender</legend>
+							<legend className={fieldLabel}>Partnership</legend>
 							<div className="flex overflow-hidden rounded-lg border border-hairline">
-								{SEXES.map((option, index) => (
+								{(
+									[
+										["married", "Married"],
+										["partnered", "Partners"],
+										["unknown", "Not known"],
+									] as const
+								).map(([value, label], index) => (
 									<label
-										key={option.value}
+										key={value}
 										className={cn(
-											"flex min-h-11 flex-1 cursor-pointer items-center justify-center px-1",
-											"text-center text-[0.6875rem] text-ink-muted",
-											"has-checked:bg-surface-raised has-checked:text-accent-ink",
+											"flex min-h-11 flex-1 cursor-pointer items-center justify-center",
+											"text-[0.75rem] text-ink-muted has-checked:bg-surface-raised",
+											"has-checked:text-accent-ink",
 											index > 0 && "border-l border-hairline",
 										)}
 									>
 										<input
 											type="radio"
-											name="sex"
-											value={option.value}
-											defaultChecked={option.value === "unknown"}
+											name="unionStatus"
+											value={value}
+											defaultChecked={value === "unknown"}
 											className="sr-only"
 										/>
-										{option.label}
+										{label}
 									</label>
 								))}
 							</div>
 						</fieldset>
 					)}
 
-					{/* Living status, as a real tri-state. "unknown" is a stored value here, not a
-					    missing one: most people in a genealogy have neither date recorded. */}
-					<fieldset className="mt-3">
-						<legend className={fieldLabel}>Living status</legend>
-						<div className="flex overflow-hidden rounded-lg border border-hairline">
-							{(
-								[
-									["living", "Living"],
-									["deceased", "Deceased"],
-									["unknown", "Not known"],
-								] as const
-							).map(([value, label], index) => (
-								<label
-									key={value}
-									className={cn(
-										"flex min-h-11 flex-1 cursor-pointer items-center justify-center",
-										"text-[0.75rem] text-ink-muted has-checked:bg-surface-raised",
-										"has-checked:text-accent-ink",
-										index > 0 && "border-l border-hairline",
-									)}
-								>
-									<input
-										type="radio"
-										name="living"
-										value={value}
-										defaultChecked={value === "unknown"}
-										className="sr-only"
-									/>
-									{label}
-								</label>
-							))}
+					<details className="group/more mt-3">
+						<summary
+							className={cn(
+								"flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg border",
+								"border-hairline px-3 text-[0.75rem] font-medium text-ink-muted",
+								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
+								"hover:border-hairline-strong hover:text-ink",
+								"[&::-webkit-details-marker]:hidden",
+							)}
+						>
+							<SlidersHorizontal className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+							More details
+							<span className="ml-auto font-normal text-ink-faint group-open/more:hidden">
+								surname, year, status
+							</span>
+						</summary>
+
+						<div className="mt-3 grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
+							<label className="min-w-0">
+								<span className={fieldLabel}>
+									Family name <span className="font-normal text-ink-faint">(optional)</span>
+								</span>
+								<input
+									name="familyName"
+									placeholder="Surname"
+									autoComplete="off"
+									className={field}
+								/>
+							</label>
+							<label>
+								<span className={fieldLabel}>Birth year</span>
+								{/* A YEAR, not a date. It is written to the fuzzy column, because coercing
+								    "1952" into 1952-01-01 invents a birthday nobody recorded. */}
+								<input
+									name="birthYear"
+									inputMode="numeric"
+									placeholder="Year"
+									autoComplete="off"
+									disabled={count > 1}
+									title={count > 1 ? "A batch cannot share one birth year" : undefined}
+									className={cn(field, "tabular", count > 1 && "cursor-not-allowed opacity-40")}
+								/>
+							</label>
 						</div>
-					</fieldset>
+
+						{/*
+						 * Gender, for the three roles that do not state one.
+						 *
+						 * Absent for father, mother, son, daughter, brother and sister: those words are
+						 * themselves a statement about the person being added, and `addRelative` ignores
+						 * a posted `sex` for them -- so drawing the field would be a control that looks
+						 * like it works and does not.
+						 */}
+						{asksSex && (
+							<fieldset className="mt-3">
+								<legend className={fieldLabel}>Gender</legend>
+								<div className="flex overflow-hidden rounded-lg border border-hairline">
+									{SEXES.map((option, index) => (
+										<label
+											key={option.value}
+											className={cn(
+												"flex min-h-11 flex-1 cursor-pointer items-center justify-center px-1",
+												"text-center text-[0.6875rem] text-ink-muted",
+												"has-checked:bg-surface-raised has-checked:text-accent-ink",
+												index > 0 && "border-l border-hairline",
+											)}
+										>
+											<input
+												type="radio"
+												name="sex"
+												value={option.value}
+												defaultChecked={option.value === "unknown"}
+												className="sr-only"
+											/>
+											{option.label}
+										</label>
+									))}
+								</div>
+							</fieldset>
+						)}
+
+						{/* Living status, as a real tri-state. "unknown" is a stored value here, not a
+						    missing one: most people in a genealogy have neither date recorded. */}
+						<fieldset className="mt-3">
+							<legend className={fieldLabel}>Living status</legend>
+							<div className="flex overflow-hidden rounded-lg border border-hairline">
+								{(
+									[
+										["living", "Living"],
+										["deceased", "Deceased"],
+										["unknown", "Not known"],
+									] as const
+								).map(([value, label], index) => (
+									<label
+										key={value}
+										className={cn(
+											"flex min-h-11 flex-1 cursor-pointer items-center justify-center",
+											"text-[0.75rem] text-ink-muted has-checked:bg-surface-raised",
+											"has-checked:text-accent-ink",
+											index > 0 && "border-l border-hairline",
+										)}
+									>
+										<input
+											type="radio"
+											name="living"
+											value={value}
+											defaultChecked={value === "unknown"}
+											className="sr-only"
+										/>
+										{label}
+									</label>
+								))}
+							</div>
+						</fieldset>
+					</details>
 
 					{error && (
 						<p
@@ -520,7 +651,7 @@ export function QuickAddSheet({
 	onDone,
 	onClose,
 }: {
-	subject: { id: string; name: string } | null;
+	subject: { id: string; name: string; family?: FamilyCounts } | null;
 	onDone?: () => void;
 	onClose: () => void;
 }) {
@@ -533,6 +664,7 @@ export function QuickAddSheet({
 							key={subject.id}
 							subjectId={subject.id}
 							subjectName={subject.name}
+							family={subject.family}
 							onDone={onDone}
 							onClose={onClose}
 						/>

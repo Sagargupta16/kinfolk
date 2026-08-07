@@ -6,6 +6,123 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.0 -- 2026-08-07 (leaner, redrawn, and staying on the ledger-sync shape)
+
+Three things happened in one release: the working surface got smaller (tests and
+hardening out), the graph was redrawn to the conventions relatives already know,
+and the two-frontend architecture was CONFIRMED as the requirement -- a
+single-app consolidation was built, verified, and then reversed the same day
+when the owner confirmed the app must live at `sagargupta.online/kinfolk` the
+way ledger-sync does. The reversal was surgical: everything the SPA needs
+(`frontend/`, the OAuth bridge, the bearer JSON API, `pages.yml`) is back
+byte-for-byte from history, and the round trip left two genuine improvements
+behind -- `app/icon.svg`, and a Vite dev proxy the SPA had always been missing.
+
+### Removed
+
+- **The unit suite (26 files, 328 tests), vitest, and both live smoke scripts**,
+  deliberately, to keep the working surface small while the product is reshaped.
+  `scripts/check-migrations.mts` stays because the deploy workflow runs it, and
+  graph maths stays React-free and database-free in `lib/tree/` so a suite can
+  return later without restructuring.
+- **The hardening layers**: the security-header/CSP block in `next.config.mjs`, the
+  gitleaks CI job, and the people-per-hour write budget (`lib/tree/rate-limit.ts`).
+  Authorization is not hardening and stays: every write still starts in
+  `lib/tree/authz.ts`, contact visibility is still filtered server-side, and the
+  SPA's whole data path (bearer, CORS allow-list, HMAC OAuth state, redirect
+  allow-list) is load-bearing and untouched.
+- **`NEXT_PUBLIC_BASE_PATH` mount support in the Next app.** The Vercel deployment
+  owns its origin, so the session and demo cookies scope to `/` and no route
+  applies a base path by hand. The `/kinfolk` mount belongs to the SPA alone,
+  through Vite's own `base` -- which is how it was deployed in practice anyway.
+
+### The graph, redrawn
+
+How partners connect and how children descend were rebuilt to the convention
+every hand-drawn pedigree uses, after checking it against published charting
+guides: a couple is joined by ONE horizontal marriage line at mid-card height,
+and their children descend from a single stem at its midpoint. Before this,
+both partners dropped separate lines to a dot floating in the generation gap --
+structurally correct and visually nothing a relative has ever seen on a family
+chart.
+
+- `placeUnionJunctions()` (layout.ts, replacing `centreUnionDots()`) puts a
+  couple's junction ON the line: x at the couple's midpoint, y at their averaged
+  mid-card height. A single-parent union stays in the gap, centred under its one
+  parent, so the drop is a straight vertical.
+- `partnerPath()` (paths.ts) draws the line card-centre to card-centre; the run
+  behind each opaque card is hidden, so the visible line spans exactly the
+  gutter. A cross-generation couple gets rounded corners at each end instead of
+  a line through somebody's row.
+- The junction bead wears the line's own colour and the genogram's status
+  language: solid for an intact partnership, hollow for widowed, and a double
+  slash THROUGH the line for separated or divorced.
+- Measured on the live canvas, not eyeballed -- in the Next app at two detail
+  levels AND through the SPA's serialise/parse round trip: 68 of 68 partner
+  edges are flat marriage lines, 34 of 34 beads sit on their line (worst offset
+  0px), 82 of 82 child drops leave the bead's centre, 0 NaN paths, and the
+  orbit arrangement is untouched.
+
+Adding a person was reworked around the same research (Gramps' per-card add is
+the reference): the role picker now leads with WHERE the person will land
+(parents above, partner and siblings beside, children below), says "both
+parents recorded" instead of offering a button that ends in a refusal, and
+shows counts for everything else. The fast path is role, name, Enter --
+surname, birth year, gender and living status sit behind a More-details
+disclosure and submit their defaults untouched. Adding a partner now asks how
+the couple is recorded (married / partners / not known), because the canvas
+draws that fact; the status applies only when the add CREATES the union, never
+to one that already exists.
+
+The picker and the partnership status were verified by compile, typecheck and
+build; the write path could not be exercised live, because the demo canvas
+renders no editor and minting a real session to test with is forbidden.
+
+### Fixed
+
+- **The SPA's sign-in button did nothing in local dev, ever.** `startSignIn()`
+  built `new URL("/api/oauth/authorize")` from a relative string with no base,
+  which throws before any request is made -- invisible in production, where
+  `VITE_API_BASE_URL` makes the string absolute. The URL is now anchored on the
+  page's own origin, and the base argument is ignored when the string is
+  absolute, so production is unchanged.
+- **The Vite dev server had no `/api` proxy**, despite `src/api.ts` documenting
+  one ("Empty in dev, where the Vite proxy serves /api from the same origin").
+  Every SPA fetch in dev got index.html back with a 200, which renders as
+  "Could not reach the server" and reads as an API failure. The proxy now hands
+  `/api` to the Next app on port 3007.
+- A childless couple is joined by one direct line instead of a union dot pointing
+  at nobody (#29, shipped 2026-08-07 and previously missing from this log).
+
+### Added
+
+- `app/icon.svg` -- the favicon the SPA had and the Next app never did. Found as
+  the only console error on a clean load.
+
+### Dependencies
+
+Everything current across both workspace packages, on the newest lines: Next
+16.3, Motion 13 (major, both packages together -- the shared components require
+the pin to match), @vitejs/plugin-react 6, lucide-react 1.29, Biome 2.5.7 (config
+migrated), tsx 4.23.9, plus type packages. `next-auth` stays on `5.0.0-beta.32`
+deliberately: the v5 beta IS the newest line, and the `latest` npm tag still
+points at v4.
+
+### Verified
+
+- Biome, both `tsc` projects, the Next production build and the Vite Pages build
+  all pass; the full route table is back (`/api/tree`, `/api/action/[name]`,
+  `/api/share`, the three `/api/oauth/*` routes, Auth.js, `/tree`, `/signin`,
+  `/demo`).
+- Live in a browser: the SPA landing renders at `localhost:5173`, "See the
+  sample tree" renders **151 nodes and 150 edges through the JSON API** with a
+  clean console, and "Sign in with GitHub" completes the authorize leg --
+  GitHub's login page reached with the `redirect_uri` accepted and the same
+  state shape observed live on `sagargupta.online/ledger-sync` moments earlier.
+  The final keystroke of a sign-in is deliberately not automated.
+- The Next app's demo flow re-verified after the dependency bumps: same node and
+  edge counts, no console errors.
+
 ## 2026-08-07 (security and deployment audit)
 
 ### Fixed

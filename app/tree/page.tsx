@@ -45,7 +45,7 @@ export default async function TreePage({ searchParams }: { searchParams: SearchP
 		if (!view) return <EmptyTree name={session?.user?.name ?? null} />;
 	} else {
 		const store = await cookies();
-		if (!store.get(DEMO_COOKIE)) redirect("/signin?from=/tree");
+		if (!store.get(DEMO_COOKIE)) redirect("/signin");
 		view = buildDemoView(options);
 	}
 

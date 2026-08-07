@@ -31,6 +31,7 @@ import {
 	elbowPath,
 	MAX_BAR_SPAN,
 	orbitPath,
+	partnerPath,
 } from "@/lib/tree/paths";
 
 /** Set on child edges whose union has a sibling bar. See lib/tree/siblings.ts. */
@@ -64,6 +65,25 @@ export type JunctionAnchor = {
 };
 
 /**
+ * Set on every partner edge in the tree arrangement.
+ *
+ * A couple is joined by ONE horizontal marriage line at mid-card height -- the
+ * convention every hand-drawn pedigree uses -- and the junction the children
+ * descend from sits on it. The rail values come from the canvas because only it
+ * holds the laid-out boxes: an edge knows its HANDLE positions (the card's
+ * bottom centre), and a marriage line runs at mid-card height, which no handle
+ * is at.
+ */
+export type PartnerRail = {
+	partner: true;
+	/** The y the marriage line runs at. */
+	railY: number;
+	/** Each end's own mid-card height, for the cross-generation couple. */
+	sourceMidY: number;
+	targetMidY: number;
+};
+
+/**
  * Set on every edge when the canvas is arranged as an orbit.
  *
  * The arrangement has to reach the edge because a pedigree's router is actively wrong on
@@ -87,7 +107,9 @@ export function FamilyEdge({
 	style,
 	data,
 }: EdgeProps) {
-	const bar = data as (FamilyEdgeData & Partial<OrbitEdgeData> & JunctionAnchor) | undefined;
+	const bar = data as
+		| (FamilyEdgeData & Partial<OrbitEdgeData> & Partial<PartnerRail> & JunctionAnchor)
+		| undefined;
 
 	/*
 	 * Snap each end that meets a junction onto the dot's CENTRE.
@@ -112,6 +134,30 @@ export function FamilyEdge({
 	 */
 	if (bar?.orbit) {
 		const path = orbitPath(sx, sy, tx, ty);
+		return (
+			<>
+				<BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} pathLength={1} />
+				<Pulse path={path} />
+			</>
+		);
+	}
+
+	/*
+	 * A partner edge is the marriage line, and it comes SECOND only to the orbit.
+	 *
+	 * One horizontal run at mid-card height, from this partner's centre to the junction
+	 * (or, for a childless couple's direct edge, to the other partner's centre). The
+	 * segment between a card's centre and its border is painted UNDER the opaque card,
+	 * so the visible line spans exactly the gutter between the couple -- which is what
+	 * lets one generator serve every level of detail without knowing card widths.
+	 *
+	 * Before the barY branch by necessity as well as taste: a partner edge never
+	 * carries bar data (bars key on the union as edge SOURCE, and a partner edge has
+	 * it as TARGET), but the smoothstep fallback it used to reach would now route
+	 * DOWN from the bottom handle and back UP to a junction that sits above it.
+	 */
+	if (bar?.partner && typeof bar.railY === "number") {
+		const path = partnerPath(sx, bar.sourceMidY ?? sy, tx, bar.targetMidY ?? ty, bar.railY);
 		return (
 			<>
 				<BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} pathLength={1} />
@@ -174,11 +220,11 @@ export function FamilyEdge({
 	}
 
 	/*
-	 * No bar: a partner edge, or a union with a single child.
+	 * No bar and no rail: a union's single child.
 	 *
 	 * React Flow's own smoothstep, because with no shared bar to route through there is
-	 * nothing our elbow would do differently -- and their generator already handles the
-	 * handle-position cases (a partner edge leaves a card's side, not its bottom).
+	 * nothing our elbow would do differently -- the drop leaves the junction downward
+	 * and arrives at the child from above, with the same rounded corners.
 	 */
 	const [path] = getSmoothStepPath({
 		sourceX: sx,

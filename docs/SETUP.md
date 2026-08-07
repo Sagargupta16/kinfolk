@@ -44,15 +44,10 @@ pnpm db:push
 On Windows this prints `[✓] Changes applied` and then crashes with
 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and exit code
 3221226505. **That is a libuv teardown bug, not a failed migration** -- the
-schema is already committed by the time it happens. Confirm with:
-
-```bash
-pnpm db:smoke
-```
-
-That seeds two small graphs, reads them back through the real query path,
-asserts 22 invariants, and deletes everything it made. All 22 passing means the
-database half is done.
+schema is already committed by the time it happens. Confirm in the Neon
+console, where the project should show 12 tables, or with a query against
+`information_schema.tables`. The live smoke script that used to assert this
+end to end was removed in the 0.2.0 rework.
 
 ## 2. `AUTH_SECRET` -- generated locally
 

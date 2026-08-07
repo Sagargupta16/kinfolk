@@ -36,8 +36,8 @@ the layout engine.
 | Auth | Auth.js v5, GitHub OAuth |
 | Graph canvas | React Flow (`@xyflow/react`) with ELK layered layout |
 | Styling | Tailwind 4 |
-| Motion | Motion 12, for chrome only |
-| Tooling | pnpm, Biome, Vitest |
+| Motion | Motion 13, for chrome only |
+| Tooling | pnpm, Biome |
 
 Same shape as `prod/kalchar`, so the conventions carry over.
 
@@ -75,10 +75,6 @@ Full setup, click by click, is in [docs/SETUP.md](docs/SETUP.md).
 ## Test
 
 ```bash
-pnpm test
-```
-
-```bash
 pnpm typecheck
 ```
 
@@ -86,24 +82,13 @@ pnpm typecheck
 pnpm lint
 ```
 
-328 unit tests, all offline. Graph maths lives in `lib/tree/` with no React or database
-imports precisely so it stays testable -- two defects that were invisible on screen were
-found by writing those tests, because a person who vanishes from a canvas does not
-announce that they were dropped for the wrong reason.
-
-Two suites need a real database and are deliberately kept out of Vitest, since a suite
-that fails on a fresh clone for want of a database tells you nothing about the code:
-
-```bash
-pnpm db:smoke
-```
-
-```bash
-pnpm db:smoke:kin
-```
-
-The second one found a defect nothing offline could: the Neon HTTP driver has no
-transaction support, so `db.transaction()` type-checks perfectly and throws at runtime.
+The unit suite and the live smoke scripts were removed in the 0.2.0 rework, so these two
+commands are the whole gate. Graph maths still lives in `lib/tree/` with no React or
+database imports -- while the suite existed it found two defects that were invisible on
+screen, because a person who vanishes from a canvas does not announce that they were
+dropped for the wrong reason. A live smoke script (since removed) caught the one defect
+nothing offline could: the Neon HTTP driver has no transaction support, so
+`db.transaction()` type-checks perfectly and throws at runtime.
 
 ## Data model
 

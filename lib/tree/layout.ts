@@ -225,7 +225,7 @@ export async function layoutGraph(
 	);
 
 	anchorFamilylessNodes(nodes, edges, positions, metrics.gap);
-	centreUnionDots(nodes, edges, positions);
+	placeUnionJunctions(nodes, edges, positions);
 
 	const positioned = nodes.map((node) => {
 		const box = positions.get(node.id);
@@ -274,24 +274,37 @@ function generationBands(nodes: PositionedNode[], personHeight: number): Generat
 }
 
 /**
- * Slide each union dot to sit between the two people it joins.
+ * Put each union junction where the marriage line runs.
  *
- * ELK places the junction to minimise edge crossings, which is the right objective for a
- * layered graph and the wrong position for a marriage: measured on the sample tree, ALL 34
- * couples had their dot off the midpoint between the partners, the worst by 498px. A dot
- * hanging beside a couple rather than between them is what makes the drop to the children
- * look like it leaves from nowhere -- the "not centre aligned" complaint.
+ * ELK places the junction as an ordinary node in the gap between generations, to
+ * minimise edge crossings -- the right objective for a layered graph and the wrong
+ * position for a marriage. The convention every hand-drawn pedigree uses is a
+ * horizontal line joining the couple at mid-card height with the children
+ * descending from its midpoint, so a couple's junction is moved ONTO that line:
+ * x at the couple's midpoint, y at the partners' mid-card height. The partner
+ * edges then draw the line itself (see `partnerPath`), and the child drop leaves
+ * from between the couple -- one stem, through the gutter the two cards share.
  *
- * A post-layout nudge rather than an ELK constraint, for the same reason `siblingBars` is
- * computed afterwards: the skeleton must not shift to accommodate cosmetics, and moving a
- * 12x12 dot cannot introduce an overlap that matters. Only x moves; the y ELK assigned is
- * what keeps the dot in its generation gap.
+ * A SINGLE-parent union keeps ELK's y in the generation gap and is centred under
+ * its one parent instead: there is no couple to run a line between, and the
+ * honest picture is the classic straight drop from parent to children. It also
+ * cannot sit at mid-card height, because union nodes paint above cards and a
+ * bead on somebody's face is not a junction.
  *
- * Where the couple's midpoint and the children's midpoint disagree, this prefers the
- * COUPLE. The dot's job is to say "these two are partners"; the bracket below already says
- * which children are theirs, and it spans the children's own extent independently.
+ * A post-layout nudge rather than an ELK constraint, for the same reason
+ * `siblingBars` is computed afterwards: the skeleton must not shift for
+ * cosmetics, and moving a 12x12 dot cannot introduce an overlap that matters.
+ *
+ * Where the couple's midpoint and the children's midpoint disagree, this prefers
+ * the COUPLE. The junction's job is to say "these two are partners"; the bracket
+ * below already says which children are theirs, and it spans the children's own
+ * extent independently.
  */
-function centreUnionDots(nodes: FlowNode[], edges: FlowEdge[], positions: Map<string, Box>): void {
+function placeUnionJunctions(
+	nodes: FlowNode[],
+	edges: FlowEdge[],
+	positions: Map<string, Box>,
+): void {
 	/** Partners per union node id. */
 	const partners = new Map<string, string[]>();
 	for (const edge of edges) {
@@ -304,19 +317,32 @@ function centreUnionDots(nodes: FlowNode[], edges: FlowEdge[], positions: Map<st
 	for (const node of nodes) {
 		if (node.type !== "union") continue;
 		const dot = positions.get(node.id);
-		const couple = partners.get(node.id);
-		// A single-parent union has nothing to sit between, so ELK's x is left alone -- the dot
-		// already hangs below its one parent, which is the honest picture.
-		if (!dot || !couple || couple.length < 2) continue;
+		if (!dot) continue;
 
-		const centres = couple
+		const boxes = (partners.get(node.id) ?? [])
 			.map((id) => positions.get(id))
-			.filter((box): box is Box => Boolean(box))
-			.map((box) => box.x + box.width / 2);
-		if (centres.length < 2) continue;
+			.filter((box): box is Box => Boolean(box));
+		if (boxes.length === 0) continue;
 
-		const midpoint = (Math.min(...centres) + Math.max(...centres)) / 2;
-		dot.x = midpoint - dot.width / 2;
+		const centres = boxes.map((box) => box.x + box.width / 2);
+
+		// One parent on the canvas (a single parent, or the other partner sits in a
+		// tree the viewer cannot see): centre the junction under them so the drop to
+		// the children is a straight vertical line. The y ELK assigned keeps it in
+		// the generation gap, below the card rather than on it.
+		if (boxes.length === 1) {
+			const only = centres[0];
+			if (only !== undefined) dot.x = only - dot.width / 2;
+			continue;
+		}
+
+		const midX = (Math.min(...centres) + Math.max(...centres)) / 2;
+		// Mid-card height, averaged so a cross-generation couple gets a rail between
+		// their two rows rather than through either of them.
+		const railY = boxes.reduce((sum, box) => sum + box.y + box.height / 2, 0) / boxes.length;
+
+		dot.x = midX - dot.width / 2;
+		dot.y = railY - dot.height / 2;
 	}
 }
 

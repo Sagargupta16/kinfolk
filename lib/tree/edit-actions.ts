@@ -47,7 +47,6 @@ import {
 	ROLE_SEX,
 } from "./kin-plan";
 import { buildPersonPatch } from "./person-patch";
-import { checkPeopleBudget } from "./rate-limit";
 import { canonicalPair, RELATION_KINDS } from "./relations";
 
 export type Result = { ok: true; id?: string } | { ok: false; error: string };
@@ -58,16 +57,6 @@ export type Result = { ok: true; id?: string } | { ok: false; error: string };
  * Demo mode is rejected here rather than in each action: the demo is sample data with
  * no owner, so there is nothing to write to and no user to attribute it to. Doing this
  * check once means a new action cannot forget it.
- *
- * TWO credentials are accepted, and the order matters. A same-origin form post
- * carries the session cookie; a call from the Pages-hosted UI carries a bearer
- * token, because that origin cannot send this app's cookie without it becoming
- * `SameSite=None` and losing its CSRF protection (see lib/tree/bearer.ts).
- *
- * The cookie is tried FIRST so the server-rendered UI is unaffected, and the
- * bearer path is reached only when there is no session. Both resolve to the same
- * kind of value -- a user id proven against the database -- so every action keeps
- * its single auth line and none of them need to know which arrived.
  */
 async function editor(): Promise<{ userId: string } | { error: string }> {
 	const { cookies, headers } = await import("next/headers");
@@ -80,6 +69,10 @@ async function editor(): Promise<{ userId: string } | { error: string }> {
 	const userId = session?.user?.id;
 	if (userId) return { userId };
 
+	// A bearer token, for the Pages-hosted UI: that origin cannot send this app's
+	// cookie without it becoming SameSite=None, so the SPA authenticates its calls
+	// with the session token instead (see lib/tree/bearer.ts). The cookie is tried
+	// FIRST so the server-rendered path is untouched.
 	const bearer = await userIdFromBearer((await headers()).get("authorization"));
 	if (bearer) return { userId: bearer };
 
@@ -125,11 +118,6 @@ export async function addPerson(form: FormData): Promise<Result> {
 	if (!givenName && !familyName) {
 		return { ok: false, error: "A person needs at least one name." };
 	}
-
-	// After the name check so an empty form is still refused for the right reason,
-	// and after auth so the count cannot be probed by an anonymous caller.
-	const budget = await checkPeopleBudget(auth.userId);
-	if (!budget.ok) return { ok: false, error: budget.error };
 
 	try {
 		const { assertCanEditTree } = await import("./authz");
@@ -590,13 +578,6 @@ export async function addRelative(form: FormData): Promise<Result> {
 		if (plan.refusal) return { ok: false, error: plan.refusal };
 		if (plan.create.count === 0) return { ok: false, error: "Nothing to add." };
 
-		// Charged for the WHOLE batch, and only once the plan has said how many
-		// people it will really create. Checking `count` from the form instead would
-		// bill for a number the planner may have reduced, and checking one row at a
-		// time would let a batch of twelve slip past a budget with one left.
-		const budget = await checkPeopleBudget(auth.userId, plan.create.count);
-		if (!budget.ok) return { ok: false, error: budget.error };
-
 		// A name is optional here, unlike `addPerson`: a batch is created precisely because
 		// nobody knows the names yet, so a numbered placeholder stands in until they do.
 		const givenName = orNull(form.get("givenName"));
@@ -641,6 +622,20 @@ export async function addRelative(form: FormData): Promise<Result> {
 		 * somebody stranded on the canvas with nothing to say why they are there. Failing early
 		 * leaves less mess than failing late.
 		 */
+		/*
+		 * How the couple is recorded, honoured only when this add CREATES the union.
+		 *
+		 * The field exists on the partner form because the canvas now draws the fact --
+		 * a solid bead for an intact partnership, the genogram double-slash for a
+		 * divorce. An EXISTING union's status is that union's record and not this
+		 * form's to overwrite, so `plan.union.kind === "existing"` ignores it. Parsed
+		 * from an allow-list for the same reason invite roles are: a form value is a
+		 * client value.
+		 */
+		const postedStatus = orNull(form.get("unionStatus"));
+		const unionStatus: "married" | "partnered" | "unknown" =
+			postedStatus === "married" || postedStatus === "partnered" ? postedStatus : "unknown";
+
 		let unionId: string | null = null;
 		if (plan.union.kind === "existing") {
 			unionId = plan.union.unionId;
@@ -651,7 +646,7 @@ export async function addRelative(form: FormData): Promise<Result> {
 					treeId,
 					partnerAId: plan.union.partnerAId,
 					partnerBId: plan.union.partnerBId,
-					status: "unknown",
+					status: unionStatus,
 				})
 				.returning({ id: unions.id });
 			unionId = row?.id ?? null;

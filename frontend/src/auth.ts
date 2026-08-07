@@ -29,7 +29,11 @@ const STATE_KEY = "kinfolk.oauth-state";
 
 /** Send the visitor to GitHub. */
 export async function startSignIn(): Promise<void> {
-	const url = new URL(`${API_BASE}/api/oauth/authorize`);
+	// Anchored on the page's own origin so the DEV case works: API_BASE is empty
+	// there, and `new URL("/api/...")` with no base throws TypeError before any
+	// request is made -- a sign-in button that does nothing. With an absolute
+	// API_BASE (production) the base argument is ignored per the URL spec.
+	const url = new URL(`${API_BASE}/api/oauth/authorize`, window.location.origin);
 	url.searchParams.set("redirect_uri", callbackUrl());
 
 	const response = await fetch(url, { headers: { Accept: "application/json" } });

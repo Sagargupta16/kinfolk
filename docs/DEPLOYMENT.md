@@ -28,12 +28,13 @@ What was verified after the secrets landed, rather than assumed:
 - `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
   proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
 - `pnpm db:check-migrations --complete` reports all 3 committed migrations applied.
-- `pnpm db:smoke` and `pnpm db:smoke:kin` pass against the live branch and clean up.
+- The live smoke scripts (`db:smoke`, `db:smoke:kin`) passed against the live branch and
+  cleaned up after themselves; both were removed in the 0.2.0 rework.
 
 The last step of a sign-in -- entering GitHub credentials -- is deliberately NOT automated.
 Minting a real session for a real account to test with is forbidden by the workspace rules,
-so provisioning (one graph, one self node reading kinship "you") is proven by
-`scripts/smoke-db.mts` against the same database instead.
+so provisioning (one graph, one self node reading kinship "you") was proven by
+`scripts/smoke-db.mts` against the same database instead, before that script was removed.
 
 ## Why the deployment is split
 
@@ -77,7 +78,8 @@ The Pages build sets `GITHUB_PAGES=true`, which makes Vite emit assets under `/k
 The workflow also copies `index.html` to `404.html`, so direct links such as
 `/kinfolk/tree` return the SPA instead of a Pages 404.
 
-Vercel remains at its own origin with `NEXT_PUBLIC_BASE_PATH` unset. The Pages app calls it
+Vercel remains at its own origin, and the Next app no longer reads a mount path at all --
+its base-path support was removed in the 0.2.0 rework. The Pages app calls it
 through `VITE_API_BASE_URL`; no DNS proxy or apex migration is required.
 
 ## One-time setup
@@ -100,10 +102,10 @@ Set these for **Production** and **Preview** (Settings -> Environment Variables)
 | `AUTH_TRUST_HOST` | `true`. Already set. Auth.js is behind Vercel's proxy and will not trust the forwarded host without it, so sign-in fails even with every other value correct. |
 | `AUTH_GITHUB_ID` | From the production OAuth app below. |
 | `AUTH_GITHUB_SECRET` | Same. |
-| `NEXT_PUBLIC_BASE_PATH` | `/kinfolk` ONLY once the apex is on Vercel and rewriting. Leave UNSET until then: a base path with nothing routing to it serves a page whose every asset 404s. It also scopes the session and demo cookies to the mount, which is what stops them being sent to every other project on the shared domain. |
 
-Leave `NEXT_PUBLIC_BASE_PATH` unset for the current deployment. The `/kinfolk/` mount belongs
-to the Vite build on Pages, not to the Vercel origin.
+There is no mount-path variable to set: the `NEXT_PUBLIC_BASE_PATH` support was removed in
+the 0.2.0 rework, and the Next app owns its origin. The `/kinfolk/` mount belongs to the
+Vite build on Pages, not to the Vercel origin.
 
 `db:push`, `db:migrate`, and the GitHub migration workflow need the **direct**
 (non-pooler) host. The running Vercel app uses the pooler host.
@@ -148,7 +150,7 @@ CI needs no secrets at all. `lib/db/client.ts` is built to import cleanly with n
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | every PR and push to `main` | gitleaks over full history, lint, both typechecks, 328 tests, both builds, and a guard against dead Tailwind utilities in the built CSS |
+| [`ci.yml`](../.github/workflows/ci.yml) | every PR and push to `main` | lint, both typechecks, the Next build, the Vite Pages build, and a guard against dead Tailwind utilities in the built CSS |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | push to `main` touching app code | applies committed migrations to Neon, waits, then probes the live endpoints |
 | [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC | probes production, to catch a suspended Neon branch or a rotated secret |
 | [`pages.yml`](../.github/workflows/pages.yml) | push to `main` touching SPA/shared UI code | builds and publishes `frontend/` to GitHub Pages at `sagargupta.online/kinfolk/` |

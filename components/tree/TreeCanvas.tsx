@@ -79,7 +79,7 @@ import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
 import { PersonDetail } from "./PersonDetail";
 import { PersonNode, UnionNode } from "./PersonNode";
-import { QuickAddSheet } from "./QuickAdd";
+import { type FamilyCounts, QuickAddSheet } from "./QuickAdd";
 import { pushTrail, TreeBreadcrumbs } from "./TreeBreadcrumbs";
 import { TreeMinimap } from "./TreeMinimap";
 import { type ShortcutAction, ShortcutSheet, useShortcuts } from "./TreeShortcuts";
@@ -406,9 +406,15 @@ function Canvas({
 	 *
 	 * Holds the NAME as well as the id so the sheet can say whose relative it is adding
 	 * without looking the person back up -- a form headed "Add father" with no name attached
-	 * is how a father gets recorded against the wrong person.
+	 * is how a father gets recorded against the wrong person. `family` carries what the
+	 * subject already has, so the picker can say "both parents recorded" instead of
+	 * offering a button that ends in a refusal.
 	 */
-	const [quickAdd, setQuickAdd] = useState<{ id: string; name: string } | null>(null);
+	const [quickAdd, setQuickAdd] = useState<{
+		id: string;
+		name: string;
+		family: FamilyCounts;
+	} | null>(null);
 	/** Set when a `+` is pressed on a person no source row of which the viewer may edit. */
 	const [quickAddRefusal, setQuickAddRefusal] = useState<string | null>(null);
 	// Refreshing the server route after a write is what keeps fusion, kinship and the layout
@@ -545,10 +551,29 @@ function Canvas({
 				setQuickAddRefusal(target.reason);
 				return;
 			}
+
+			/*
+			 * What this person's family already holds, counted over the FUSED graph --
+			 * the same shape the canvas draws, so the picker's "both parents recorded"
+			 * agrees with the picture. Counted here rather than in the sheet because the
+			 * sheet deliberately knows nothing about graphs, only roles.
+			 */
+			const unions = unionsOf(sourceNodes);
+			const parentUnion = unions.find((u) => u.childIds.includes(person.id));
+			const own = unions.filter((u) => u.partnerAId === person.id || u.partnerBId === person.id);
+			const family: FamilyCounts = {
+				parents: parentUnion
+					? [parentUnion.partnerAId, parentUnion.partnerBId].filter(Boolean).length
+					: 0,
+				partners: own.length,
+				children: own.reduce((sum, u) => sum + u.childIds.length, 0),
+				siblings: parentUnion ? parentUnion.childIds.filter((id) => id !== person.id).length : 0,
+			};
+
 			setQuickAddRefusal(null);
-			setQuickAdd({ id: target.personId, name: displayName(person.primary) });
+			setQuickAdd({ id: target.personId, name: displayName(person.primary), family });
 		},
-		[editableTreeIds],
+		[editableTreeIds, sourceNodes],
 	);
 
 	useEffect(() => {
@@ -787,6 +812,29 @@ function Canvas({
 					});
 				}
 
+				/** Laid-out boxes by id, for the marriage-line rail below. */
+				const boxes = new Map(positioned.map((node) => [node.id, node]));
+
+				/**
+				 * The marriage line's coordinates, for partner edges only.
+				 *
+				 * Computed here because only the canvas holds the laid-out boxes: an edge
+				 * knows its handle positions (the card's bottom centre), and the marriage
+				 * line runs at MID-card height, which no handle is at. For a couple the
+				 * junction already sits on the line (layout.ts put it there), so the rail
+				 * is the hub's own y; for the direct childless-couple edge it is the
+				 * midpoint of the two partners' mid-heights.
+				 */
+				const partnerRail = (edge: Edge) => {
+					const sBox = boxes.get(edge.source);
+					const tBox = boxes.get(edge.target);
+					if (!sBox || !tBox) return null;
+					const sourceMidY = sBox.position.y + sBox.height / 2;
+					const targetMidY = tBox.position.y + tBox.height / 2;
+					const railY = tBox.type === "union" ? targetMidY : (sourceMidY + targetMidY) / 2;
+					return { partner: true as const, railY, sourceMidY, targetMidY };
+				};
+
 				const barDrawer = new Map<string, string>();
 				for (const edge of familyFlowEdges) {
 					if (!bars.has(edge.source)) continue;
@@ -810,6 +858,13 @@ function Canvas({
 								sourceHub: hubs.get(edge.source),
 								targetHub: hubs.get(edge.target),
 							};
+							// The marriage line, for partner edges in the tree arrangement. Keyed off
+							// the class the family memo already assigns, so partner-ness is decided
+							// in exactly one place.
+							const rail =
+								!orbiting && (edge.className ?? "").includes("is-partner")
+									? partnerRail(edge)
+									: null;
 							return {
 								...edge,
 								// The arrangement has to reach the edge component, because a pedigree's
@@ -824,9 +879,10 @@ function Canvas({
 													barRight: bar.right,
 													drawsBar: barDrawer.get(edge.source) === edge.id,
 													...anchor,
+													...(rail ?? {}),
 												},
 											}
-										: { data: anchor }),
+										: { data: { ...anchor, ...(rail ?? {}) } }),
 								className: withFlag("kf-draw", edge.className, true),
 								style: {
 									...edge.style,

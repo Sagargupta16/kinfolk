@@ -26,6 +26,21 @@ export default defineConfig({
 
 	plugins: [react(), tailwindcss()],
 
+	server: {
+		/**
+		 * Local dev serves /api from the same origin, exactly as src/api.ts documents:
+		 * API_BASE is empty in dev, so every fetch is relative and this proxy hands it
+		 * to the Next app. No CORS locally, and the request shape matches production,
+		 * where Pages calls the Vercel origin instead.
+		 */
+		proxy: {
+			"/api": {
+				target: "http://localhost:3007",
+				changeOrigin: true,
+			},
+		},
+	},
+
 	resolve: {
 		/**
 		 * Order matters: Vite matches these in sequence, so the three REPLACEMENTS have

@@ -239,3 +239,45 @@ export function bracketPath(
 		`L ${right} ${barY + capDepth}`,
 	].join(" ");
 }
+
+/**
+ * The marriage line: partners joined by one horizontal run at mid-card height.
+ *
+ * The convention every hand-drawn pedigree uses -- a horizontal line between the
+ * couple with the children descending from its midpoint -- and what the junction
+ * placement in layout.ts now produces. The previous shape dropped both partners
+ * to a dot floating in the generation gap, which read as two people pointing at
+ * a mark rather than as a couple.
+ *
+ * Endpoints are each card's CENTRE, not its edge: cards are opaque and edges
+ * paint underneath nodes, so the run from centre to card border is hidden and
+ * the visible line spans exactly the gutter between the couple. That is also
+ * what makes this safe for every level of detail without knowing card widths.
+ *
+ * A couple on two different rows (a cross-generation marriage) cannot share one
+ * mid-height, so each partner leaves at their OWN mid-card y and the line runs
+ * at `railY` between them, cornered with the same radius as every other turn.
+ */
+export function partnerPath(
+	sourceX: number,
+	sourceMidY: number,
+	targetX: number,
+	targetMidY: number,
+	railY: number,
+	radius = CORNER,
+): string {
+	const flatSource = Math.abs(sourceMidY - railY) < 0.5;
+	const flatTarget = Math.abs(targetMidY - railY) < 0.5;
+
+	// The ordinary couple: one straight marriage line.
+	if (flatSource && flatTarget) {
+		return `M ${sourceX} ${railY} L ${targetX} ${railY}`;
+	}
+
+	return [
+		`M ${sourceX} ${sourceMidY}`,
+		turn(sourceX, railY, sourceX, sourceMidY, targetX, railY, radius),
+		turn(targetX, railY, sourceX, railY, targetX, targetMidY, radius),
+		`L ${targetX} ${targetMidY}`,
+	].join(" ");
+}
