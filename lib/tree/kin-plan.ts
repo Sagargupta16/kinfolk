@@ -287,11 +287,27 @@ export function birthYearColumns(input: string): {
 	if (!text) return { birthDate: null, birthDateApprox: null };
 
 	// A full ISO date, which the form does not ask for but a paste might supply.
-	// The shape alone is not enough -- "2024-13-45" matches the pattern -- and
-	// Date.parse rejects out-of-range components for the ISO date-only form, so an
-	// impossible date falls through to the fuzzy column as somebody's own words.
-	if (/^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text))) {
-		return { birthDate: text, birthDateApprox: null };
+	// Shape alone is not enough: "2024-02-31" matches and Date.parse normalises it
+	// into March. Rebuild the date in UTC and require every component to survive
+	// unchanged; impossible dates then remain the caller's fuzzy text instead of
+	// reaching Postgres as an invalid date.
+	const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+	if (iso) {
+		const year = Number(iso[1]);
+		const month = Number(iso[2]);
+		const day = Number(iso[3]);
+		const parsed = new Date(0);
+		parsed.setUTCHours(0, 0, 0, 0);
+		parsed.setUTCFullYear(year, month - 1, day);
+		if (
+			year >= 1000 &&
+			year <= 2200 &&
+			parsed.getUTCFullYear() === year &&
+			parsed.getUTCMonth() === month - 1 &&
+			parsed.getUTCDate() === day
+		) {
+			return { birthDate: text, birthDateApprox: null };
+		}
 	}
 
 	// A plausible year. Bounded because a typo like "19" or "20255" is not a year, and

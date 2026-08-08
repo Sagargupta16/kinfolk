@@ -67,19 +67,11 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json({ view: view ? serialiseTreeView(view) : null }, { headers: cors });
 		}
 	} catch (error) {
-		// `cause` carries the real Postgres error; drizzle's own message holds only the
-		// statement. Reporting the statement without the reason is a symptom without a
-		// diagnosis, which cost a full round of investigation on the OAuth callback.
+		// Driver errors can contain SQL, schema names and record identifiers. Keep the
+		// diagnostic in server logs and return only the stable public error contract.
 		console.error(`[tree] failed at ${stage}`, error);
-		const detail = error instanceof Error ? error.message : "unknown error";
-		const cause =
-			error instanceof Error && error.cause instanceof Error
-				? error.cause.message
-				: error instanceof Error && error.cause
-					? String(error.cause)
-					: null;
 		return NextResponse.json(
-			{ error: `could not read your graph (${stage}: ${detail})`, cause },
+			{ error: "could not read your graph" },
 			{ status: 500, headers: cors },
 		);
 	}

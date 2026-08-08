@@ -34,8 +34,8 @@ import {
 	type Sex,
 	sexEnum,
 	unionChildren,
-	unions,
 	unionStatusEnum,
+	unions,
 	visibilityEnum,
 } from "../db/schema";
 import { wouldCreateAncestryCycle } from "./acyclic";
@@ -127,6 +127,11 @@ export async function addPerson(form: FormData): Promise<Result> {
 		const { assertCanEditTree } = await import("./authz");
 		await assertCanEditTree(auth.userId, treeId);
 
+		const sex = oneOf(form.get("sex"), sexEnum.enumValues, "unknown");
+		if (!sex.ok) return { ok: false, error: "Choose a valid gender." };
+		const living = oneOf(form.get("living"), livingStatusEnum.enumValues, "unknown");
+		if (!living.ok) return { ok: false, error: "Choose a valid living status." };
+
 		const [row] = await db
 			.insert(people)
 			.values({
@@ -135,8 +140,8 @@ export async function addPerson(form: FormData): Promise<Result> {
 				familyName,
 				birthFamilyName: orNull(form.get("birthFamilyName")),
 				nickname: orNull(form.get("nickname")),
-				sex: oneOf(orNull(form.get("sex")), sexEnum.enumValues, "unknown"),
-				living: oneOf(orNull(form.get("living")), livingStatusEnum.enumValues, "unknown"),
+				sex: sex.value,
+				living: living.value,
 				// A real date if it parses, otherwise the fuzzy text column. "about 1890" is
 				// a genuine genealogical answer and must not be coerced into a false precision.
 				birthDate: orNull(form.get("birthDate")),
@@ -180,7 +185,9 @@ export async function updatePerson(form: FormData): Promise<Result> {
 
 	// The patch rule lives in lib/tree/person-patch.ts, where it is pure and asserted.
 	// Absent keys are left alone; a key present but blank is a deliberate erasure.
-	const patch = buildPersonPatch(form);
+	const parsedPatch = buildPersonPatch(form);
+	if (!parsedPatch.ok) return parsedPatch;
+	const { patch } = parsedPatch;
 
 	if (Object.keys(patch).length === 0) return { ok: true, id: personId };
 
@@ -347,13 +354,16 @@ export async function addUnion(form: FormData): Promise<Result> {
 		const { assertCanEditTree } = await import("./authz");
 		await assertCanEditTree(auth.userId, treeId);
 
+		const status = oneOf(form.get("status"), unionStatusEnum.enumValues, "unknown");
+		if (!status.ok) return { ok: false, error: "Choose a valid partnership status." };
+
 		const [row] = await db
 			.insert(unions)
 			.values({
 				treeId,
 				partnerAId,
 				partnerBId,
-				status: oneOf(orNull(form.get("status")), unionStatusEnum.enumValues, "unknown"),
+				status: status.value,
 				startDate: orNull(form.get("startDate")),
 				endDate: orNull(form.get("endDate")),
 				place: orNull(form.get("place")),
@@ -422,12 +432,15 @@ export async function addChild(form: FormData): Promise<Result> {
 			return { ok: false, error: "That would make somebody their own ancestor." };
 		}
 
+		const role = oneOf(form.get("role"), parentRoleEnum.enumValues, "biological");
+		if (!role.ok) return { ok: false, error: "Choose a valid parent role." };
+
 		await db
 			.insert(unionChildren)
 			.values({
 				unionId,
 				childId,
-				role: oneOf(orNull(form.get("role")), parentRoleEnum.enumValues, "biological"),
+				role: role.value,
 			})
 			.onConflictDoNothing();
 
@@ -477,14 +490,15 @@ export async function addContact(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const personId = String(form.get("personId") ?? "");
-	const kind = orNull(form.get("kind"));
 	const value = orNull(form.get("value"));
 	if (!personId || !value) return { ok: false, error: "A channel needs a value." };
+
+	const kind = oneOf(form.get("kind"), contactKindEnum.enumValues, null);
 	// Refused rather than defaulted: silently recording a phone number under "other"
 	// misfiles data the user typed on purpose, which is worse than asking again.
-	if (!oneOf(kind, contactKindEnum.enumValues, null as never)) {
-		return { ok: false, error: "Pick a channel." };
-	}
+	if (!kind.ok || !kind.value) return { ok: false, error: "Pick a channel." };
+	const visibility = oneOf(form.get("visibility"), visibilityEnum.enumValues, "tree");
+	if (!visibility.ok) return { ok: false, error: "Choose who can see this detail." };
 
 	try {
 		await treeIdForEditablePerson(auth.userId, personId);
@@ -493,10 +507,10 @@ export async function addContact(form: FormData): Promise<Result> {
 			.insert(contactDetails)
 			.values({
 				personId,
-				kind: oneOf(kind, contactKindEnum.enumValues, "other"),
+				kind: kind.value,
 				value,
 				label: orNull(form.get("label")),
-				visibility: oneOf(orNull(form.get("visibility")), visibilityEnum.enumValues, "tree"),
+				visibility: visibility.value,
 			})
 			.onConflictDoNothing();
 
@@ -545,9 +559,9 @@ export async function deleteContact(form: FormData): Promise<Result> {
  * decides the structure from the role (see lib/tree/kin-plan.ts, where it is tested) and
  * this executes the plan.
  *
- * The whole thing is one transaction. A half-applied plan is the worst outcome available:
- * a person created with no union leaves somebody floating on the canvas with no way to tell
- * they were meant to be a father.
+ * The writes are deliberately sequenced rather than wrapped in a transaction; the Neon
+ * HTTP driver does not support transactions. The safe order and its trade-off are
+ * documented beside the writes below.
  */
 export async function addRelative(form: FormData): Promise<Result> {
 	const auth = await editor();
@@ -575,8 +589,8 @@ export async function addRelative(form: FormData): Promise<Result> {
 		// nobody knows the names yet, so a numbered placeholder stands in until they do.
 		const givenName = orNull(form.get("givenName"));
 		const familyName = orNull(form.get("familyName"));
-		const living =
-			(orNull(form.get("living")) as "living" | "deceased" | "unknown" | null) ?? "unknown";
+		const living = oneOf(form.get("living"), livingStatusEnum.enumValues, "unknown");
+		if (!living.ok) return { ok: false, error: "Choose a valid living status." };
 		const birth = birthYearColumns(String(orNull(form.get("birthYear")) ?? ""));
 
 		/**
@@ -592,8 +606,12 @@ export async function addRelative(form: FormData): Promise<Result> {
 		 * form, so a value arriving anyway is a forged post rather than a user's choice.
 		 */
 		const roleSex = ROLE_SEX[role];
-		const posted = orNull(form.get("sex")) as Sex | null;
-		const sex: Sex = roleSex === "unknown" ? (posted ?? "unknown") : roleSex;
+		let sex: Sex = roleSex;
+		if (roleSex === "unknown") {
+			const postedSex = oneOf(form.get("sex"), sexEnum.enumValues, "unknown");
+			if (!postedSex.ok) return { ok: false, error: "Choose a valid gender." };
+			sex = postedSex.value;
+		}
 
 		// How many children the target union already holds, so a second batch numbers on from
 		// the first rather than producing two people called "Child 1".
@@ -609,11 +627,9 @@ export async function addRelative(form: FormData): Promise<Result> {
 		 * neon-http driver" at runtime, so the first version of this action would have failed on
 		 * every single use while type-checking perfectly.
 		 *
-		 * So the order is chosen to make a partial failure harmless. The UNION comes first, then
-		 * the people, then the links -- because a union with an empty slot is an ordinary shape
-		 * this app already renders (a single parent), while a person created with no union is
-		 * somebody stranded on the canvas with nothing to say why they are there. Failing early
-		 * leaves less mess than failing late.
+		 * The UNION comes first, then the people, then the links: an empty slot is an ordinary
+		 * single-parent shape. A person inserted before conditional partner-slot claims is
+		 * explicitly removed if both claims lose, so a concurrent refusal does not strand it.
 		 */
 		/*
 		 * How the couple is recorded, honoured only when this add CREATES the union.
@@ -625,9 +641,18 @@ export async function addRelative(form: FormData): Promise<Result> {
 		 * from an allow-list for the same reason invite roles are: a form value is a
 		 * client value.
 		 */
-		const postedStatus = orNull(form.get("unionStatus"));
-		const unionStatus: "married" | "partnered" | "unknown" =
-			postedStatus === "married" || postedStatus === "partnered" ? postedStatus : "unknown";
+		let unionStatus: "married" | "partnered" | "unknown" = "unknown";
+		if (plan.union.kind === "create") {
+			const postedStatus = oneOf(
+				form.get("unionStatus"),
+				["married", "partnered", "unknown"] as const,
+				"unknown",
+			);
+			if (!postedStatus.ok) {
+				return { ok: false, error: "Choose a valid partnership status." };
+			}
+			unionStatus = postedStatus.value;
+		}
 
 		let unionId: string | null = null;
 		if (plan.union.kind === "existing") {
@@ -680,7 +705,7 @@ export async function addRelative(form: FormData): Promise<Result> {
 					// `sex` rather than `plan.create.sex`: the plan carries what the ROLE implies,
 					// and for the three neutral roles the form is allowed to say more.
 					sex,
-					living,
+					living: living.value,
 					// Dates apply to one person only. Stamping a whole batch with one birth year
 					// would assert that five children were born in the same year.
 					birthDate: plan.create.count === 1 ? birth.birthDate : null,
@@ -694,16 +719,29 @@ export async function addRelative(form: FormData): Promise<Result> {
 		if (!first) return { ok: false, error: "Could not add that person." };
 
 		if (plan.attach === "partner") {
-			// Whichever slot is free. Both-filled was already refused above.
-			const [current] = await db
-				.select({ a: unions.partnerAId, b: unions.partnerBId })
-				.from(unions)
-				.where(eq(unions.id, unionId))
-				.limit(1);
-			if (!current?.a) {
-				await db.update(unions).set({ partnerAId: first }).where(eq(unions.id, unionId));
-			} else {
-				await db.update(unions).set({ partnerBId: first }).where(eq(unions.id, unionId));
+			/*
+			 * Claim a free slot in the UPDATE itself.
+			 *
+			 * A select followed by an unconditional update has a TOCTOU window: two requests
+			 * can both observe the same empty slot and the later write silently replaces the
+			 * earlier person. Each statement below succeeds only while its slot is still null;
+			 * an empty RETURNING result means somebody else won it, so try B and then refuse.
+			 */
+			let attached = await db
+				.update(unions)
+				.set({ partnerAId: first })
+				.where(and(eq(unions.id, unionId), isNull(unions.partnerAId)))
+				.returning({ id: unions.id });
+			if (attached.length === 0) {
+				attached = await db
+					.update(unions)
+					.set({ partnerBId: first })
+					.where(and(eq(unions.id, unionId), isNull(unions.partnerBId)))
+					.returning({ id: unions.id });
+			}
+			if (attached.length === 0) {
+				await db.delete(people).where(eq(people.id, first));
+				return { ok: false, error: "Both parents are already recorded." };
 			}
 		} else {
 			await db

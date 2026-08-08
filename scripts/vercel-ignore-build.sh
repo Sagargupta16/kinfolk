@@ -43,14 +43,14 @@ fi
 
 # Paths the deployed application cannot read at runtime or build time.
 #
-# `docs/` is the GitHub Pages landing page, published by its own workflow.
+# `frontend/` is the GitHub Pages SPA; `docs/` contains documentation only.
 # `drizzle/` is migration SQL, applied by deploy.yml against Neon, never bundled.
 # `.github/` and `.claude/` are tooling. The markdown files are documentation.
 #
 # NOT ignored, deliberately: `scripts/`, because this very file lives there and a
 # change to the ignore logic must be exercised; and `next.config.mjs`, `vercel.json`,
 # `package.json`, every source directory, and anything else not named here.
-ignored='^(docs/|drizzle/|\.github/|\.claude/|[^/]*\.md$|\.gitattributes$|\.gitignore$|LICENSE$)'
+ignored='^(frontend/|docs/|drizzle/|\.github/|\.claude/|[^/]*\.md$|\.gitattributes$|\.gitignore$)'
 
 if echo "$changed" | grep -qvE "$ignored"; then
 	echo "code changed: build"

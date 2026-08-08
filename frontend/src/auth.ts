@@ -9,7 +9,7 @@
  * except the moment they are on GitHub authorising, which is the one hop that
  * cannot be anywhere else.
  */
-import { API_BASE, authHeaders, clearToken, setToken } from "./api";
+import { API_BASE, clearToken, getToken, setToken } from "./api";
 
 /**
  * Where GitHub returns the visitor.
@@ -59,6 +59,24 @@ export type CompletedSignIn = {
 	user: { name: string | null; email: string | null; image: string | null };
 };
 
+type SignInResponse = {
+	token?: unknown;
+	error?: unknown;
+	cause?: unknown;
+	isNewUser?: boolean;
+	user?: CompletedSignIn["user"];
+};
+
+async function readSignInResponse(response: Response): Promise<SignInResponse | null> {
+	try {
+		const body: unknown = await response.json();
+		if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+		return body as SignInResponse;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Finish the flow on the callback page.
  *
@@ -99,22 +117,24 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 		body: JSON.stringify({ code, state, redirect_uri: callbackUrl() }),
 	});
 
-	const body = (await response.json()) as {
-		token?: string;
-		error?: string;
-		cause?: string | null;
-		isNewUser?: boolean;
-		user?: CompletedSignIn["user"];
-	};
+	if (!response.ok) {
+		const body = await readSignInResponse(response);
+		const error =
+			typeof body?.error === "string" && body.error.trim()
+				? body.error.trim()
+				: "Could not complete sign-in.";
+		const cause = typeof body?.cause === "string" && body.cause.trim() ? body.cause.trim() : null;
 
-	if (!response.ok || !body.token) {
 		// `cause` is appended when the API sends one. Drizzle nests the real Postgres
 		// error there while `message` holds only the statement, so showing the message
 		// alone reports a symptom and withholds the diagnosis -- which cost a round of
 		// this exact investigation.
-		throw new Error(
-			[body.error ?? "Could not complete sign-in.", body.cause].filter(Boolean).join(" -- "),
-		);
+		throw new Error(cause ? `${error} -- ${cause}` : error);
+	}
+
+	const body = await readSignInResponse(response);
+	if (!body || typeof body.token !== "string" || !body.token) {
+		throw new Error("Could not complete sign-in.");
 	}
 
 	setToken(body.token);
@@ -131,23 +151,20 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 /**
  * Sign out, server-side as well as locally.
  *
- * Order matters: the token is cleared LAST, so a failed request cannot leave the
- * client believing it signed out while the row is still live. If the network call
- * fails the local token survives, and the next attempt can try again.
- *
- * Revoking on the server is the part that matters. Forgetting the token locally
- * would leave the row valid for thirty days, so a copy taken from `sessionStorage`
- * would keep working long after the user believed they had left.
+ * Keep the bearer token until the server confirms revocation. If the request fails,
+ * retaining it lets the visitor retry instead of reporting success while a copied
+ * token remains valid for the rest of its thirty-day lifetime. The endpoint is
+ * idempotent, so retrying after a lost success response is safe.
  */
 export async function signOut(): Promise<void> {
-	try {
-		await fetch(`${API_BASE}/api/oauth/signout`, {
-			method: "POST",
-			headers: authHeaders(),
-		});
-	} finally {
-		// Cleared even on failure: leaving a token the server may already have deleted
-		// would strand the UI in a signed-in state that every request refuses.
-		clearToken();
-	}
+	const token = getToken();
+	if (!token) return;
+
+	const response = await fetch(`${API_BASE}/api/oauth/signout`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Could not sign out. Try again.");
+
+	clearToken();
 }

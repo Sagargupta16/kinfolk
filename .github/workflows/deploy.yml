@@ -8,9 +8,10 @@ name: Deploy
 # which a static host can serve. `prod/kalchar` reached the same conclusion and left
 # its own Pages workflow dormant with a note saying so.
 #
-# Vercel's own Git integration builds and promotes on push, so this workflow does the
-# part it cannot: applying schema changes to Neon before the new code depends on them,
-# and proving the deployment actually answers afterwards.
+# Vercel's Git integration and this migration workflow start independently on the
+# same push. Runtime changes must therefore tolerate the previous schema until this
+# workflow finishes; it applies the committed migrations and then proves the promoted
+# deployment answers.
 
 on:
   push:

@@ -6,6 +6,108 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.4 -- 2026-08-08 (the audit hardening rework)
+
+A comprehensive static and live audit of the graph, editor, both authentication
+stacks, and both deployment targets. This reworks the failure-prone hot paths rather
+than replacing the ledger-sync architecture: the shared React/domain layer still
+ships as a Next app on Vercel and a Vite SPA at `sagargupta.online/kinfolk`.
+
+### Reworked
+
+- Canvas state is split by responsibility. ELK layout now depends only on graph
+  geometry and data; depth, coarse-pointer mode, focus and dim/lit classes update
+  independently, and those classes are reapplied after a real layout epoch. The
+  editable-tree set is memoized, pointer-wash animation frames are cancelled on
+  cleanup, and the minimap's stable shape layer no longer redraws with its controls.
+- Union projection now merges compatible partial/full partnership records, normalizes
+  fused self-partnerships without orphan junctions, and preserves child-bearing
+  self-unions as honest single-parent families. Collapse skeletons skip direct
+  childless partner edges, radial layout handles an empty ring set, and feed travel
+  follows the visible partner instead of a hidden anchor.
+- Overlay dismissal is coordinated by one LIFO Escape stack. One key press closes one
+  top surface, including account, search, legend, editor, share, feed and person
+  panels, instead of every mounted listener reacting at once. Feed/detail travel now
+  uses request/ack state so an acknowledged destination cannot reopen itself.
+- Editor controls now own stable label ids and valid ARIA relationships; stale relation
+  subjects/messages clear when canvas selection clears. Duplicate shortcut handling
+  and stale/dead props and comments were removed.
+
+### Fixed
+
+- Every runtime enum boundary now distinguishes a deliberate blank from invalid
+  nonblank input. Forged gender, living, partnership, parent-role, contact-kind or
+  visibility values refuse the whole action instead of throwing a database 500 or
+  silently replacing a valid fact with `unknown`.
+- Quick-add validates finite counts and component-accurate years (1000-2200), claims a
+  free union partner slot inside the conditional update, and removes its newly inserted
+  person if both slots lose a concurrent race. No winner can be overwritten and a
+  refused request no longer leaves an orphan card.
+- Starter-graph provisioning now retries on every successful Auth.js and SPA sign-in,
+  repairs tree-without-self and self-without-root states, and is conflict-safe under
+  parallel retries. The starter person reuses the user's UUID so retries also collide
+  safely if Vercel promotes before migration `0003`; the migration then enforces at
+  most one non-null claimed-self row per user. Root updates remain conditional and
+  never replace a deliberate root.
+- SPA sign-out keeps its bearer token until the API confirms server-side revocation, so
+  a network/500 failure is retryable instead of presenting a false signed-out state.
+  Expired 401 responses clear stale local tokens, malformed callback responses are
+  diagnosed safely, and action exceptions retain CORS-bearing JSON errors. Tree-load
+  driver diagnostics stay in server logs instead of appearing in API or UI messages.
+- Minimap unsure/junction marks and accent text now keep contrast in both schemes; the
+  family feed refreshes relative time when opened and describes partnership events
+  honestly. Childless fused unions and hidden feed anchors no longer create misleading
+  marks or navigation.
+
+### Deployment and tooling
+
+- CI and Pages use Node 22, the Pages build strips a trailing API-origin slash, and CI
+  scans both Next and Vite output CSS for dead Tailwind utilities. Root typechecking now
+  includes `.mts` scripts; obsolete supply-chain release-age exceptions were removed.
+- Vercel skips `frontend/`-only commits because Pages owns that bundle, while new or
+  unknown top-level paths still build by default. The workspace definition is reduced
+  to the actual packages.
+- Added project-specific Claude workflows for canvas verification and release
+  verification plus a graph/privacy reviewer agent. Drizzle SQL and metadata remain
+  tracked deployment inputs; local Claude settings and environment secrets remain
+  ignored.
+- Caught `CLAUDE.md`, `.env.example`, and `docs/SETUP.md` up to the 0.2.3 production
+  architecture before recording this release.
+
+### Verified
+
+- The consolidated static gate passes: Biome formatting/lint, both TypeScript projects,
+  the Next 16.3 production build and the Vite 8.2 Pages build. Vite reports only its
+  existing dynamic-import and large-chunk advisories.
+- Live in both frontends at 1440x900 and 375x812, in light and dark: the demo renders
+  151 nodes (117 people plus 34 junctions) and 150 base family edges; all 68 partner
+  rails stay flat; paths stay finite; no junction intersects a card; labels resolve;
+  the overview keeps all 117 people and 34 junction marks; and there is no horizontal
+  overflow. Depth, theme and panel changes preserve the viewport, while deliberate
+  feed/search travel moves to the selected card.
+- The feed renders all 80 hydrated events through the Vite JSON boundary. Feed-to-detail
+  travel returns to the feed on one Escape and closes it on the next. On mobile the
+  detail sheet is 55dvh and keeps the selected card visible. Fresh interaction runs
+  produced no browser warnings or errors; the only later console failures were the
+  deliberate 401/404 negative API probes.
+- The demo API returns 200 with 151 nodes and 202 serialized edges (150 family-layout
+  edges plus 52 dormant relation edges). Cross-origin unauthenticated writes return
+  CORS-bearing JSON 401, unknown actions return JSON 404, and preflight returns 204.
+  Real OAuth completion and authenticated writes were deliberately not exercised.
+
+### Deferred
+
+- The custom SPA OAuth flow still has a narrow duplicate/orphan-user race when two
+  first sign-ins for a GitHub account with no email run concurrently; fixing it needs a
+  dedicated identity-upsert design, not a provisioning patch.
+- `Result.id` still doubles as explanatory text for invite actions; changing that
+  contract requires a typed result migration across both frontends.
+- The static SPA's meta CSP cannot express `frame-ancestors`, and development hosts
+  remain a separate policy concern. Focus restoration after closing stacked panels is
+  also deferred.
+- A public discovery feed remains intentionally unbuilt. It requires explicit per-tree
+  opt-in privacy semantics; the existing feed stays scoped to already authorized data.
+
 ## 0.2.3 -- 2026-08-08 (hotfix: the SPA canvas died on the feed's timestamps)
 
 ### Fixed

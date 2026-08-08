@@ -99,7 +99,11 @@ export function EditorPanel({
 	// is a shortcut, not a constraint, and the person you want may be off screen.
 	const [fromId, setFromId] = useState<string>("");
 	useEffect(() => {
-		if (selectedId) setFromId(selectedId);
+		// Clearing the canvas selection must clear the shortcut too. Keeping the last
+		// id here made a freshly opened relation form silently point at yesterday's
+		// person after the user had explicitly clicked the empty pane.
+		setFromId(selectedId ?? "");
+		setMessage(null);
 	}, [selectedId]);
 
 	/**

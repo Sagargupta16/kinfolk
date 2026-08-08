@@ -322,10 +322,12 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 	const partial: UnionWithChildren[] = [];
 
 	for (const raw of unions) {
-		// A bad identity link can fuse both partners into one person, and a union of
-		// somebody with themselves cannot be drawn: childless it becomes a self-loop
-		// edge, with children it emits two partner edges sharing one React key.
-		// Normalised to a single-parent union, which is what the data now claims.
+		// A bad identity link can fuse both partners into one person. With children,
+		// the surviving fact is a single-parent family; without children the row says
+		// nothing at all, so drop it rather than drawing a one-ended orphan junction.
+		if (raw.partnerAId && raw.partnerAId === raw.partnerBId && raw.childIds.length === 0) {
+			continue;
+		}
 		const union =
 			raw.partnerAId && raw.partnerAId === raw.partnerBId ? { ...raw, partnerBId: null } : raw;
 

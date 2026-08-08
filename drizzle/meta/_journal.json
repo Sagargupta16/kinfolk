@@ -22,6 +22,13 @@
       "when": 1786093360198,
       "tag": "0002_late_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786158926929,
+      "tag": "0003_fearless_mongu",
+      "breakpoints": true
     }
   ]
 }

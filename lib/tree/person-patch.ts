@@ -46,22 +46,30 @@ function orNull(value: FormDataEntryValue | null): string | null {
 	return text.length > 0 ? text : null;
 }
 
+/** A checked choice, keeping invalid input distinct from a deliberate blank. */
+type ParsedChoice<T> = { ok: true; value: T } | { ok: false };
+
 /**
  * Parse a client-supplied enum against its allow-list.
  *
- * A form value is a client value. `as Sex` accepts any string and hands it to the
- * database, which answers a forged post with a thrown enum error -- a 500 for what
- * is an ordinary validation problem. Checked here, junk falls back to the schema's
- * own honest default instead. The lists come from the pgEnum objects themselves
- * (`sexEnum.enumValues`), so a new enum member is accepted the day the schema
- * learns it.
+ * Missing and blank values use the caller's honest default. A nonblank value outside
+ * the allow-list is different: accepting it as the default would let a forged edit
+ * erase a valid fact while reporting success. The lists come from the pgEnum objects,
+ * so a new enum member is accepted when the schema learns it.
  */
-export function oneOf<T extends string>(
-	value: string | null,
+export function oneOf<T extends string, const F>(
+	raw: FormDataEntryValue | null,
 	allowed: readonly T[],
-	fallback: T,
-): T {
-	return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+	fallback: F,
+): ParsedChoice<T | F> {
+	if (raw === null) return { ok: true, value: fallback };
+	if (typeof raw !== "string") return { ok: false };
+
+	const value = raw.trim();
+	if (!value) return { ok: true, value: fallback };
+	return (allowed as readonly string[]).includes(value)
+		? { ok: true, value: value as T }
+		: { ok: false };
 }
 
 /**
@@ -71,18 +79,28 @@ export function oneOf<T extends string>(
  * that the KEY SET is dynamic, and a type asserting every key is optional would not stop
  * anybody adding an unconditional write back in.
  */
-export function buildPersonPatch(form: FormData): Record<string, unknown> {
+export type PersonPatchResult =
+	| { ok: true; patch: Record<string, unknown> }
+	| { ok: false; error: string };
+
+export function buildPersonPatch(form: FormData): PersonPatchResult {
 	const patch: Record<string, unknown> = {};
 
 	for (const key of TEXT_FIELDS) {
 		if (form.has(key)) patch[key] = orNull(form.get(key));
 	}
 
-	// Enums have a NOT NULL default, so they cannot be nulled the way text can -- an absent
-	// or forged choice falls back to the schema's own honest value rather than to nothing.
-	if (form.has("sex")) patch.sex = oneOf(orNull(form.get("sex")), sexEnum.enumValues, "unknown");
+	// Enums have a NOT NULL default, so a submitted blank resets to `unknown`. Invalid
+	// nonblank input refuses the whole patch instead of silently erasing a valid fact.
+	if (form.has("sex")) {
+		const sex = oneOf(form.get("sex"), sexEnum.enumValues, "unknown");
+		if (!sex.ok) return { ok: false, error: "Choose a valid gender." };
+		patch.sex = sex.value;
+	}
 	if (form.has("living")) {
-		patch.living = oneOf(orNull(form.get("living")), livingStatusEnum.enumValues, "unknown");
+		const living = oneOf(form.get("living"), livingStatusEnum.enumValues, "unknown");
+		if (!living.ok) return { ok: false, error: "Choose a valid living status." };
+		patch.living = living.value;
 	}
 
 	/*
@@ -104,5 +122,5 @@ export function buildPersonPatch(form: FormData): Record<string, unknown> {
 		patch.deathDateApprox = columns.birthDateApprox;
 	}
 
-	return patch;
+	return { ok: true, patch };
 }
