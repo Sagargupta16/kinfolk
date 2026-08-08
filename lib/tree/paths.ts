@@ -26,8 +26,17 @@ export const CORNER = 10;
  * Past roughly a screen it stops being a bracket: the eye cannot hold both ends, and the
  * line reads as a divider lying across the canvas. The sample tree's median bar is 200px
  * and its widest was 6013px, so this is not a hypothetical.
+ *
+ * 1600, raised from 900. The old value predates parent-over-children alignment in
+ * layout.ts: back then a bar's width was partly drift, so a narrow limit was catching
+ * genuinely misaligned families as well as genuinely wide ones. With each couple now
+ * centred on its own children, a wide bar means a large family and nothing else -- and 900
+ * was rejecting a set of FOUR siblings at 1052px, which is precisely the case the bracket
+ * exists for. 1600 is a little over a 1440px viewport, so a bar that survives is one the
+ * eye can hold at fit zoom, while the seven-child spans (4847px on a real graph) still
+ * take the curves.
  */
-export const MAX_BAR_SPAN = 900;
+export const MAX_BAR_SPAN = 1600;
 
 /**
  * Round one corner of an orthogonal turn.

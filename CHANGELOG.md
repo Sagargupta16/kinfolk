@@ -6,6 +6,65 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## Unreleased
+
+### Fixed
+
+- **A couple now sits above the middle of its own children.** `alignPedigreeRows()` packed
+  each generation independently -- centred on its own ELK extent, at minimum gaps -- and
+  never consulted the row below, so the parent-over-children alignment ELK had already
+  found was discarded on every layout. Measured on the sample tree, a couple sat a mean
+  775px from its children's midpoint (median 600px), and on a real 40-person graph the
+  viewer's own parents were 807px right of him and his sisters. Nothing on screen explains
+  that drift, so it reads as a rendering fault rather than as a layout choice.
+
+  Rows are now packed deepest-first, each household is placed over its own children, and a
+  bidirectional relaxation resolves the row within its minimum gaps. Live DOM on the
+  117-person tree: 21 of 34 couples within 10px (was 6), 26 within 200px, mean offset
+  192px, median 0, and 0 card overlaps.
+
+  The residual 13 are a geometric limit rather than a defect: the widest row needs
+  11228px while the children it must reach span 7854px, so not every couple can be
+  centred at once. Each of those sits hard against its neighbours at the exact minimum
+  gap. Overlapping cards would be the worse failure, so the gap wins.
+
+- **A one-directional sweep cannot centre a family whose children are to its left.** The
+  first version of the fix ordered households by ELK's x while their target came from the
+  children below, and those orderings disagree -- one couple sat at x=8098 with children
+  at x=5929. Pushing right only then pinned every household in that situation, leaving 16
+  of 34 misaligned while the offline arithmetic reported success, because it measured the
+  intent rather than the result. The row is now re-ordered to follow its children before
+  any gap is enforced, which is also the correct pedigree rule: the row below is final, so
+  if one family's children sit left of another's, that family belongs left too.
+
+- **A third gap tier separates sibling groups.** Two tiers put a married couple and a
+  family boundary both at 56px, so fourteen aunts, uncles and spouses in one row read as
+  one undifferentiated strip and no gap said where one set of siblings ended. Now
+  22 / 56 / 141px at the card level, each step roughly 2.5x the last, so the eye groups on
+  the largest gap before following any line. The boundary is where the parent union
+  changes, which is a fact in the data rather than a heuristic on positions.
+
+- **`MAX_BAR_SPAN` raised 900 -> 1600.** The old value predates parent-over-children
+  alignment, when a bar's width was partly drift -- so it rejected genuinely wide families
+  and genuinely misaligned ones alike, including a set of FOUR siblings at 1052px, which
+  is precisely the case a sibling bracket exists for. 1600 is a little over a 1440px
+  viewport, so a surviving bar is one the eye can hold at fit zoom, while a seven-child
+  span (4847px on a real graph) still takes the curves.
+
+- **The dot level's gap raised 18 -> 30.** The three tiers are ratios of `gap`, so at 18
+  they computed to 20 / 35 / 79 against a 56px card: a partner gap a third of a card wide,
+  and no grouping visible at the level whose whole purpose is an overview.
+
+### Verification
+
+- Biome, both strict TypeScript projects, both production builds, the dead-Tailwind CSS
+  guard (0 matches), `pnpm audit --prod --audit-level=low`, and `git diff --check` pass.
+- Measured on the live canvas at 1600x900, not from a file read: 117 person cards, 150
+  edges, 0 NaN paths, 0 zero-length paths, 0 hard-corner paths, 0 card overlaps on real
+  rendered boxes, one stroke treatment at rest, and 0 amber family edges.
+- Sample-tree regression across `full`, `compact` and `dot`, combined and mine-only: 0
+  overlaps and 0 sibling-bar collisions in all six.
+
 ## 0.3.2 -- 2026-08-08 (MIT licensing and public release)
 
 ### Repository

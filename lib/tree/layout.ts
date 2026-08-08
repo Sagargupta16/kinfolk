@@ -67,10 +67,14 @@ export const NODE_METRICS: Record<Lod, Metrics> = {
 	 * 45px at p90 and 51px at the widest, where a FULL name needs 84px and would make this level
 	 * nearly as wide as the compact row it exists to be smaller than.
 	 *
-	 * The gap stays tight (18px) because the label is centred under the mark and the reserved
-	 * width already contains it, so neighbouring labels cannot collide.
+	 * The gap is 30, not 18. 18 was reasoned from the reserved width containing the label,
+	 * which is true and not sufficient: at 56px wide the three gap tiers computed to 20/35/79
+	 * against a 56px card, so a partner gap was a third of a card and the whole row read as
+	 * one continuous strip of dots with no groupings visible at all. The tiers are ratios of
+	 * this number, so the overview level needs the gap that makes THEM legible, not the one
+	 * that merely stops labels touching.
 	 */
-	dot: { width: 56, height: 34, gap: 18, rowGap: 44 },
+	dot: { width: 56, height: 34, gap: 30, rowGap: 44 },
 };
 
 export const PERSON_WIDTH = NODE_METRICS.full.width;
@@ -294,6 +298,26 @@ function alignPedigreeRows(
 		}
 	}
 
+	/**
+	 * Which union each household descends FROM.
+	 *
+	 * Two readers: sibling blocks are grouped by it, and the family-boundary gap is applied
+	 * where it changes. A household is keyed by its union-find representative and a couple
+	 * has two members who may descend from different parents, so this records the union of
+	 * whichever member has one, preferring the lower id for determinism. Absent for a
+	 * household whose parents are not in the graph, and both readers treat absence as "no
+	 * known family" rather than guessing.
+	 */
+	const parentUnionOf = new Map<string, string>();
+	for (const edge of edges) {
+		if (!edge.layout || edge.kind !== "child" || !people.has(edge.target)) continue;
+		const household = householdOf.get(edge.target) ?? edge.target;
+		const existing = parentUnionOf.get(household);
+		if (!existing || edge.source.localeCompare(existing) < 0) {
+			parentUnionOf.set(household, edge.source);
+		}
+	}
+
 	// Preserve ELK's left-to-right solution, but make each partner component contiguous.
 	// A larger gap between households makes the smaller partner gap read as grouping.
 	const preferredX = new Map([...people].map((id) => [id, positions.get(id)?.x ?? 0] as const));
@@ -312,7 +336,47 @@ function alignPedigreeRows(
 	// additional pixels so exact blocker boundaries do not collapse to a zero-width gap.
 	const partnerGap = Math.max(UNION_SIZE + 10, Math.round(metrics.gap * 0.65));
 	const householdGap = Math.max(partnerGap + 8, Math.round(metrics.gap * 1.75));
-	for (const ids of rows.values()) {
+	/**
+	 * The gap at a family boundary: where the person to the left and the person to the
+	 * right descend from different parents.
+	 *
+	 * Three tiers rather than two, and the ratio is what does the work: at 22 / 56 / 140
+	 * each step is roughly 2.5x the last, so the eye groups on the largest gap first and a
+	 * sibling set reads as a unit before any line is followed. Two tiers cannot express
+	 * this -- a couple and a family boundary both landing on 56px is why fourteen people
+	 * in one row read as undifferentiated.
+	 */
+	const siblingGroupGap = Math.max(householdGap + 16, Math.round(metrics.gap * 4.4));
+
+	/** Children of each household, through the unions its members partner in. */
+	const childrenOf = new Map<string, Set<string>>();
+	for (const edge of edges) {
+		if (!edge.layout || edge.kind !== "child" || !people.has(edge.target)) continue;
+		for (const partnerId of partnersByUnion.get(edge.source) ?? []) {
+			const household = householdOf.get(partnerId) ?? partnerId;
+			const kids = childrenOf.get(household);
+			if (kids) kids.add(edge.target);
+			else childrenOf.set(household, new Set([edge.target]));
+		}
+	}
+
+	/*
+	 * Rows are packed DEEPEST FIRST, so a generation is placed over children that are
+	 * already final.
+	 *
+	 * This ordering is the whole fix. Packing each row independently -- which is what it did
+	 * before -- centres every row on its own ELK extent and discards the parent-over-children
+	 * alignment ELK had found: measured on a real 40-person graph, ELK had a couple an average
+	 * 169px from their children's midpoint and independent packing pushed that to 449px, one
+	 * couple 1131px out, and the viewer's own parents 807px right of him and his sisters.
+	 * Nothing in the picture explains that drift, so it reads as a rendering fault.
+	 *
+	 * Bottom-up cannot have that problem: when a block is placed its target is settled. The
+	 * reverse order would centre a couple over children that then slide away.
+	 */
+	const rowsDeepestFirst = [...rows.entries()].sort(([a], [b]) => b - a);
+
+	for (const [, ids] of rowsDeepestFirst) {
 		const groups = new Map<string, string[]>();
 		for (const id of ids) {
 			const household = householdOf.get(id) ?? id;
@@ -320,39 +384,197 @@ function alignPedigreeRows(
 			if (group) group.push(id);
 			else groups.set(household, [id]);
 		}
-		const ordered = [...groups.entries()]
-			.map(([household, group]) => ({
-				household,
-				ids: group.sort(
-					(a, b) => (preferredX.get(a) ?? 0) - (preferredX.get(b) ?? 0) || a.localeCompare(b),
-				),
-				centre: group.reduce((sum, id) => sum + (preferredX.get(id) ?? 0), 0) / group.length,
-			}))
-			.sort((a, b) => a.centre - b.centre || a.household.localeCompare(b.household));
+		/*
+		 * Siblings are kept CONTIGUOUS, and their shared parent union orders them as a block.
+		 *
+		 * ELK orders households by its own crossing-minimised x, which interleaves in-laws
+		 * between siblings: measured on a real graph, Aditya Anand and Amit Sarogi (two
+		 * sisters' husbands) sat between the four siblings, so the set spanned 1052px to hold
+		 * 4 people and its midpoint landed on a man who is not their parents' child. A
+		 * sibling bracket is the mark that says "these are one family", so a stranger inside
+		 * its span makes it say something false -- and the inflated span is what pushed the
+		 * family past MAX_BAR_SPAN and lost the bracket entirely.
+		 *
+		 * Grouping by parent union preserves ELK's relative order at both levels: sibling
+		 * blocks sort by their mean ELK x, and households within a block do too. So this is
+		 * a regrouping of ELK's answer, not a replacement for it.
+		 */
+		const blocks = new Map<string, { households: string[]; centre: number }>();
+		for (const [household, group] of groups.entries()) {
+			// Households whose parents are absent each form their own block, keyed on
+			// themselves, so they are never merged with an unrelated family.
+			const key = parentUnionOf.get(household) ?? `solo:${household}`;
+			const centre = group.reduce((sum, id) => sum + (preferredX.get(id) ?? 0), 0) / group.length;
+			const block = blocks.get(key);
+			if (block) {
+				block.households.push(household);
+				block.centre = Math.min(block.centre, centre);
+			} else {
+				blocks.set(key, { households: [household], centre });
+			}
+		}
+
+		const householdCentre = (household: string): number => {
+			const group = groups.get(household) ?? [];
+			if (group.length === 0) return 0;
+			return group.reduce((sum, id) => sum + (preferredX.get(id) ?? 0), 0) / group.length;
+		};
+
+		const ordered = [...blocks.entries()]
+			.sort((a, b) => a[1].centre - b[1].centre || a[0].localeCompare(b[0]))
+			.flatMap(([, block]) =>
+				[...block.households]
+					.sort((a, b) => householdCentre(a) - householdCentre(b) || a.localeCompare(b))
+					.map((household) => ({
+						household,
+						ids: (groups.get(household) ?? []).sort(
+							(a, b) => (preferredX.get(a) ?? 0) - (preferredX.get(b) ?? 0) || a.localeCompare(b),
+						),
+					})),
+			);
 
 		const originalLeft = Math.min(...ids.map((id) => preferredX.get(id) ?? 0));
 		const originalRight = Math.max(
 			...ids.map((id) => (preferredX.get(id) ?? 0) + (positions.get(id)?.width ?? metrics.width)),
 		);
-		let totalWidth = 0;
-		for (const [groupIndex, group] of ordered.entries()) {
-			totalWidth += group.ids.reduce(
-				(sum, id) => sum + (positions.get(id)?.width ?? metrics.width),
-				0,
-			);
-			totalWidth += Math.max(0, group.ids.length - 1) * partnerGap;
-			if (groupIndex > 0) totalWidth += householdGap;
+
+		const width = (group: { ids: string[] }): number =>
+			group.ids.reduce((sum, id) => sum + (positions.get(id)?.width ?? metrics.width), 0) +
+			Math.max(0, group.ids.length - 1) * partnerGap;
+
+		/*
+		 * Each household is given the x it WANTS -- centred over its own children -- and the row
+		 * is then swept to enforce the minimum gaps. The row STRETCHES rather than packing tight.
+		 *
+		 * Packing at minimum gaps and nudging afterwards cannot work, and the numbers say why:
+		 * on a real graph the parent row packed to 3761px while the children it had to reach
+		 * spanned 5541px, 1.47x wider. Every couple in the middle then had 56px of slack against
+		 * a 1445px journey, so the clamp pinned them all and only the two outermost families
+		 * lined up. A generation is as wide as its descendants make it -- so the gap tiers are a
+		 * FLOOR, not a target, and the extra width belongs in the gaps between families where it
+		 * reinforces the grouping rather than fighting it.
+		 *
+		 * Households with no children keep their ELK offset relative to the row, so a childless
+		 * couple stays where the crossing-minimised order put them instead of collapsing left.
+		 */
+		const desired = ordered.map((group) => {
+			const kids = [...(childrenOf.get(group.household) ?? [])]
+				.map((id) => positions.get(id))
+				.filter((box): box is Box => Boolean(box));
+			if (kids.length === 0) return null;
+			const centre =
+				(Math.min(...kids.map((box) => box.x)) +
+					Math.max(...kids.map((box) => box.x + box.width))) /
+				2;
+			return centre - width(group) / 2;
+		});
+
+		// Anchor for the childless: ELK's own x, shifted so the row as a whole sits under the
+		// families that do have children.
+		const anchoredIndices = desired.flatMap((x, index) => (x === null ? [] : [index]));
+		let drift = 0;
+		if (anchoredIndices.length > 0) {
+			let total = 0;
+			for (const index of anchoredIndices) {
+				const group = ordered[index];
+				const target = desired[index];
+				if (!group || target === null || target === undefined) continue;
+				total += target - (preferredX.get(group.ids[0] ?? "") ?? 0);
+			}
+			drift = total / anchoredIndices.length;
+		} else {
+			drift = (originalLeft + originalRight) / 2 - (originalLeft + originalRight) / 2;
 		}
 
-		let cursor = (originalLeft + originalRight) / 2 - totalWidth / 2;
-		for (const [groupIndex, group] of ordered.entries()) {
-			if (groupIndex > 0) cursor += householdGap;
-			for (const [memberIndex, id] of group.ids.entries()) {
-				if (memberIndex > 0) cursor += partnerGap;
+		const wantedFor = new Map(
+			ordered.map((group, index) => {
+				const target = desired[index];
+				if (target !== null && target !== undefined) return [group.household, target] as const;
+				return [group.household, (preferredX.get(group.ids[0] ?? "") ?? 0) + drift] as const;
+			}),
+		);
+
+		/*
+		 * The row is RE-ORDERED to follow its children before any gap is enforced.
+		 *
+		 * This is the half the first attempt got wrong. Households were ordered by ELK's x while
+		 * their wanted positions came from the children below, and those two orderings disagree:
+		 * on the sample tree a couple sat at x=8098 whose own children were at x=5929, 2100px to
+		 * their LEFT. A left-to-right sweep that only ever pushes RIGHT then pinned them -- and
+		 * every household in the same situation -- so 16 of 34 couples stayed misaligned while
+		 * the offline arithmetic reported success, because it measured the intent rather than the
+		 * result.
+		 *
+		 * Ordering by the children is also the correct pedigree rule, not merely a fix: the row
+		 * below is already final (bottom-up), so if family A's children sit left of family B's,
+		 * then A belongs left of B. Sibling blocks keep their contiguity because cousins are
+		 * adjacent in the row below, so following the children preserves the grouping rather than
+		 * competing with it.
+		 */
+		const laidOut = [...ordered].sort((a, b) => {
+			const ax = wantedFor.get(a.household) ?? 0;
+			const bx = wantedFor.get(b.household) ?? 0;
+			return ax - bx || a.household.localeCompare(b.household);
+		});
+
+		/*
+		 * Households that are SIBLINGS of each other get a wider gap than unrelated neighbours,
+		 * so a big family reads as one block rather than as a run of pairs.
+		 *
+		 * Without this, a row of fourteen aunts, uncles and their spouses is a uniform strip: the
+		 * 22/56 partner/household rhythm says which two people are married but nothing says where
+		 * one set of siblings ends. Seven couples then look like one enormous family, which is
+		 * exactly the "whose child is whose" complaint. The boundary is where the parent union
+		 * changes, and that is a fact already in the data rather than a heuristic on positions.
+		 */
+		const gapAt = (index: number): number => {
+			if (index <= 0) return 0;
+			const current = laidOut[index];
+			const previous = laidOut[index - 1];
+			if (!current || !previous) return householdGap;
+			const a = parentUnionOf.get(previous.household);
+			const b = parentUnionOf.get(current.household);
+			// Both sides descend from a KNOWN and different union: a real family boundary.
+			if (a && b && a !== b) return siblingGroupGap;
+			return householdGap;
+		};
+
+		/*
+		 * Relaxation rather than a single sweep, because a household may need to move EITHER way.
+		 *
+		 * Each pass moves every household towards its wanted x, clamped by where its neighbours
+		 * now sit. Repeated, this settles into the arrangement closest to every wanted position
+		 * that still satisfies the gaps -- and unlike a one-directional sweep it has no bias, so
+		 * a family whose children are to the left is not pushed away from them. Four passes: the
+		 * displacement roughly halves each time and the residual is under a pixel on real graphs.
+		 */
+		const slots = laidOut.map((group) => ({
+			group,
+			width: width(group),
+			x: wantedFor.get(group.household) ?? 0,
+		}));
+
+		for (let pass = 0; pass < 4; pass += 1) {
+			for (const [index, slot] of slots.entries()) {
+				const previous = slots[index - 1];
+				const next = slots[index + 1];
+				const low = previous ? previous.x + previous.width + gapAt(index) : -Infinity;
+				const high = next ? next.x - gapAt(index + 1) - slot.width : Infinity;
+				const target = wantedFor.get(slot.group.household) ?? slot.x;
+				// A row too tight to honour both bounds keeps the left one: overlapping cards are
+				// a broken canvas, where an imperfectly centred parent is only a cosmetic loss.
+				slot.x = low > high ? low : Math.min(Math.max(target, low), high);
+			}
+		}
+
+		for (const slot of slots) {
+			let x = slot.x;
+			for (const [memberIndex, id] of slot.group.ids.entries()) {
+				if (memberIndex > 0) x += partnerGap;
 				const box = positions.get(id);
 				if (!box) continue;
-				box.x = cursor;
-				cursor += box.width;
+				box.x = x;
+				x += box.width;
 			}
 		}
 	}
