@@ -273,9 +273,9 @@ Sample data is reachable before auth exists, following the ledger-sync pattern: 
 
 ## Status
 
-Current version: 0.3.1, 2026-08-08. This release adds profile-first creation, precise connection removal, additional-relation confirmation, and public-release hardening. See [CHANGELOG.md](CHANGELOG.md).
+Current version: 0.3.2, 2026-08-08. This release adopts the MIT license and public repository metadata after the owner explicitly accepted the audited historical PII exposure. Runtime behavior remains the profile-first editing and public-release hardening delivered in 0.3.1. See [CHANGELOG.md](CHANGELOG.md).
 
-0.3.1 validation requires Biome formatting/lint, both strict TypeScript projects, both production builds, dependency audits, and `git diff --check`.
+0.3.2 validation requires Biome formatting/lint, both strict TypeScript projects, both production builds, dependency audits, current-tree privacy checks, and `git diff --check`.
 
 The visualisation layer was rewritten 2026-07-31, keeping the data model and every `lib/tree/` contract intact. What is new: light + dark + system themes on `[data-theme]` with a no-flash bootstrap (inline in Next, external under the SPA CSP) and a fresh contrast-scored token set; an in-app motion switch instead of `prefers-reduced-motion`; a person detail panel (side rail on a pointer device, bottom sheet on a phone) listing parents, partners with their union status, children, siblings, connections read from the subject's own end, channels-without-values and sources; DAG-safe expand/collapse in both directions with per-card hidden counts; a visited-history breadcrumb trail that rewinds rather than repeating; eleven keyboard shortcuts whose bindings and help sheet come from one array; and loading / error / alone / search-empty / offline states. `motion` (now v13) was added and is used for CHROME only -- the 117 cards and 150 edges stay CSS keyframes, because a JS animation re-renders a node and React Flow re-measures on render.
 

@@ -7,8 +7,8 @@ people without overwriting either family's account.
 **[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
 server-rendered fallback, with a sample tree you can explore without an account.
 
-Current release: **0.3.1**, with profile-first relative creation, precise connection
-removal, and public-release security hardening.
+Current release: **0.3.2**, which adds MIT licensing and public repository metadata on
+top of the profile-first editing and security hardening in 0.3.1.
 
 ## Why this is not just a tree widget
 
@@ -153,9 +153,7 @@ commit. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.
 
 ## License
 
-No open-source license has been selected yet. Until a root `LICENSE` is added, copyright
-law reserves all rights; source availability does not grant permission to copy, modify, or
-redistribute the project.
+Kinfolk is available under the [MIT License](LICENSE).
 
 ## Status
 
