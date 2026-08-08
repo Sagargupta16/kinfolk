@@ -9,9 +9,10 @@
  * single-parent unions, which draws two junctions and no couple.
  *
  * Here the relationship IS the button. `planKin` derives the structure (see
- * lib/tree/kin-plan.ts) so this component only has to collect four fields, and the sheet
- * says whose relative it is adding in its own heading -- a form that says "Add father" with
- * no name attached is how you record a father for the wrong person.
+ * lib/tree/kin-plan.ts) so this component only has to collect a name -- everything
+ * else sits behind a "More detail" disclosure -- and the sheet says whose relative it
+ * is adding in its own heading: a form that says "Add father" with no name attached is
+ * how you record a father for the wrong person.
  */
 import {
 	ArrowDown,
@@ -35,6 +36,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { addRelative } from "@/lib/tree/edit-actions";
 import { type KinRole, MAX_BATCH, ROLE_SEX } from "@/lib/tree/kin-plan";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 /**
  * What the subject's family already holds, for the picker to be honest about.
@@ -165,13 +167,8 @@ export function QuickAdd({
 	const nameRef = useRef<HTMLInputElement>(null);
 
 	// Escape closes from anywhere, including the canvas node that still holds focus.
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onClose();
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [onClose]);
+	// Through the shared stack (escape.ts): this sheet opens on top, so it closes first.
+	useEscapeClose(true, onClose);
 
 	// Focus the name as soon as a role is picked: the role is the decision, the name is the
 	// typing, and making somebody reach for the mouse between the two is the whole friction

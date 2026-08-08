@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "people_claimed_user_idx" ON "people" USING btree ("claimed_by_user_id");

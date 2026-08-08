@@ -15,10 +15,11 @@
  */
 import { Activity, UserRound, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { type FeedEvent, feedSection, relativeTime } from "@/lib/tree/feed";
 import type { Kinship } from "@/lib/tree/kinship";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 const SECTIONS = ["This week", "This month", "Earlier"] as const;
 
@@ -43,19 +44,17 @@ export function FeedPanel({
 	onGoTo: (personId: string) => void;
 	onClose: () => void;
 }) {
-	// Escape closes, like every other floating surface on this canvas.
-	useEffect(() => {
-		if (!open) return;
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onClose();
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [open, onClose]);
+	// Escape closes, coordinated with every other floating surface -- see escape.ts.
+	useEscapeClose(open, onClose);
 
-	// One clock for the whole render, so two rows written in the same minute
-	// cannot disagree about what "now" is.
-	const now = useMemo(() => new Date(), []);
+	// One clock for the whole render, so two rows written in the same minute cannot
+	// disagree about what "now" is. Re-read each time the panel OPENS: the panel is
+	// permanently mounted (AnimatePresence needs it), so a single useMemo froze "now"
+	// at page load and a tab left open overnight called yesterday "just now".
+	const now = useMemo(() => {
+		void open;
+		return new Date();
+	}, [open]);
 
 	const grouped = useMemo(() => {
 		const bySection = new Map<(typeof SECTIONS)[number], FeedEvent[]>();

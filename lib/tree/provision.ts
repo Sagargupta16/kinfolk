@@ -11,10 +11,11 @@
  * in a genealogy database that nobody made, which is the one thing this schema exists
  * to prevent; seeding nothing leaves a canvas that cannot demonstrate it works.
  *
- * Called from the `createUser` event in auth.ts, so it runs once per account inside
- * Auth.js's own sign-in flow.
+ * Called from both account creation and recurring sign-in paths. The latter repairs
+ * partial first-sign-in writes without making a transient provisioning failure cost
+ * the visitor their session.
  */
-import { and, eq, gt, ilike, isNotNull, or } from "drizzle-orm";
+import { and, eq, gt, ilike, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { people, treeInvites, treeMembers, trees } from "../db/schema";
 import { normalizeGitHubLogin } from "./invite";
@@ -39,10 +40,10 @@ function slugify(name: string | null): string {
 /**
  * Create a first graph and a self node for a new user.
  *
- * Idempotent by checking for an existing tree first. `createUser` should fire once,
- * but a retried OAuth callback must not leave somebody with two graphs -- and the
- * unique index on (ownerId, slug) would turn the second attempt into a failed
- * sign-in rather than a duplicate, which is a worse outcome than a no-op.
+ * Idempotent by reusing an existing tree and looking for its claimed self person.
+ * `createUser` should fire once, but a retried OAuth callback must not leave somebody
+ * with two graphs -- and it must also finish a first callback that inserted the tree
+ * before a transient failure stopped the self person or root pointer from landing.
  *
  * Errors are swallowed deliberately. This runs inside the sign-in flow, and a failed
  * convenience must not cost the user their session: without the catch, a transient
@@ -51,52 +52,92 @@ function slugify(name: string | null): string {
  */
 export async function provisionGraph(userId: string, name: string | null): Promise<void> {
 	try {
-		const existing = await db
+		// Reuse an existing claimed row and repair the smaller partial state where the
+		// self exists but the root update failed.
+		const [claimedSelf] = await db
+			.select({ id: people.id, treeId: people.treeId })
+			.from(people)
+			.where(eq(people.claimedByUserId, userId))
+			.limit(1);
+		if (claimedSelf) {
+			await db
+				.update(trees)
+				.set({ rootPersonId: claimedSelf.id })
+				.where(
+					and(
+						eq(trees.id, claimedSelf.treeId),
+						eq(trees.ownerId, userId),
+						isNull(trees.rootPersonId),
+					),
+				);
+			return;
+		}
+
+		const [existing] = await db
 			.select({ id: trees.id })
 			.from(trees)
 			.where(eq(trees.ownerId, userId))
 			.limit(1);
-		if (existing.length > 0) return;
 
-		const [tree] = await db
-			.insert(trees)
-			.values({
-				name: name ? `${name.split(" ")[0]}'s people` : "My people",
-				slug: slugify(name),
-				ownerId: userId,
-			})
-			.returning({ id: trees.id });
-		// `.returning()` is typed as an array, so the rows have to be checked rather than
-		// asserted. Bailing leaves the account with no graph, which the empty state already
-		// handles -- a non-null assertion here would turn the same condition into a crash
-		// inside the OAuth callback.
-		if (!tree) return;
+		let treeId = existing?.id ?? null;
+		if (!treeId) {
+			const slug = slugify(name);
+			const [created] = await db
+				.insert(trees)
+				.values({
+					name: name ? `${name.split(" ")[0]}'s people` : "My people",
+					slug,
+					ownerId: userId,
+				})
+				.onConflictDoNothing({ target: [trees.ownerId, trees.slug] })
+				.returning({ id: trees.id });
 
-		// `claimedByUserId` is what makes this node "you" everywhere downstream: the
-		// kinship walk starts from it, the canvas frames on it, and the "You" button
-		// returns to it. A person row without it would render as just another card.
-		const [self] = await db
+			if (created) {
+				treeId = created.id;
+			} else {
+				const [winner] = await db
+					.select({ id: trees.id })
+					.from(trees)
+					.where(and(eq(trees.ownerId, userId), eq(trees.slug, slug)))
+					.limit(1);
+				treeId = winner?.id ?? null;
+			}
+		}
+		if (!treeId) return;
+
+		// `claimedByUserId` makes this node "you" downstream. Reusing the user's UUID as
+		// this starter row's primary key makes concurrent retries conflict safely even
+		// during the rollout window before the claimed-user index exists. Once migration
+		// 0003 lands, that index remains the database backstop for every other write path.
+		const [createdSelf] = await db
 			.insert(people)
 			.values({
-				treeId: tree.id,
+				id: userId,
+				treeId,
 				givenName: name?.split(" ")[0] ?? "You",
 				familyName: name?.split(" ").slice(1).join(" ") || null,
 				living: "living",
 				claimedByUserId: userId,
-				// The person themselves is signed in and saying so, which is a stronger
-				// claim than the `unverified` default and is what that level means.
 				verification: "self_confirmed",
 			})
-			.returning({ id: people.id });
-		// A graph with no self node is still usable -- it just has nothing in it -- so this
-		// returns rather than unwinding the tree row it already wrote.
-		if (!self) return;
+			.onConflictDoNothing()
+			.returning({ id: people.id, treeId: people.treeId });
+		const [winner] = createdSelf
+			? [createdSelf]
+			: await db
+					.select({ id: people.id, treeId: people.treeId })
+					.from(people)
+					.where(eq(people.claimedByUserId, userId))
+					.limit(1);
+		if (!winner || winner.treeId !== treeId) return;
 
-		// The canvas opens centred here. Set after the insert rather than in the tree
-		// row above, because the person cannot be referenced before it exists.
-		await db.update(trees).set({ rootPersonId: self.id }).where(eq(trees.id, tree.id));
+		// A stale read must not replace a root selected between the read and this write.
+		await db
+			.update(trees)
+			.set({ rootPersonId: winner.id })
+			.where(and(eq(trees.id, treeId), eq(trees.ownerId, userId), isNull(trees.rootPersonId)));
 	} catch {
-		// Left to the empty state, which is a correct screen for "no graph yet".
+		// Left to the empty state; the next successful sign-in retries this repair.
 	}
 }
 

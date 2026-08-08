@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 22
           cache: pnpm
 
       # From the repo root, not `frontend/`: it is a workspace package, so its
@@ -91,7 +91,7 @@ jobs:
           # Switches Vite's `base` to /kinfolk/, which is the subpath Pages serves.
           GITHUB_PAGES: "true"
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-        run: pnpm build
+        run: VITE_API_BASE_URL="${VITE_API_BASE_URL%/}" pnpm build
 
       - name: Copy index.html to 404.html for SPA routing
         # Pages has no rewrite rules, so a deep link like /kinfolk/tree would 404. The

@@ -340,7 +340,7 @@ export function radialLayout(
 		});
 	}
 
-	const maxRing = Math.max(...byRing.keys());
+	const maxRing = byRing.size === 0 ? 0 : Math.max(...byRing.keys());
 
 	for (let ring = 1; ring <= maxRing; ring += 1) {
 		const members = byRing.get(ring) ?? [];

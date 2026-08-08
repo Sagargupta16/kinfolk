@@ -103,17 +103,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 			await provisionGraph(user.id, user.name ?? null);
 		},
 		/**
-		 * Cache the GitHub handle, and turn any invites addressed to this person into
-		 * access.
+		 * Refresh recurring account state, repair partial provisioning, and claim invites.
 		 *
-		 * On `signIn` rather than `createUser`, because both jobs recur. Somebody can be
-		 * invited long after their first sign-in, so a claim that only ran at account
-		 * creation would silently never arrive for anybody but brand new users -- and the
-		 * owner would see a pending invite they had definitely sent.
-		 *
-		 * The handle is stored because invites are addressed by GitHub login, and the
-		 * OAuth profile is the only place it appears. Without caching it, an invite sent
-		 * to `@someone` could never be matched to the account that owns that name.
+		 * All three belong on `signIn`: a transient first-sign-in failure must be repaired
+		 * later, somebody can be invited after account creation, and GitHub handles can
+		 * change. The provisioning path is conflict-safe and becomes a read-only lookup
+		 * once the person's graph is complete.
 		 */
 		async signIn({ user, profile }) {
 			if (!user.id) return;
@@ -121,6 +116,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 			if (login) {
 				await db.update(users).set({ githubLogin: login }).where(eq(users.id, user.id));
 			}
+			await provisionGraph(user.id, user.name ?? null);
 			await claimInvites(user.id, user.email ?? null, login);
 		},
 	},

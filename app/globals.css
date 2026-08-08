@@ -296,7 +296,6 @@
 	 * matters: before the first effect runs, and for any control rendered outside the
 	 * canvas, this has to resolve to a plain 44px rather than to nothing.
 	 */
-	--kf-hit: calc(44px / var(--kf-zoom, 1));
 }
 
 /* -------------------------------------------------------------------------- */

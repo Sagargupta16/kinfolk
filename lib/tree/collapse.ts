@@ -60,6 +60,13 @@ function skeleton(edges: FlowEdge[]): Skeleton {
 
 	for (const edge of edges) {
 		if (!edge.layout) continue;
+		// A childless couple is joined person-to-person, with no union dot between
+		// them (see toFlowGraph). That edge is adjacency, not descent: ingesting it
+		// here would read the pair as parent-and-child, so folding one partner's
+		// descendants would also swallow the other partner's children by a
+		// different union, and `foldable` would offer descent controls on people
+		// with nothing below them.
+		if (edge.kind === "partner" && !edge.target.startsWith("union:")) continue;
 		push(down, edge.source, edge.target);
 		push(up, edge.target, edge.source);
 	}

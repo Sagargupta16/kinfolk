@@ -33,7 +33,7 @@
  */
 import { useReactFlow, useStore } from "@xyflow/react";
 import { Map as MapIcon, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { Box } from "@/lib/tree/layout";
 import {
 	OVERVIEW_WIDTH,
@@ -57,21 +57,24 @@ import { cn } from "@/lib/utils";
  *
  * So the majority state takes the neutral ink and the accent stays unique. `past` keeps
  * its own quieter grey, since deceased is the minority and the contrast between the two
- * greys still reads at 4px.
+ * greys still reads at 4px. `unsure` and `junction` share it: they used the hairline
+ * token, which on this panel's opaque surface measured ~1.6:1 -- present in the DOM and
+ * invisible on the map, where every mark owes the 3:1 a meaningful graphic does.
  */
 const TONE_FILL: Record<OverviewTone, string> = {
 	self: "var(--color-accent)",
 	living: "var(--color-edge)",
 	past: "var(--color-past)",
-	unsure: "var(--color-hairline-strong)",
-	junction: "var(--color-hairline-strong)",
+	unsure: "var(--color-past)",
+	junction: "var(--color-past)",
 };
 
 /**
- * The tree as boxes. Its own component so it re-renders only when positions change and
- * not on every pan: the viewport rectangle below is the part that tracks the viewer.
+ * The tree as boxes. Its own MEMOISED component so it re-renders only when positions
+ * change and not on every pan or panel toggle: the viewport rectangle below is the part
+ * that tracks the viewer, and these 152 rects are the part that does not.
  */
-function OverviewShapes({
+const OverviewShapes = memo(function OverviewShapes({
 	nodes,
 	extent,
 	height,
@@ -104,7 +107,7 @@ function OverviewShapes({
 			))}
 		</g>
 	);
-}
+});
 
 /**
  * The viewer's window on the tree.
@@ -238,7 +241,9 @@ export function TreeMinimap({ nodes, extent }: { nodes: OverviewNode[]; extent: 
 					"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider backdrop-blur-sm",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					open
-						? "border-hairline-strong text-accent"
+						? // `accent-ink`, not the raw accent: 10px type owes 4.5:1, which the
+							// graphic-grade accent does not clear on this surface.
+							"border-hairline-strong text-accent-ink"
 						: "border-hairline text-ink-faint hover:border-hairline-strong hover:text-ink",
 				)}
 			>

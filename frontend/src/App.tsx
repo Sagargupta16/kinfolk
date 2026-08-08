@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { TreeWorkspace } from "@/components/tree/TreeWorkspace";
 import { parseTreeView, type SerialisedTreeView } from "@/lib/tree/serialise";
 import type { TreeView } from "@/lib/tree/view";
-import { API_BASE, authHeaders, getToken } from "./api";
+import { API_BASE, authHeaders, clearToken, getToken } from "./api";
 import { callbackUrl, completeSignIn } from "./auth";
 import { CallbackScreen } from "./screens/CallbackScreen";
 import { Landing } from "./screens/Landing";
@@ -62,12 +62,14 @@ function TreeScreen() {
 		try {
 			const response = await fetch(url, { headers: authHeaders() });
 
-			if (response.status === 401) {
-				setData({ state: "error", message: "Your session has expired. Sign in again." });
-				return;
-			}
 			if (!response.ok) {
-				setData({ state: "error", message: "Could not load your graph." });
+				if (response.status === 401) clearToken();
+
+				const message =
+					response.status === 401
+						? "Your session has expired. Sign in again."
+						: "Could not load your graph.";
+				setData({ state: "error", message });
 				return;
 			}
 

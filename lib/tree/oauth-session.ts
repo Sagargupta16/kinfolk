@@ -50,10 +50,10 @@ export async function signInWithGitHub(profile: GitHubProfile): Promise<SignInRe
 	const expires = new Date(Date.now() + SESSION_TTL_MS);
 	await db.insert(sessions).values({ sessionToken: token, userId, expires });
 
-	// Last, and both swallow their own failures. A new account with no graph shows
-	// the empty state, which is recoverable; a thrown error here would leave the
-	// visitor signed out despite a valid session row already existing.
-	if (isNewUser) await provisionGraph(userId, profile.name);
+	// Last, and both swallow their own failures. Provision on every sign-in so a
+	// callback that created only part of the starter graph gets another repair chance;
+	// a thrown error here must not discard the valid session row already written.
+	await provisionGraph(userId, profile.name);
 	await claimInvites(userId, profile.email, profile.login);
 
 	return { token, expires, userId, isNewUser };

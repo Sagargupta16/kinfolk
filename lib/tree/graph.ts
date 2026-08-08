@@ -321,7 +321,16 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 	/** Unions with an unknown partner, which cannot be keyed on endpoints alone. */
 	const partial: UnionWithChildren[] = [];
 
-	for (const union of unions) {
+	for (const raw of unions) {
+		// A bad identity link can fuse both partners into one person. With children,
+		// the surviving fact is a single-parent family; without children the row says
+		// nothing at all, so drop it rather than drawing a one-ended orphan junction.
+		if (raw.partnerAId && raw.partnerAId === raw.partnerBId && raw.childIds.length === 0) {
+			continue;
+		}
+		const union =
+			raw.partnerAId && raw.partnerAId === raw.partnerBId ? { ...raw, partnerBId: null } : raw;
+
 		if (!union.partnerAId || !union.partnerBId) {
 			partial.push(union);
 			continue;
@@ -339,13 +348,24 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 	}
 
 	const merged: UnionWithChildren[] = [];
+	const full = [...byKey.values()];
 	for (const union of partial) {
 		const knownPartner = union.partnerAId ?? union.partnerBId;
-		const sameFamily = merged.find(
-			(candidate) =>
-				(candidate.partnerAId ?? candidate.partnerBId) === knownPartner &&
-				candidate.childIds.some((id) => union.childIds.includes(id)),
-		);
+		// A partial can also be a FULL union's echo: one family recorded both
+		// parents, the other only one. Same known partner plus a shared child is the
+		// same family either way, so the full record absorbs the partial one --
+		// otherwise the couple's junction is drawn twice.
+		const sameFamily =
+			full.find(
+				(candidate) =>
+					(candidate.partnerAId === knownPartner || candidate.partnerBId === knownPartner) &&
+					candidate.childIds.some((id) => union.childIds.includes(id)),
+			) ??
+			merged.find(
+				(candidate) =>
+					(candidate.partnerAId ?? candidate.partnerBId) === knownPartner &&
+					candidate.childIds.some((id) => union.childIds.includes(id)),
+			);
 
 		if (sameFamily) {
 			sameFamily.childIds = [...new Set([...sameFamily.childIds, ...union.childIds])];
@@ -354,7 +374,7 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 		merged.push({ ...union });
 	}
 
-	return [...byKey.values(), ...merged];
+	return [...full, ...merged];
 }
 
 /* -------------------------------------------------------------------------- */

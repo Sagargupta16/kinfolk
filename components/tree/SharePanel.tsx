@@ -21,10 +21,11 @@ import {
 	UserRound,
 	X,
 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import type { Result } from "@/lib/tree/edit-actions";
 import { invite, removeMember, revokeInvite, type ShareState } from "@/lib/tree/share-actions";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 const field = cn(
 	"min-h-11 w-full rounded-lg border border-hairline bg-canvas px-3 text-sm text-ink",
@@ -57,13 +58,8 @@ export function SharePanel({
 	const [method, setMethod] = useState<"email" | "github">("email");
 	const [pending, startTransition] = useTransition();
 
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onClose();
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [onClose]);
+	// Escape closes, through the shared surface stack. Mounted only while open.
+	useEscapeClose(true, onClose);
 
 	function run(action: (form: FormData) => Promise<Result>) {
 		return (form: FormData) => {

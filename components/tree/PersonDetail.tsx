@@ -44,6 +44,7 @@ import type { Kinship } from "@/lib/tree/kinship";
 import type { FamilyIndex, Relatives } from "@/lib/tree/relatives";
 import { relativesOf } from "@/lib/tree/relatives";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 import { PersonEditSheet } from "./PersonEdit";
 import { PROVENANCE, SEX_MARKS } from "./PersonNode";
 
@@ -128,19 +129,11 @@ export function PersonDetail({
 	}, [subjectId]);
 
 	/**
-	 * Escape closes, from anywhere.
-	 *
-	 * On `document` rather than the panel, because the click that opened it left focus on
-	 * a canvas node -- so a handler bound to the panel would never receive the key.
+	 * Escape closes, from anywhere -- through the shared stack (see escape.ts), so a
+	 * press closes the TOP surface only: the edit sheet first, this panel second, never
+	 * both at once. A stack entry exists only while a person is shown.
 	 */
-	useEffect(() => {
-		if (!person) return;
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onClose();
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [person, onClose]);
+	useEscapeClose(Boolean(person), onClose);
 
 	const relatives = useMemo<Relatives | null>(
 		() => (person ? relativesOf(index, person.id) : null),

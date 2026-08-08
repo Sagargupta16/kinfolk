@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { leave } from "@/lib/tree/share-actions";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 export function AccountMenu({
 	name,
@@ -36,26 +37,23 @@ export function AccountMenu({
 	const label = name?.split(" ")[0] ?? email?.split("@")[0] ?? "Account";
 
 	/**
-	 * Close on Escape or on a click anywhere else.
+	 * Close on Escape (through the shared surface stack) or on a click anywhere else.
 	 *
 	 * Pointerdown rather than click: a click fires after mousedown+mouseup on the SAME
 	 * element, so a press that starts inside the menu and ends outside it would not close,
 	 * and the menu would sit open under the pointer.
 	 */
+	useEscapeClose(open, () => setOpen(false));
+
 	useEffect(() => {
 		if (!open) return;
 
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setOpen(false);
-		};
 		const onPointer = (event: PointerEvent) => {
 			if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
 		};
 
-		window.addEventListener("keydown", onKey);
 		window.addEventListener("pointerdown", onPointer);
 		return () => {
-			window.removeEventListener("keydown", onKey);
 			window.removeEventListener("pointerdown", onPointer);
 		};
 	}, [open]);
@@ -67,7 +65,6 @@ export function AccountMenu({
 				onClick={() => setOpen((current) => !current)}
 				aria-label={`Account menu for ${label}`}
 				aria-expanded={open}
-				aria-haspopup="menu"
 				className={cn(
 					"flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
 					"text-xs font-medium transition-colors duration-(--duration-fast) ease-(--ease-out)",
@@ -92,9 +89,11 @@ export function AccountMenu({
 			<AnimatePresence>
 				{open && (
 					<motion.div
-						// `role="menu"` on a div rather than a <menu> element: that tag carries list
-						// semantics, not menu semantics, so it would need this role anyway.
-						role="menu"
+						// No `role="menu"`: that role PROMISES the full menu keyboard contract
+						// (arrow keys walking items, Home/End, focus management), which this
+						// popover does not implement. Two focusable children behave exactly like
+						// buttons in a landmark-free div, and claiming menu semantics without the
+						// keys is worse for a screen reader than claiming nothing.
 						// A quick settle from the button it grew out of. Chrome only, which is the
 						// boundary Motion is allowed inside; the canvas stays CSS.
 						initial={{ opacity: 0, y: -4, scale: 0.98 }}
@@ -119,7 +118,6 @@ export function AccountMenu({
 						{onShare && (
 							<button
 								type="button"
-								role="menuitem"
 								onClick={() => {
 									setOpen(false);
 									onShare();
@@ -143,7 +141,6 @@ export function AccountMenu({
 						<form action={leave} className="border-t border-hairline">
 							<button
 								type="submit"
-								role="menuitem"
 								className={cn(
 									"flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs text-ink-muted",
 									"transition-colors duration-(--duration-fast) ease-(--ease-out)",

@@ -27,7 +27,7 @@ What was verified after the secrets landed, rather than assumed:
   redirect URI rather than rejecting it, which is the check that matters.
 - `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
   proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
-- `pnpm db:check-migrations --complete` reports all 3 committed migrations applied.
+- `pnpm db:check-migrations --complete` reported the complete committed history applied.
 - The live smoke scripts (`db:smoke`, `db:smoke:kin`) passed against the live branch and
   cleaned up after themselves; both were removed in the 0.2.0 rework.
 
@@ -155,15 +155,17 @@ CI needs no secrets at all. `lib/db/client.ts` is built to import cleanly with n
 | [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC | probes production, to catch a suspended Neon branch or a rotated secret |
 | [`pages.yml`](../.github/workflows/pages.yml) | push to `main` touching SPA/shared UI code | builds and publishes `frontend/` to GitHub Pages at `sagargupta.online/kinfolk/` |
 
-Vercel's own Git integration builds and promotes on push. `deploy.yml` deliberately does **not** duplicate that; it does the two things Vercel cannot: get the schema ahead of the code that depends on it, and assert afterwards that the deployment actually answers.
+Vercel's own Git integration and `deploy.yml` start independently on the same push. The workflow deliberately does **not** duplicate Vercel's build; it applies committed migrations and asserts afterwards that the deployment answers. Because it cannot gate Vercel's promotion, runtime changes must tolerate the previous schema during that rollout window.
 
 ### Migrations
 
 `deploy.yml` runs `pnpm db:migrate`, never `db:push`. Push diffs the live schema and applies whatever it infers, which is right for a scratch branch and dangerous in production -- it can drop a column it believes is redundant. `migrate` runs the committed SQL in `drizzle/` in order and nothing else.
 
-Three migrations are now committed. The live database is at `3/3`; the baseline procedure
-below is historical and must only be used for a fresh database that predates migration
-tracking.
+Migration history now runs from `0000` through `0003`. Before writing, the deploy
+preflight requires the live history to be an exact prefix of those committed files;
+after `db:migrate`, the complete check requires every committed migration. The baseline
+procedure below is historical and must only be used for a fresh database that predates
+migration tracking.
 
 The schema was originally created with `db:push`, so `0000` is a BASELINE: a full
 `CREATE TABLE` script describing tables that already exist. Running it against the live
@@ -199,6 +201,11 @@ configuration for what is really a missing field on somebody's GitHub account.
 
 Migration `0002` adds database checks that prevent `owner` from being granted through
 `tree_members` or `tree_invites`; ownership remains represented by `trees.owner_id`.
+
+Migration `0003` makes a non-null `people.claimed_by_user_id` unique. Starter-person
+provisioning also uses the user's UUID as that row's deterministic primary key, so
+parallel sign-ins conflict safely even if Vercel promotes while `0003` is still being
+applied; the index becomes the database-wide backstop once the migration lands.
 
 After any later schema change, run:
 

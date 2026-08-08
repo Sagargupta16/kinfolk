@@ -16,6 +16,7 @@ import { Keyboard, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 export type ShortcutAction =
 	| "search"
@@ -69,6 +70,10 @@ export function useShortcuts(onAction: (action: ShortcutAction) => void): void {
 			// A modifier means the browser's own shortcut: Cmd+F is find, Ctrl+D bookmarks.
 			// Stealing those to zoom a canvas is the kind of thing people file bugs about.
 			if (event.metaKey || event.ctrlKey || event.altKey) return;
+			// A floating surface claimed this Escape (see escape.ts): it closed one panel,
+			// and treating the same press as "clear the selection" would strip the pin
+			// underneath the panel somebody just dismissed.
+			if (event.key === "Escape" && event.defaultPrevented) return;
 			// Escape has to work FROM the search box -- that is how you get back out of it --
 			// so it is exempt from the typing guard that protects every other key.
 			if (event.key !== "Escape" && isTyping(event.target)) return;
@@ -93,6 +98,10 @@ export function useShortcuts(onAction: (action: ShortcutAction) => void): void {
  * decides what a keystroke means.
  */
 export function ShortcutSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+	// In the surface stack like every other overlay: open the help over a panel and
+	// Escape closes the help first, not both.
+	useEscapeClose(open, onClose);
+
 	return (
 		<AnimatePresence>
 			{open && (

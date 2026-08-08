@@ -15,7 +15,7 @@
  * check and goes on to `lib/tree/authz.ts`. A client that lied about its own
  * permissions would simply be refused by the server.
  */
-import { API_BASE, authHeaders } from "../api";
+import { API_BASE, authHeaders, clearToken } from "../api";
 
 export type Result = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -35,14 +35,30 @@ async function call(name: string, form: FormData): Promise<Result> {
 			body: form,
 		});
 
-		// 404 means this build asked for an action the deployed API does not expose,
-		// which is a version mismatch rather than something the user did wrong.
-		if (response.status === 404) {
-			return { ok: false, error: "That action is not available on the server." };
+		if (!response.ok) {
+			if (response.status === 401) clearToken();
+
+			let serverError: string | null = null;
+			let cause: string | null = null;
+			try {
+				const body = (await response.json()) as { error?: unknown; cause?: unknown } | null;
+				if (typeof body?.error === "string" && body.error.trim()) {
+					serverError = body.error.trim();
+				}
+				if (typeof body?.cause === "string" && body.cause.trim()) {
+					cause = body.cause.trim();
+				}
+			} catch {}
+
+			// 404 means this build asked for an action the deployed API does not expose,
+			// which is a version mismatch rather than something the user did wrong.
+			const error =
+				response.status === 404
+					? "That action is not available on the server."
+					: (serverError ?? "Could not save that. Try again.");
+			return { ok: false, error: cause ? `${error} -- ${cause}` : error };
 		}
 
-		// Every other status carries the action's own JSON, including the 401 the
-		// route raises for an auth refusal.
 		return (await response.json()) as Result;
 	} catch {
 		return { ok: false, error: "Could not reach the server. Check your connection." };
@@ -93,7 +109,13 @@ export const removeMember = action("removeMember");
  */
 export async function leave(_form: FormData): Promise<void> {
 	const { signOut } = await import("../auth");
-	await signOut();
+	try {
+		await signOut();
+	} catch {
+		// Stay on the current screen with the token intact. Submitting again retries the
+		// idempotent server revocation instead of turning a network failure into logout.
+		return;
+	}
 	window.location.assign(import.meta.env.BASE_URL);
 }
 
@@ -134,7 +156,10 @@ export async function shareState(treeId: string): Promise<ShareState> {
 		const url = new URL(`${API_BASE}/api/share`, window.location.origin);
 		url.searchParams.set("treeId", treeId);
 		const response = await fetch(url, { headers: authHeaders() });
-		if (!response.ok) return { members: [], invites: [] };
+		if (!response.ok) {
+			if (response.status === 401) clearToken();
+			return { members: [], invites: [] };
+		}
 		return (await response.json()) as ShareState;
 	} catch {
 		return { members: [], invites: [] };

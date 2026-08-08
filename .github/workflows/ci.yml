@@ -59,7 +59,8 @@ jobs:
       - name: Build Pages app
         working-directory: frontend
         env:
-          VITE_API_BASE_URL: https://kinfolk-neon.vercel.app
+          GITHUB_PAGES: "true"
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://kinfolk-neon.vercel.app' }}
         run: pnpm build
 
       - name: Dead Tailwind utility guard
@@ -70,7 +71,7 @@ jobs:
         # BUILT css, not the source, because Tailwind also reads markdown and
         # comments as class-name sources.
         run: |
-          if grep -rlF --include='*.css' -- '-\[--' .next/static/; then
+          if grep -rlF --include='*.css' -- '-\[--' .next/static/ frontend/dist/; then
             echo '::error::Dead Tailwind utility in the built CSS: a CSS variable in an arbitrary value needs PARENTHESES, not square brackets. See the gotcha in CLAUDE.md.'
             exit 1
           fi

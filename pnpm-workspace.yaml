@@ -10,21 +10,6 @@ allowBuilds:
   esbuild: true
   sharp: true
 
-# pnpm holds brand-new releases back by default as a supply-chain measure. These
-# are patch bumps we deliberately took early; each entry is pinned to an exact
-# version so the exception cannot silently widen.
-minimumReleaseAgeExclude:
-  - '@biomejs/biome@2.5.6'
-  - '@biomejs/cli-darwin-arm64@2.5.6'
-  - '@biomejs/cli-darwin-x64@2.5.6'
-  - '@biomejs/cli-linux-arm64-musl@2.5.6'
-  - '@biomejs/cli-linux-arm64@2.5.6'
-  - '@biomejs/cli-linux-x64-musl@2.5.6'
-  - '@biomejs/cli-linux-x64@2.5.6'
-  - '@biomejs/cli-win32-arm64@2.5.6'
-  - '@biomejs/cli-win32-x64@2.5.6'
-  - postcss@8.5.24
-
 # Transitive deps drag in old builds; hold everything at the current line.
 # All three are NESTED under `next` or `tsx`, not direct dependencies, so the
 # fix is to stop the old copies existing rather than to bump anything we import.

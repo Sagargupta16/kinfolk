@@ -24,6 +24,7 @@ import { updatePerson } from "@/lib/tree/edit-actions";
 import { editInitialValues, editTarget, yearValue } from "@/lib/tree/editable";
 import { displayName, type FusedPerson } from "@/lib/tree/graph";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 /** Sex options, in the schema's own order. `unknown` is a real stored value, not a blank. */
 const SEXES = [
@@ -57,13 +58,9 @@ export function PersonEdit({
 	const [error, setError] = useState<string | null>(null);
 	const firstField = useRef<HTMLInputElement>(null);
 
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onClose();
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [onClose]);
+	// Escape closes the edit sheet only -- the panel underneath keeps its own stack
+	// entry, so backing out is one layer per press. Mounted only while open.
+	useEscapeClose(true, onClose);
 
 	useEffect(() => {
 		firstField.current?.focus();
@@ -306,7 +303,14 @@ function Shell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+		<div
+			// Announced like QuickAdd's sheet: a dialog with the heading as its name.
+			// Non-modal, because the canvas behind stays usable -- see EditorPanel.
+			role="dialog"
+			aria-modal="false"
+			aria-labelledby={titleId}
+			className="flex min-h-0 flex-1 flex-col overflow-hidden"
+		>
 			<div className="flex items-center gap-2 border-b border-hairline px-3 pb-2.5 pt-3">
 				<Pencil
 					className="size-3.5 shrink-0 text-ink-faint"
@@ -447,6 +451,11 @@ export function PersonEditSheet({
 		<AnimatePresence>
 			{person && (
 				<motion.div
+					// Keyed on the person, so travelling to somebody else while an edit sheet
+					// is open remounts the form: the fields are uncontrolled and seeded from
+					// `defaultValue`, which a diffed re-render would leave showing the
+					// previous person's names.
+					key={person.id}
 					initial={{ opacity: 0, x: 24 }}
 					animate={{ opacity: 1, x: 0 }}
 					exit={{ opacity: 0, x: 24 }}

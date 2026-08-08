@@ -374,6 +374,7 @@ export const people = pgTable(
 	(t) => [
 		index("people_tree_idx").on(t.treeId),
 		index("people_name_idx").on(t.familyName, t.givenName),
+		uniqueIndex("people_claimed_user_idx").on(t.claimedByUserId),
 	],
 );
 

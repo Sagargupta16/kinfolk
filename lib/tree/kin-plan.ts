@@ -126,7 +126,9 @@ export type KinPlan = {
 export function planKin(family: FamilyShape, role: KinRole, count = 1): KinPlan {
 	const direction = ROLE_DIRECTION[role];
 	const sex = ROLE_SEX[role];
-	const people = Math.max(1, Math.min(count, MAX_BATCH));
+	// NaN slips through Math.max/Math.min unchanged, so a count parsed from an
+	// empty input would otherwise plan NaN people.
+	const people = Number.isFinite(count) ? Math.max(1, Math.min(count, MAX_BATCH)) : 1;
 
 	switch (direction) {
 		case "parent":
@@ -285,7 +287,28 @@ export function birthYearColumns(input: string): {
 	if (!text) return { birthDate: null, birthDateApprox: null };
 
 	// A full ISO date, which the form does not ask for but a paste might supply.
-	if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return { birthDate: text, birthDateApprox: null };
+	// Shape alone is not enough: "2024-02-31" matches and Date.parse normalises it
+	// into March. Rebuild the date in UTC and require every component to survive
+	// unchanged; impossible dates then remain the caller's fuzzy text instead of
+	// reaching Postgres as an invalid date.
+	const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+	if (iso) {
+		const year = Number(iso[1]);
+		const month = Number(iso[2]);
+		const day = Number(iso[3]);
+		const parsed = new Date(0);
+		parsed.setUTCHours(0, 0, 0, 0);
+		parsed.setUTCFullYear(year, month - 1, day);
+		if (
+			year >= 1000 &&
+			year <= 2200 &&
+			parsed.getUTCFullYear() === year &&
+			parsed.getUTCMonth() === month - 1 &&
+			parsed.getUTCDate() === day
+		) {
+			return { birthDate: text, birthDateApprox: null };
+		}
+	}
 
 	// A plausible year. Bounded because a typo like "19" or "20255" is not a year, and
 	// storing it would put nonsense on a card with no way to tell it from a real value.
