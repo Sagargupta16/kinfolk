@@ -14,6 +14,7 @@ import GitHub from "next-auth/providers/github";
 import { db, hasDatabase } from "@/lib/db/client";
 import { accounts, sessions, users } from "@/lib/db/schema";
 import { claimInvites, provisionGraph } from "@/lib/tree/provision";
+import { SESSION_MAX_AGE_SECONDS } from "@/lib/tree/session-lifetime";
 
 /**
  * Our own cookie name, and it is a bug fix rather than a preference.
@@ -38,7 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 		sessionsTable: sessions,
 	}),
 	providers: [GitHub],
-	session: { strategy: "database" },
+	session: { strategy: "database", maxAge: SESSION_MAX_AGE_SECONDS },
 	// Merged over the defaults by @auth/core, so naming one cookie leaves the callback,
 	// csrf and pkce cookies at their own defaults. Only the session token can be
 	// mistaken for another app's, because it is the only one we hand to a database.
@@ -58,23 +59,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 		},
 	},
 	/**
-	 * Make a failed sign-in say WHY, in the server log.
-	 *
-	 * Auth.js answers every callback failure with `?error=Configuration` and a page
-	 * reading "There is a problem with the server configuration". That string is
-	 * generic to the point of being misleading: a nonexistent provider, a rejected
-	 * database insert and a genuinely absent secret all produce it, so a failure
-	 * cannot be told apart from outside. Diagnosing one meant probing endpoints and
-	 * inferring, because the only real error never left the process.
-	 *
-	 * `logger.error` writes the underlying cause to the platform log, where it is
-	 * one search away. Deliberately NOT `debug: true`: that logs every callback and
-	 * token exchange at info level, which on an auth route means access tokens and
-	 * profile payloads sitting in a log nobody intended as a secret store.
+	 * Record that Auth.js failed without serializing its error object. Adapter errors
+	 * can contain SQL, bound profile values, and nested provider details; those do not
+	 * belong in a platform log. Deliberately NOT `debug: true` for the same reason.
 	 */
 	logger: {
-		error(error) {
-			console.error("[auth]", error.name, error.message, error.cause ?? "");
+		error() {
+			console.error("[auth] authentication failed");
 		},
 	},
 	callbacks: {

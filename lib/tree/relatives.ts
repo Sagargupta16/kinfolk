@@ -35,6 +35,8 @@ export type Partnership = {
 /** A non-hierarchical connection, already read from the subject's end. */
 export type RelationLink = {
 	person: FusedPerson;
+	relationId: string;
+	relationTreeId: string;
 	/** "mentor" or "mentee" depending on which end the subject sits at. */
 	label: string;
 	kind: FlowEdge["relationKind"];
@@ -169,10 +171,12 @@ function relationsOf(index: FamilyIndex, personId: string): RelationLink[] {
 		if (edge.source !== personId && edge.target !== personId) continue;
 		const otherId = edge.source === personId ? edge.target : edge.source;
 		const person = index.people.get(otherId);
-		if (!person || !edge.relationKind) continue;
+		if (!person || !edge.relationKind || !edge.relationId || !edge.relationTreeId) continue;
 
 		links.push({
 			person,
+			relationId: edge.relationId,
+			relationTreeId: edge.relationTreeId,
 			// `otherId` is the end being NAMED, and `edge.source` is stored A. A symmetric
 			// kind reads the same either way, so this only bites on the directed ones.
 			label: relationLabel(edge.relationKind, edge.source, otherId),

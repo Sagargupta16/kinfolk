@@ -258,6 +258,20 @@ export const trees = pgTable(
 	(t) => [uniqueIndex("trees_owner_slug_idx").on(t.ownerId, t.slug)],
 );
 
+/**
+ * Atomic per-tree write budgets.
+ *
+ * The row is updated with one conditional upsert, so concurrent serverless instances
+ * cannot all pass a count-before-insert check. It contains counters only, never people.
+ */
+export const peopleCreationBudgets = pgTable("people_creation_budgets", {
+	treeId: uuid("tree_id")
+		.primaryKey()
+		.references(() => trees.id, { onDelete: "cascade" }),
+	windowStartedAt: timestamp("window_started_at", { withTimezone: true }).defaultNow().notNull(),
+	used: integer("used").default(0).notNull(),
+});
+
 /** Explicit grants. Absence of a row means no access: private by default. */
 export const treeMembers = pgTable(
 	"tree_members",

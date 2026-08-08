@@ -52,6 +52,20 @@ test-results/
 .claude/.cache/
 .claude/.local/
 CLAUDE.local.md
+.mcp.json
+
+# Local databases and data exports
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+# Ignore ad hoc SQL exports, but keep ordered Drizzle migration source.
+*.sql
+!drizzle/*.sql
+*.sql.gz
+*.sql.bz2
+*.sql.zip
 
 # Temp screenshots
 /*.png

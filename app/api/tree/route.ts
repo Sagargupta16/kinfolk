@@ -66,10 +66,10 @@ export async function GET(request: NextRequest) {
 			// ROUTE was missing, which is a different problem with a different fix.
 			return NextResponse.json({ view: view ? serialiseTreeView(view) : null }, { headers: cors });
 		}
-	} catch (error) {
-		// Driver errors can contain SQL, schema names and record identifiers. Keep the
-		// diagnostic in server logs and return only the stable public error contract.
-		console.error(`[tree] failed at ${stage}`, error);
+	} catch {
+		// Driver errors can carry SQL, bound values, and record identifiers. Log only
+		// the stage and return the stable public error contract.
+		console.error(`[tree] failed at ${stage}`);
 		return NextResponse.json(
 			{ error: "could not read your graph" },
 			{ status: 500, headers: cors },

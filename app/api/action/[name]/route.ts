@@ -114,12 +114,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ na
 	let result: Result;
 	try {
 		result = await action(form);
-	} catch (error) {
+	} catch {
 		// A thrown error -- a dropped database connection, a bug -- would otherwise
 		// bubble into Next's own 500, which carries NO CORS headers: the SPA reads
-		// that as an opaque network failure rather than an answer. The body stays
-		// generic because internals belong in the server log, not on the wire.
-		console.error(`action ${name} threw`, error);
+		// that as an opaque network failure rather than an answer. Keep both the body
+		// and platform log free of SQL, bound values, and record data.
+		console.error(`action ${name} failed`);
 		return NextResponse.json(
 			{ ok: false, error: "Something went wrong saving that. Try again." },
 			{ status: 500, headers: cors },

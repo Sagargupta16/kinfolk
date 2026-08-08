@@ -400,6 +400,10 @@ export type FlowEdge = {
 	layout: boolean;
 	/** Relation kind, for styling and the edge label. Only set when kind is "relation". */
 	relationKind?: RelationKind;
+	/** The stored relation row, used for precise connection removal. */
+	relationId?: string;
+	/** The tree that owns the relation, used to show removal only to its editors. */
+	relationTreeId?: string;
 	/** Pre-rendered label ("cousin", "mentor"), read A -> B. */
 	label?: string;
 	/** Symmetric relations draw no arrowhead. */
@@ -516,6 +520,8 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 			// Never influences placement. See the FlowEdge comment.
 			layout: false,
 			relationKind: relation.kind,
+			relationId: relation.id,
+			relationTreeId: relation.treeId,
 			label: relation.label ?? spec.label,
 			directed: !spec.symmetric,
 			closeness: closenessOf(relation.kind, relation),

@@ -48,11 +48,10 @@ export async function GET(request: NextRequest) {
 			// which is exactly what state exists to prevent.
 			{ headers: { ...cors, "Cache-Control": "no-store" } },
 		);
-	} catch (error) {
-		// Thrown when AUTH_GITHUB_ID or AUTH_SECRET is absent. Named plainly in the
-		// log, because the alternative is the generic "Configuration" page that made
-		// the server-rendered flow so hard to diagnose.
-		console.error("[oauth] authorize failed", error);
+	} catch {
+		// Usually a missing OAuth setting. Keep the diagnostic categorical so a
+		// provider error cannot persist request details or credentials in platform logs.
+		console.error("[oauth] authorize failed");
 		return NextResponse.json(
 			{ error: "sign-in is not configured" },
 			{ status: 500, headers: cors },

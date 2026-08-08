@@ -24,21 +24,19 @@
 /**
  * Origins the API answers to.
  *
- * `sagargupta.online` is where Pages serves the UI. The apex has no port and no
- * path because an Origin never carries one. Localhost is included for `pnpm dev`
- * against a deployed API, on the port [.claude/launch.json](../../.claude/launch.json)
- * uses -- a different port is a different origin, so 3000 would not match.
+ * `sagargupta.online` is where Pages serves the UI. Development origins are
+ * added only outside production so a deployed API never trusts localhost.
  */
-const ALLOWED_ORIGINS = new Set([
-	"https://sagargupta.online",
-	// Vite's dev and preview server, where the SPA runs locally. Its absence here was
-	// a real defect rather than an oversight worth glossing: the redirect allow list
-	// in redirect-allow.ts already had it, so sign-in would have been permitted while
-	// every data fetch was blocked -- and the browser reports that as "could not reach
-	// the server", which reads as the API being down rather than as a policy refusal.
+const PRODUCTION_ORIGINS = ["https://sagargupta.online"];
+const DEVELOPMENT_ORIGINS = [
 	"http://localhost:5173",
 	"http://localhost:3007",
 	"https://localhost:3007",
+];
+
+const ALLOWED_ORIGINS = new Set([
+	...PRODUCTION_ORIGINS,
+	...(process.env.NODE_ENV === "production" ? [] : DEVELOPMENT_ORIGINS),
 ]);
 
 /**

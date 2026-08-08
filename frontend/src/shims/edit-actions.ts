@@ -17,7 +17,9 @@
  */
 import { API_BASE, authHeaders, clearToken } from "../api";
 
-export type Result = { ok: true; id?: string } | { ok: false; error: string };
+export type Result =
+	| { ok: true; id?: string }
+	| { ok: false; error: string; confirmation?: "additional-relation" };
 
 /**
  * POST a form to one named action.
@@ -39,14 +41,10 @@ async function call(name: string, form: FormData): Promise<Result> {
 			if (response.status === 401) clearToken();
 
 			let serverError: string | null = null;
-			let cause: string | null = null;
 			try {
-				const body = (await response.json()) as { error?: unknown; cause?: unknown } | null;
+				const body = (await response.json()) as { error?: unknown } | null;
 				if (typeof body?.error === "string" && body.error.trim()) {
 					serverError = body.error.trim();
-				}
-				if (typeof body?.cause === "string" && body.cause.trim()) {
-					cause = body.cause.trim();
 				}
 			} catch {}
 
@@ -56,7 +54,7 @@ async function call(name: string, form: FormData): Promise<Result> {
 				response.status === 404
 					? "That action is not available on the server."
 					: (serverError ?? "Could not save that. Try again.");
-			return { ok: false, error: cause ? `${error} -- ${cause}` : error };
+			return { ok: false, error };
 		}
 
 		return (await response.json()) as Result;

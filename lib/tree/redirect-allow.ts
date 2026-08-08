@@ -18,25 +18,26 @@
  */
 
 /**
- * Origins the token may be delivered to.
- *
- * `sagargupta.online` is where Pages serves the SPA. `localhost:5173` is Vite's dev
- * server and `localhost:3007` the Next app, so the flow can be exercised locally.
+ * Only the callback route may receive a token. Production accepts one exact URL;
+ * local callbacks are added only outside production.
  */
-const ALLOWED_ORIGINS = new Set([
-	"https://sagargupta.online",
-	"http://localhost:5173",
-	"http://localhost:3007",
+const PRODUCTION_REDIRECT = "https://sagargupta.online/kinfolk/auth/callback/github";
+const DEVELOPMENT_REDIRECTS = [
+	"http://localhost:5173/auth/callback/github",
+	"http://localhost:3007/auth/callback/github",
+];
+
+const ALLOWED_REDIRECTS = new Set([
+	PRODUCTION_REDIRECT,
+	...(process.env.NODE_ENV === "production" ? [] : DEVELOPMENT_REDIRECTS),
 ]);
 
 /**
  * The target if it is one of ours, else null.
  *
- * Compared by parsed ORIGIN, never by string prefix: `startsWith` would accept
- * `https://sagargupta.online.evil.example`, a different host that merely begins
- * with the right characters. A relative path is refused too -- the caller is on
- * another origin, so a bare path is either a mistake or an attempt to have this
- * route resolve it against its own host.
+ * Compared as a fully parsed URL, never by string prefix or origin alone. Origin-only
+ * validation would let an allowed host choose an arbitrary path to receive the token.
+ * A relative path is refused because the caller is on another origin.
  */
 export function allowedRedirect(value: string | null): string | null {
 	if (!value) return null;
@@ -48,10 +49,5 @@ export function allowedRedirect(value: string | null): string | null {
 		return null;
 	}
 
-	if (!ALLOWED_ORIGINS.has(url.origin)) return null;
-
-	// Any fragment the caller supplied is dropped, because one is about to be
-	// appended and two would make the token unparseable.
-	url.hash = "";
-	return url.toString();
+	return ALLOWED_REDIRECTS.has(url.href) ? url.href : null;
 }

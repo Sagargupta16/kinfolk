@@ -17,14 +17,27 @@ import { defineConfig } from "vite";
  * and database imports is that it can be reused exactly like this.
  */
 const isGitHubPages = process.env.GITHUB_PAGES === "true";
+const productionConnectSources = "'self' https://kinfolk-neon.vercel.app";
+const developmentConnectSources = `${productionConnectSources} http://localhost:3007 https://localhost:3007 ws://localhost:5173`;
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
 	// Pages serves this from /kinfolk/ under the custom domain, matching how
 	// /ledger-sync/ is served. Local dev is at the root, so a hardcoded base would
 	// make every asset URL wrong in exactly one of the two places.
 	base: isGitHubPages ? "/kinfolk/" : "/",
 
-	plugins: [react(), tailwindcss()],
+	plugins: [
+		{
+			name: "kinfolk-csp-connect-sources",
+			transformIndexHtml(html) {
+				const connectSources =
+					command === "build" ? productionConnectSources : developmentConnectSources;
+				return html.replace("__KINFOLK_CONNECT_SOURCES__", connectSources);
+			},
+		},
+		react(),
+		tailwindcss(),
+	],
 
 	server: {
 		/**
@@ -70,8 +83,8 @@ export default defineConfig({
 
 	build: {
 		outDir: "dist",
-		// Pages has no server, so a source map would publish readable source for a
-		// private repo. The trade is worse stack traces in production.
+		// Pages publishes only build output. Source maps stay off to avoid shipping
+		// readable implementation source and to keep the artifact small.
 		sourcemap: false,
 	},
-});
+}));

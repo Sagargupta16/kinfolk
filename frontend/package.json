@@ -1,8 +1,16 @@
 {
 	"name": "kinfolk-frontend",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"private": true,
 	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Sagargupta16/kinfolk.git"
+	},
+	"homepage": "https://sagargupta.online/kinfolk/",
+	"bugs": {
+		"url": "https://github.com/Sagargupta16/kinfolk/issues"
+	},
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",

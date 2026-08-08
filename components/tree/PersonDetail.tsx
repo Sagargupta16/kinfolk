@@ -33,12 +33,14 @@ import {
 	Pencil,
 	Phone,
 	Quote,
+	Unlink,
 	Users,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, useTransition } from "react";
 import type { ContactKind } from "@/lib/db/schema";
+import { deleteRelation } from "@/lib/tree/edit-actions";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { FamilyIndex, Relatives } from "@/lib/tree/relatives";
@@ -242,7 +244,12 @@ export function PersonDetail({
 							onGoTo={onGoTo}
 						/>
 
-						<Connections relations={relatives.relations} onGoTo={onGoTo} />
+						<Connections
+							relations={relatives.relations}
+							editableTreeIds={editableTreeIds}
+							onGoTo={onGoTo}
+							onSaved={onSaved}
+						/>
 						<Channels person={person} />
 						<Sources person={person} />
 					</div>
@@ -538,29 +545,86 @@ function PersonRow({
 
 function Connections({
 	relations,
+	editableTreeIds = [],
 	onGoTo,
+	onSaved,
 }: {
 	relations: Relatives["relations"];
+	editableTreeIds?: readonly string[];
 	onGoTo: (personId: string) => void;
+	onSaved?: () => void;
 }) {
+	const [error, setError] = useState<string | null>(null);
+	const [removingId, setRemovingId] = useState<string | null>(null);
+	const [pending, startTransition] = useTransition();
+	const editable = useMemo(() => new Set(editableTreeIds), [editableTreeIds]);
+
 	if (relations.length === 0) return null;
+
+	function remove(link: Relatives["relations"][number]) {
+		const name = displayName(link.person.primary);
+		const confirmed = window.confirm(
+			`Remove the “${link.label}” connection to ${name}? This removes only this connection. It does not remove either person or any parent, child, sibling, or partnership links.`,
+		);
+		if (!confirmed) return;
+
+		setError(null);
+		setRemovingId(link.relationId);
+		startTransition(async () => {
+			const form = new FormData();
+			form.set("relationId", link.relationId);
+			const result = await deleteRelation(form);
+			if (!result.ok) {
+				setError(result.error);
+				setRemovingId(null);
+				return;
+			}
+			setRemovingId(null);
+			onSaved?.();
+		});
+	}
 
 	return (
 		<Section title="Connections" Icon={Link2} count={relations.length}>
 			<ul className="space-y-0.5">
 				{relations.map((link) => (
-					<li key={`${link.person.id}:${link.kind}`}>
-						<PersonRow
-							person={link.person}
-							// The relation, read from THIS person's end -- see relatives.ts. "Over"
-							// is appended rather than the row being dropped: a former colleague is
-							// still a recorded fact about who somebody knew.
-							trailing={link.ended ? `${link.label}, over` : link.label}
-							onGoTo={onGoTo}
-						/>
+					<li key={link.relationId} className="flex items-center gap-1">
+						<div className="min-w-0 flex-1">
+							<PersonRow
+								person={link.person}
+								// The relation, read from THIS person's end -- see relatives.ts. "Over"
+								// is appended rather than the row being dropped: a former colleague is
+								// still a recorded fact about who somebody knew.
+								trailing={link.ended ? `${link.label}, over` : link.label}
+								onGoTo={onGoTo}
+							/>
+						</div>
+						{editable.has(link.relationTreeId) && (
+							<button
+								type="button"
+								onClick={() => remove(link)}
+								disabled={pending}
+								aria-label={`Remove ${link.label} connection to ${displayName(link.person.primary)}`}
+								title="Remove this connection only"
+								className={cn(
+									"flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint",
+									"transition-colors hover:bg-surface-raised hover:text-ink disabled:opacity-50",
+								)}
+							>
+								<Unlink aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
+								<span className="sr-only">
+									{removingId === link.relationId ? "Removing" : "Remove connection"}
+								</span>
+							</button>
+						)}
 					</li>
 				))}
 			</ul>
+			{error && (
+				<p role="alert" className="mt-2 rounded-md border border-accent-dim px-2.5 py-2 text-xs">
+					{error}
+				</p>
+			)}
 		</Section>
 	);
 }

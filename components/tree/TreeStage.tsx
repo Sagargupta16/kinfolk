@@ -420,7 +420,6 @@ export function TreeStage({
 			{editableTreeId && (
 				<div className="kf-editor-dock pointer-events-none absolute left-3 top-16 z-20 flex flex-col items-start gap-1.5">
 					<EditorPanel
-						treeId={editableTreeId}
 						people={pickable}
 						selectedId={picked?.id}
 						selectedName={picked?.name}

@@ -62,7 +62,6 @@ export type CompletedSignIn = {
 type SignInResponse = {
 	token?: unknown;
 	error?: unknown;
-	cause?: unknown;
 	isNewUser?: boolean;
 	user?: CompletedSignIn["user"];
 };
@@ -123,13 +122,7 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 			typeof body?.error === "string" && body.error.trim()
 				? body.error.trim()
 				: "Could not complete sign-in.";
-		const cause = typeof body?.cause === "string" && body.cause.trim() ? body.cause.trim() : null;
-
-		// `cause` is appended when the API sends one. Drizzle nests the real Postgres
-		// error there while `message` holds only the statement, so showing the message
-		// alone reports a symptom and withholds the diagnosis -- which cost a round of
-		// this exact investigation.
-		throw new Error(cause ? `${error} -- ${cause}` : error);
+		throw new Error(error);
 	}
 
 	const body = await readSignInResponse(response);
@@ -153,7 +146,7 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
  *
  * Keep the bearer token until the server confirms revocation. If the request fails,
  * retaining it lets the visitor retry instead of reporting success while a copied
- * token remains valid for the rest of its thirty-day lifetime. The endpoint is
+ * token remains valid for the rest of its seven-day lifetime. The endpoint is
  * idempotent, so retrying after a lost success response is safe.
  */
 export async function signOut(): Promise<void> {

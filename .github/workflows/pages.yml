@@ -9,9 +9,8 @@ name: Deploy the UI to Pages
 # it drifted -- which is what a duplicate always does. The app's own landing screen
 # is now the page, so there is nothing to keep in sync.
 #
-# The repository can stay private because Pages publishes only the BUILD OUTPUT.
-# Source is never uploaded, which is also why `sourcemap: false` matters in
-# vite.config.ts.
+# Pages publishes only the generated `frontend/dist` artifact. Repository source
+# and source maps are not included in that artifact.
 
 on:
   push:
@@ -114,9 +113,8 @@ jobs:
     permissions:
       # All THREE, because a job-level `permissions` block REPLACES the workflow
       # default rather than adding to it. Listing only the two Pages scopes dropped
-      # `contents: read`, and on a private repository checkout then failed with
-      # "fatal: repository not found" -- which reads like a wrong URL and is actually
-      # the token having no permission to see the repo at all.
+      # `contents: read`, and checkout then failed with "fatal: repository not found" --
+      # a message about token permissions rather than the repository URL.
       contents: read
       pages: write
       id-token: write
