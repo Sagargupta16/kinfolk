@@ -40,6 +40,8 @@ import { cn } from "@/lib/utils";
 import { QuickAddButton } from "./QuickAdd";
 
 export type PersonNodeData = FusedPerson & {
+	/** Marks the durable subject of navigation, distinct from hover and signed-in identity. */
+	isViewed?: boolean;
 	/** Highlights the viewer's own card. */
 	isSelf?: boolean;
 	/** How connected this person is; absent until density has run. */
@@ -184,22 +186,24 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					className={cn(
 						"kf-dot size-2.5 shrink-0 rounded-full border transition-transform",
 						"duration-(--duration-fast) ease-(--ease-spring) hover:scale-175",
-						data.isSelf
-							? "border-accent bg-accent ring-1 ring-accent ring-offset-2 ring-offset-canvas"
-							: person.living === "deceased"
-								? // Hollow, which is the distinction that survives at 3px: filled or not,
-									// rather than one hue against another.
-									"border-past bg-canvas"
-								: person.living === "unknown"
-									? "border-ink-faint bg-canvas"
-									: // Living is 93 of 117 dots, so it takes the NEUTRAL ink and the accent
-										// stays the only colour on the canvas. Filled green here made dots mode
-										// -- the view whose entire job is showing the shape of the family --
-										// into a green mass with one amber pixel in it, so the single landmark
-										// competed with the majority state. Same defect as the card rail and
-										// the minimap, and only a screenshot could show it.
-										"border-edge bg-edge",
-						selected && "ring-2 ring-accent ring-offset-2 ring-offset-canvas",
+						data.isViewed
+							? "border-accent bg-accent ring-2 ring-accent ring-offset-2 ring-offset-canvas"
+							: data.isSelf
+								? "border-accent-dim bg-accent-dim ring-1 ring-accent-dim ring-offset-2 ring-offset-canvas"
+								: person.living === "deceased"
+									? // Hollow, which is the distinction that survives at 3px: filled or not,
+										// rather than one hue against another.
+										"border-past bg-canvas"
+									: person.living === "unknown"
+										? "border-ink-faint bg-canvas"
+										: // Living is 93 of 117 dots, so it takes the NEUTRAL ink and the accent
+											// stays the only colour on the canvas. Filled green here made dots mode
+											// -- the view whose entire job is showing the shape of the family --
+											// into a green mass with one amber pixel in it, so the single landmark
+											// competed with the majority state. Same defect as the card rail and
+											// the minimap, and only a screenshot could show it.
+											"border-edge bg-edge",
+						selected && !data.isViewed && "ring-2 ring-accent ring-offset-2 ring-offset-canvas",
 					)}
 				/>
 				{/*
@@ -209,8 +213,12 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 				 */}
 				<span
 					className={cn(
-						"max-w-full truncate font-mono text-[0.5625rem] leading-none",
-						data.isSelf ? "text-accent-ink" : "text-ink-muted",
+						"kf-dot-label max-w-full truncate font-mono text-[0.5625rem] leading-none",
+						data.isViewed
+							? "font-semibold text-accent-ink"
+							: data.isSelf
+								? "text-accent-ink"
+								: "text-ink-muted",
 					)}
 				>
 					{firstName}
@@ -237,9 +245,14 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 		 * WRAPPER rather than the card: the controls sit outside the card's box.
 		 */
 		<div
-			className="group/node relative"
+			className={cn("group/node relative", data.isViewed && "kf-person-viewed")}
 			style={{ width: NODE_METRICS[lod].width, height: NODE_METRICS[lod].height }}
 		>
+			{data.isViewed && (
+				<span className="kf-viewing-flag" aria-hidden="true">
+					Viewing
+				</span>
+			)}
 			{spread > 0 && (
 				<div className="kf-presence" style={{ "--kf-spread": `${spread}px` } as CSSProperties} />
 			)}
@@ -262,10 +275,12 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 				ref={wash.ref}
 				onPointerMove={wash.onPointerMove}
 				className={cn(
-					"kf-card flex size-full flex-col overflow-hidden rounded-(--radius-node)",
+					"kf-card kf-index-card flex size-full flex-col overflow-hidden rounded-(--radius-node)",
 					"border bg-surface hover:-translate-y-0.5 hover:border-hairline-strong",
 					"hover:shadow-(--kf-shadow-card)",
-					selected ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]" : "border-hairline",
+					data.isViewed || selected
+						? "border-accent shadow-[0_0_0_1px_var(--color-accent)]"
+						: "border-hairline",
 					data.trust.conflicted && "kf-conflicted",
 				)}
 			>
@@ -290,7 +305,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 				 */}
 				<div
 					className={cn(
-						"h-0.5 w-full shrink-0",
+						"kf-index-card__status h-0.5 w-full shrink-0",
 						person.living === "deceased"
 							? "bg-past"
 							: person.living === "unknown"
@@ -299,12 +314,12 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					)}
 				/>
 
-				<div className="flex min-h-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-1">
+				<div className="kf-index-card__body flex min-h-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-1">
 					{/* The name line. Truncates, never wraps, and carries only CONDITIONAL marks. */}
 					<div className="flex items-center gap-1">
 						<span
 							className={cn(
-								"min-w-0 flex-1 truncate text-[0.9375rem] font-medium leading-tight",
+								"kf-index-card__name min-w-0 flex-1 truncate text-[0.9375rem] font-medium leading-tight",
 								data.isSelf ? "text-accent-ink" : "text-ink",
 							)}
 						>
@@ -337,7 +352,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					{compact ? (
 						/* One line, and the kinship term outranks the dates: it is the fact that
 						   cannot be recovered by looking at the picture. */
-						<span className="truncate font-mono text-[0.625rem] leading-tight text-ink-faint">
+						<span className="kf-index-card__compact truncate font-mono text-[0.625rem] leading-tight text-ink-faint">
 							{data.kinship?.label ?? dates}
 						</span>
 					) : (
@@ -345,7 +360,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 							{data.kinship && (
 								<span
 									className={cn(
-										"kf-relation font-mono text-[0.625rem] leading-tight",
+										"kf-relation kf-index-card__relation font-mono text-[0.625rem] leading-tight",
 										// An INFERRED kinship is drawn a step fainter than a proven one:
 										// `in_law` and `relation` are read off a partner's line or a stored
 										// relation rather than proven by the ancestor walk, the same
@@ -359,7 +374,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 								</span>
 							)}
 
-							<div className="flex items-center gap-1.5 text-ink-faint">
+							<div className="kf-index-card__meta flex items-center gap-1.5 text-ink-faint">
 								{/* On the metadata row, never the name line: this glyph is on EVERY card. */}
 								<sex.Icon className="size-2.5 shrink-0" strokeWidth={2} aria-label={sex.title} />
 								{dates && (
@@ -392,7 +407,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 			 */}
 			{data.onQuickAdd && (
 				<QuickAddButton
-					visible={Boolean(selected)}
+					visible={Boolean(data.isViewed || selected)}
 					// The whole FusedPerson, not `data.id`. The subject of a quick-add has to be a
 					// source row the viewer may write to, and the fused id is the smallest member id
 					// -- which on a merged person is the far family's row about half the time, so

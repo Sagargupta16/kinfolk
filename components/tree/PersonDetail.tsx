@@ -47,6 +47,7 @@ import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
 import { PersonEditSheet } from "./PersonEdit";
 import { PROVENANCE, SEX_MARKS } from "./PersonNode";
+import { useSheetMotion } from "./sheet-motion";
 
 /** Channel glyphs. Phone and WhatsApp share one, since both are "a number to ring". */
 const CHANNEL: Record<ContactKind, { Icon: typeof Phone; label: string }> = {
@@ -103,6 +104,7 @@ export function PersonDetail({
 	onCenter?: () => void;
 }) {
 	const titleId = useId();
+	const sheetMotion = useSheetMotion();
 	/**
 	 * Whether the edit form is showing, held here rather than in the canvas.
 	 *
@@ -150,12 +152,12 @@ export function PersonDetail({
 					aria-labelledby={titleId}
 					// Slides from the right on a pointer device, up from the bottom on a phone.
 					// One transform property either way, so it stays on the compositor.
-					initial={{ opacity: 0, x: "100%" }}
-					animate={{ opacity: 1, x: 0 }}
-					exit={{ opacity: 0, x: "100%" }}
+					initial={sheetMotion.closed}
+					animate={sheetMotion.open}
+					exit={sheetMotion.closed}
 					transition={{ type: "spring", stiffness: 320, damping: 34, mass: 0.9 }}
 					className={cn(
-						"kf-glass absolute z-40 flex flex-col overflow-hidden",
+						"kf-sheet kf-sheet--rail absolute z-40 flex flex-col overflow-hidden",
 						/*
 						 * Phone: a bottom sheet at 55dvh, not 70.
 						 *
@@ -275,7 +277,7 @@ function Header({
 	const provenance = PROVENANCE[person.trust.level];
 
 	return (
-		<div className="flex items-start gap-3 border-b border-hairline px-4 pb-3 pt-4">
+		<div className="kf-sheet-header flex items-start gap-3 border-b border-hairline px-4 pb-3 pt-4">
 			{/*
 			 * The avatar is INITIALS, not a photo, and that is a data decision rather than a
 			 * shortcut: `photoKey` points into object storage that has no signed-URL route
@@ -659,7 +661,7 @@ function Section({
 	children: React.ReactNode;
 }) {
 	return (
-		<section className="mt-4 first:mt-3">
+		<section className="kf-sheet-section mt-4 first:mt-3">
 			<h3 className="mb-1.5 flex items-center gap-1.5 font-mono text-[0.625rem] uppercase tracking-wider text-ink-faint">
 				<Icon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
 				{title}

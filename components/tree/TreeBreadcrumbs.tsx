@@ -38,13 +38,11 @@ export function TreeBreadcrumbs({
 	onGoTo: (personId: string) => void;
 	className?: string;
 }) {
-	// One entry is not a trail, it is a label -- and the canvas already highlights the
-	// selected card, so a single-item breadcrumb would be chrome restating the picture.
-	if (trail.length < 2) return null;
+	if (trail.length === 0) return null;
 
 	return (
 		<motion.nav
-			aria-label="Recently viewed"
+			aria-label="Current person and recently viewed"
 			initial={{ opacity: 0, y: -6 }}
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
@@ -53,11 +51,16 @@ export function TreeBreadcrumbs({
 				className,
 			)}
 		>
-			<History
-				className="mx-1 size-3 shrink-0 text-ink-faint"
-				strokeWidth={1.75}
-				aria-hidden="true"
-			/>
+			<span className="shrink-0 px-1 font-mono text-[0.5625rem] uppercase tracking-wider text-accent-ink">
+				Viewing
+			</span>
+			{trail.length > 1 && (
+				<History
+					className="mx-0.5 size-3 shrink-0 text-ink-faint"
+					strokeWidth={1.75}
+					aria-hidden="true"
+				/>
+			)}
 			<ol className="flex min-w-0 items-center gap-0.5">
 				{trail.map((person, index) => {
 					const current = index === trail.length - 1;

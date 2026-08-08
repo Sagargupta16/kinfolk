@@ -6,6 +6,86 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.3.0 -- 2026-08-08 (the archival field-desk redesign)
+
+A deliberately visible frontend release across both permanent hosts. The Next app
+and Vite SPA now share one archival field-desk language instead of presenting two
+similar but drifting landing pages, while the graph, authentication, API and storage
+boundaries remain unchanged.
+
+### Redesigned
+
+- Added a framework-neutral `BrandFrame` shared by the Next and Vite front doors.
+  Runtime-specific actions remain slots, so Next keeps server-action demo forms and
+  the Pages SPA keeps its browser OAuth flow without duplicating layout or copy.
+- Replaced the near-empty landing and sign-in surfaces with editorial folio framing,
+  warm-paper and deep-evergreen themes, a cross-reference vignette, shared privacy
+  ledger, serif display type, tactile controls and a responsive mobile hierarchy.
+- Reworked the tree workspace as a field desk: branded record masthead, compact
+  instrument-style command dock, stronger search and demo chrome, and opaque reading
+  sheets for detail, feed, editor, legend and sharing.
+- Rebuilt the shared pedigree around one durable viewed person. Partner-connected
+  people are packed into contiguous households on the same row, parent households rank
+  above their children, children descend below one shared junction, and contradictory
+  cycles still render without dropping people or changing graph facts.
+- Added an explicit amber `Viewing` ticket and history docket, distinct quieter `You`
+  identity treatment, and matching minimap/dot states. Search, feed and card travel now
+  choose the same durable subject, which survives Cards/Rows/Dots and Tree/Orbit
+  remounts and becomes the orbit centre and collapse anchor.
+- Structured arrangements no longer allow free node dragging, which could immediately
+  violate parent/child ranks and leave rails behind. The mobile viewing docket now has
+  a pointer-safe lane beside the command dock.
+- Person cards now read as index records with ruled-paper texture, inset keylines,
+  editorial names and separated metadata. Their outer `NODE_METRICS` dimensions are
+  unchanged, so React Flow, ELK, edge anchors and the minimap still agree.
+- Detail and feed surfaces now enter from the right as desktop rails and from the
+  bottom as mobile sheets. The mobile height remains 55dvh, touch targets remain at
+  least 44px, and the shared Escape stack is unchanged.
+
+### Preserved
+
+- Graph projection, stored facts, kinship, privacy, auth, API, server-action and
+  database behavior remain unchanged. Contact values still never reach canvas cards or
+  their accessible labels, and CSS-only focus/depth state still stays outside layout
+  inputs.
+- The layout rework changes only the rendered geometry after ELK: fixed
+  `NODE_METRICS`, edge facts, union semantics, edit permissions and schema contracts
+  remain intact.
+- The dual-host architecture remains permanent: Pages owns the Vite SPA at
+  `sagargupta.online/kinfolk`; Vercel owns the API, OAuth exchange, writes and Next
+  fallback at `kinfolk-neon.vercel.app`.
+
+### Verified
+
+- The final gate passes Biome formatting/lint, both strict TypeScript projects, the
+  Next production build and the Vite Pages build. Vite reports only the existing
+  mixed static/dynamic import and large-chunk advisories.
+- Fresh Next and Vite runs at 1440x900 and 375x812 in light and dark render 151 nodes
+  (117 people plus 34 junctions) and 150 family edges. Every parent card is above
+  every child card; Cards, Rows and Dots have zero person-card or junction overlaps
+  and zero sampled partner-path/card crossings; all 450 SVG paths are finite; and no
+  structured node is draggable.
+- Fixed card geometry remains 168x92; Rows remain 148x40 and Dots 56x34. Exactly one
+  accessible `Viewing` marker follows Russell Nichols through Cards -> Rows -> Dots
+  and Tree -> Orbit. Full SPA navigation remaps that same person from mine-only `m1`
+  to combined `c1` and back by source identity rather than losing focus to a fused id.
+  The current-person docket and minimap agree with that subject.
+- Deferred Orbit travel also succeeds when the target is absent from the old radial
+  layout: choosing Niklas Niska (`n15`) rebuilds the orbit around him, opens his detail
+  sheet and updates the docket only after the new layout contains him.
+- Desktop detail framing leaves the selected card beside the 22rem rail. At 375x812,
+  the sheet measures 446.59px (55dvh), keeps the viewed card above it, introduces no
+  horizontal overflow, and leaves search, the editable dock and viewing docket in
+  clear pointer lanes. The command dock is fully transparent and non-interactive while
+  a detail/feed sheet is open. Fresh console runs produced no warnings or errors.
+
+### Deployment boundary
+
+- Migration `0003_fearless_mongu.sql` is still committed but not claimed as applied.
+  The production GitHub Environment currently has no `DATABASE_URL` secret, so the
+  0.2.4 deployment skipped migrations. This visual release does not read or rewrite
+  production genealogy rows.
+
 ## 0.2.4 -- 2026-08-08 (the audit hardening rework)
 
 A comprehensive static and live audit of the graph, editor, both authentication

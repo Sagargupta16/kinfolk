@@ -27,14 +27,15 @@ import type { Box, PositionedNode } from "./layout";
  * provenance ticks and a closeness ring; the map gets the single distinction that
  * makes a shape navigable -- who you are, and who is still here.
  *
- *   self     -- the viewer, the one landmark on a canvas 10760px wide
+ *   viewed   -- the durable subject, the strongest landmark in the workspace
+ *   self     -- the signed-in viewer when they are looking at somebody else
  *   living   -- an explicit "living"
  *   past     -- an explicit "deceased"
  *   unsure   -- "unknown", which is a stored value and not a missing one
  *   junction -- a union dot: drawn, because a gap between two partners reads as a
  *               missing person at this scale
  */
-export type OverviewTone = "self" | "living" | "past" | "unsure" | "junction";
+export type OverviewTone = "viewed" | "self" | "living" | "past" | "unsure" | "junction";
 
 export type OverviewNode = {
 	id: string;
@@ -87,23 +88,28 @@ const MIN_RECT = 3;
  * the viewer's own row is one contributor to a merged person whose id is the smallest
  * member's, which is frequently somebody else's row.
  */
-export function overviewNodes(nodes: PositionedNode[], selfId?: string): OverviewNode[] {
+export function overviewNodes(
+	nodes: PositionedNode[],
+	selfId?: string,
+	viewedId?: string,
+): OverviewNode[] {
 	return nodes.map((node) => ({
 		id: node.id,
 		x: node.position.x,
 		y: node.position.y,
 		width: node.width,
 		height: node.height,
-		tone: toneOf(node, selfId),
+		tone: toneOf(node, selfId, viewedId),
 	}));
 }
 
-function toneOf(node: PositionedNode, selfId?: string): OverviewTone {
+function toneOf(node: PositionedNode, selfId?: string, viewedId?: string): OverviewTone {
 	if (node.type !== "person") return "junction";
 
 	const person = node.data as FusedPerson;
-	// The viewer wins over their own living status. They are the landmark, and a
-	// living relative beside them in the same green would hide it.
+	// The active subject wins over identity and living status: it is where every
+	// navigation surface says the viewer currently is.
+	if (viewedId && node.id === viewedId) return "viewed";
 	if (selfId && person.sources.some((source) => source.id === selfId)) return "self";
 
 	switch (person.primary.living) {

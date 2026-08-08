@@ -197,14 +197,14 @@ export function EditorPanel({
 	return (
 		<div
 			className={cn(
-				"pointer-events-auto flex w-[min(20rem,calc(100vw-1.5rem))] flex-col",
+				"kf-sheet kf-editor-sheet pointer-events-auto flex w-[min(20rem,calc(100vw-1.5rem))] flex-col",
 				// Opaque: these are 10px labels read against whatever cards sit behind, and a
 				// translucent surface puts a name through the middle of a field.
 				"max-h-[min(80vh,34rem)] overflow-hidden rounded-md border border-hairline-strong",
 				"bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
 			)}
 		>
-			<header className="flex shrink-0 items-center gap-2 border-b border-hairline px-3 py-2">
+			<header className="kf-sheet-header flex shrink-0 items-center gap-2 border-b border-hairline px-3 py-2">
 				<h2 className="min-w-0 flex-1 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-ink-faint">
 					{/*
 					 * Names the picked card, so the shortcut is visible rather than silent.
@@ -224,7 +224,7 @@ export function EditorPanel({
 					type="button"
 					onClick={() => setOpen(false)}
 					aria-label="Close the editor"
-					className="flex size-7 items-center justify-center rounded text-ink-faint transition-colors hover:text-ink"
+					className="flex size-11 items-center justify-center rounded text-ink-faint transition-colors hover:text-ink"
 				>
 					<X aria-hidden className="size-4" strokeWidth={1.5} />
 				</button>

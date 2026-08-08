@@ -2,7 +2,7 @@
 
 Local setup is [SETUP.md](SETUP.md). This is the production path.
 
-## Live state, 2026-08-07
+## Live state, 2026-08-08
 
 Fully configured. All five health probes pass.
 
@@ -11,6 +11,13 @@ Fully configured. All five health probes pass.
 | Static SPA, <https://sagargupta.online/kinfolk/> | **Live.** Built from `frontend/` and backed by the Vercel API. |
 | API and Next fallback, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree and authenticated API answer. |
 | Sign-in | **Configured.** `/api/auth/providers` returns 200 and reports the GitHub provider. |
+
+> **Migration status:** `0003_fearless_mongu.sql` is committed but was not applied by
+> the 0.2.4 deployment. The `production` GitHub Environment and Actions repository both
+> have no `DATABASE_URL` secret, so the workflow explicitly skipped migrations. Do not
+> copy a credential from Vercel or `.env.local`; add the direct Neon URL as the scoped
+> Environment secret, then run the migration workflow and complete-check it before
+> claiming production is current.
 
 `DATABASE_URL` is a manually configured encrypted Vercel variable pointing at the existing
 Neon project. The native integration was disconnected after it provisioned a separate empty
@@ -27,7 +34,10 @@ What was verified after the secrets landed, rather than assumed:
   redirect URI rather than rejecting it, which is the check that matters.
 - `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
   proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
-- `pnpm db:check-migrations --complete` reported the complete committed history applied.
+- Before migration `0003` was generated, `pnpm db:check-migrations --complete`
+  confirmed the then-committed history. The 0.2.4 workflow later skipped `0003`
+  because the production GitHub Environment has no `DATABASE_URL` secret; that
+  migration remains pending and must not be described as applied.
 - The live smoke scripts (`db:smoke`, `db:smoke:kin`) passed against the live branch and
   cleaned up after themselves; both were removed in the 0.2.0 rework.
 
@@ -76,7 +86,9 @@ workflow refuses to publish when it is missing or is not HTTPS.
 
 The Pages build sets `GITHUB_PAGES=true`, which makes Vite emit assets under `/kinfolk/`.
 The workflow also copies `index.html` to `404.html`, so direct links such as
-`/kinfolk/tree` return the SPA instead of a Pages 404.
+`/kinfolk/tree` render the SPA body. GitHub Pages still returns HTTP 404 for that
+fallback document; the client route works, but status probes must not mistake the
+intentional fallback status for a blank or broken page.
 
 Vercel remains at its own origin, and the Next app no longer reads a mount path at all --
 its base-path support was removed in the 0.2.0 rework. The Pages app calls it

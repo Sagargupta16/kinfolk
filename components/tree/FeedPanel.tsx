@@ -20,6 +20,7 @@ import { type FeedEvent, feedSection, relativeTime } from "@/lib/tree/feed";
 import type { Kinship } from "@/lib/tree/kinship";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
+import { useSheetMotion } from "./sheet-motion";
 
 const SECTIONS = ["This week", "This month", "Earlier"] as const;
 
@@ -44,6 +45,8 @@ export function FeedPanel({
 	onGoTo: (personId: string) => void;
 	onClose: () => void;
 }) {
+	const sheetMotion = useSheetMotion();
+
 	// Escape closes, coordinated with every other floating surface -- see escape.ts.
 	useEscapeClose(open, onClose);
 
@@ -72,18 +75,18 @@ export function FeedPanel({
 			{open && (
 				<motion.aside
 					aria-label="Family feed"
-					initial={{ opacity: 0, x: "100%" }}
-					animate={{ opacity: 1, x: 0 }}
-					exit={{ opacity: 0, x: "100%" }}
+					initial={sheetMotion.closed}
+					animate={sheetMotion.open}
+					exit={sheetMotion.closed}
 					transition={{ type: "spring", stiffness: 320, damping: 34, mass: 0.9 }}
 					className={cn(
-						"kf-glass absolute z-40 flex flex-col overflow-hidden",
+						"kf-sheet kf-sheet--rail absolute z-40 flex flex-col overflow-hidden",
 						// The detail panel's own geometry: sheet on a phone, rail on a desktop.
 						"inset-x-0 bottom-0 max-h-[55dvh] rounded-t-2xl",
 						"sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[22rem] sm:rounded-none sm:rounded-l-2xl",
 					)}
 				>
-					<header className="flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-3">
+					<header className="kf-sheet-header flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-3">
 						<div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent-ink">
 							<Activity className="size-4" strokeWidth={1.75} aria-hidden="true" />
 						</div>
@@ -138,7 +141,7 @@ export function FeedPanel({
 													onClick={() => onGoTo(event.personId)}
 													title={`Show ${event.name} on the tree`}
 													className={cn(
-														"flex min-h-12 w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left",
+														"kf-sheet-row flex min-h-12 w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left",
 														"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 														"hover:bg-surface-raised",
 													)}

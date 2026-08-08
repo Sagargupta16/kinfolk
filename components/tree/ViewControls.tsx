@@ -44,7 +44,10 @@ export function ViewControls({
 }) {
 	return (
 		<div className="flex items-center gap-1.5">
-			<fieldset aria-label="Arrangement" className="kf-glass flex overflow-hidden rounded-lg">
+			<fieldset
+				aria-label="Arrangement"
+				className="kf-command-group kf-glass flex overflow-hidden rounded-lg"
+			>
 				{MODES.map(({ value, label, hint, Icon }) => {
 					// Orbit with no focus would have nothing at its centre, so the control says so
 					// rather than switching to an empty canvas. Disabled here rather than hidden:
@@ -90,7 +93,7 @@ export function ViewControls({
 				aria-pressed={depth}
 				title={depth ? "Lay the cards flat" : "Tilt the cards into depth"}
 				className={cn(
-					"kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
+					"kf-command-button kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
 					"font-mono text-[0.625rem] uppercase tracking-wider",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					depth ? "text-accent-ink" : "text-ink-faint hover:text-ink",

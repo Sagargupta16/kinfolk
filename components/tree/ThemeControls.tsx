@@ -89,7 +89,7 @@ export function ThemeControls({ className }: { className?: string }) {
 	}, []);
 
 	return (
-		<div className={cn("flex items-center gap-1.5", className)}>
+		<div className={cn("kf-header-theme flex items-center gap-1.5", className)}>
 			{/*
 			 * A fieldset rather than role="radiogroup": the same semantics, carried by a
 			 * native element with no ARIA attribute to keep in sync. The label lives in
@@ -98,7 +98,7 @@ export function ThemeControls({ className }: { className?: string }) {
 			 */}
 			<fieldset
 				aria-label="Colour theme"
-				className="flex overflow-hidden rounded-lg border border-hairline bg-surface/80"
+				className="kf-command-group flex overflow-hidden rounded-lg border border-hairline bg-surface/80"
 			>
 				{CHOICES.map(({ value, label, Icon }) => (
 					<button
@@ -141,7 +141,7 @@ export function ThemeControls({ className }: { className?: string }) {
 				aria-pressed={motion}
 				title={motion ? "Motion on -- click to still the canvas" : "Motion off -- click to restore"}
 				className={cn(
-					"flex size-11 items-center justify-center rounded-lg border",
+					"kf-header-control flex size-11 items-center justify-center rounded-lg border",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					motion
 						? "border-hairline bg-surface/80 text-accent-ink hover:bg-surface-raised"

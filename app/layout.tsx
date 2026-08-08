@@ -25,8 +25,8 @@ export const viewport: Viewport = {
 	initialScale: 1,
 	/** Both, so the fixed toolbars stay on the right surface as the scheme changes. */
 	themeColor: [
-		{ media: "(prefers-color-scheme: dark)", color: "#0a0b0d" },
-		{ media: "(prefers-color-scheme: light)", color: "#fbfaf8" },
+		{ media: "(prefers-color-scheme: dark)", color: "#0d1512" },
+		{ media: "(prefers-color-scheme: light)", color: "#efe8d8" },
 	],
 };
 

@@ -143,7 +143,7 @@ export function TreeSearch({
 		<div className="relative w-full">
 			<div
 				className={cn(
-					"flex items-center gap-2 rounded-md border bg-surface/90 pl-2.5 pr-1 backdrop-blur-sm",
+					"kf-search-control flex items-center gap-2 rounded-md border bg-surface/90 pl-2.5 pr-1 backdrop-blur-sm",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					showList ? "border-hairline-strong" : "border-hairline",
 				)}
@@ -200,7 +200,7 @@ export function TreeSearch({
 					// viewport, and a listbox would promise a selection model that does not
 					// exist here.
 					className={cn(
-						"kf-glass absolute inset-x-0 top-[calc(100%+0.25rem)] z-20",
+						"kf-sheet absolute inset-x-0 top-[calc(100%+0.25rem)] z-20",
 						"overflow-hidden rounded-lg",
 					)}
 				>

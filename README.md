@@ -1,11 +1,13 @@
 # Kinfolk
 
-Collaborative family tree maker. Build your own branch, invite relatives, and see what the
-combined tree looks like once everyone's branch is stitched together.
+Collaborative family graph. Keep your own record, invite relatives, and join matching
+people without overwriting either family's account.
 
 **[sagargupta.online/kinfolk](https://sagargupta.online/kinfolk/)** -- the public SPA.
 **[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
 server-rendered fallback, with a sample tree you can explore without an account. Private repo.
+
+Current release: **0.3.0**, the shared archival field-desk redesign.
 
 ## Why this is not just a tree widget
 
@@ -26,6 +28,18 @@ It is also a contact graph, not only a pedigree. Anyone can be a node -- a frien
 colleague, a neighbour -- and a friendship carries no generation, so it must never reach
 the layout engine.
 
+## Interface
+
+Both hosts now use the same archival field-desk system: warm paper in light mode, deep
+evergreen in dark mode, editorial folio framing, index-card people, an instrument-like
+canvas dock, and opaque reading sheets. The public landing structure lives in
+`components/ui/BrandFrame.tsx`; authentication and demo actions remain host-specific
+slots, so sharing the design does not blur the Next/Vite runtime boundary.
+
+The visual rework deliberately leaves `NODE_METRICS`, ELK inputs, graph projection,
+privacy filtering, API contracts and auth unchanged. Contact values never appear on
+cards or in their accessible labels.
+
 ## Stack
 
 | Layer | Choice |
@@ -35,7 +49,7 @@ the layout engine.
 | Database | Neon Postgres via Drizzle |
 | Auth | Auth.js v5, GitHub OAuth |
 | Graph canvas | React Flow (`@xyflow/react`) with ELK layered layout |
-| Styling | Tailwind 4 |
+| Styling | Tailwind 4 with one shared archival field-desk token system |
 | Motion | Motion 13, for chrome only |
 | Tooling | pnpm, Biome |
 
@@ -137,9 +151,10 @@ Details in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Changes are in
 
 Working: the schema on a live Neon branch, fusion across trees, the layered pedigree with
 sibling bars and generation bands, an orbit arrangement, kinship terms on every card,
-reveal-on-focus relations, light and dark themes, expand and collapse, the detail panel,
-search, a census-driven legend, quick add by relationship, person editing, sign-in,
-sharing by invite, and demo mode.
+reveal-on-focus relations, archival light and dark themes, index-record person cards,
+expand and collapse, the detail panel and family feed as responsive reading sheets,
+search, an instrument-style command dock, a census-driven legend, quick add by
+relationship, person editing, sign-in, sharing by invite, and demo mode.
 
 Not built: merge-proposal UI, a contact editor form, a person delete form, and attaching
 an existing child to a partnership from the UI. Card avatars are initials rather than

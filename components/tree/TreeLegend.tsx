@@ -525,7 +525,7 @@ export function TreeLegend({
 				aria-controls={panelId}
 				title="What the marks mean"
 				className={cn(
-					"flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
+					"kf-command-button flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
 					"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider backdrop-blur-sm",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					open
@@ -555,7 +555,7 @@ export function TreeLegend({
 					 * the list turning into a pan of the tree underneath.
 					 */
 					className={cn(
-						"absolute right-0 top-[calc(100%+0.375rem)] w-[min(17rem,calc(100vw-1.5rem))]",
+						"kf-sheet absolute right-0 top-[calc(100%+0.375rem)] w-[min(17rem,calc(100vw-1.5rem))]",
 						"max-h-[min(60vh,30rem)] overflow-y-auto overscroll-contain rounded-md",
 						"border border-hairline-strong bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
 					)}

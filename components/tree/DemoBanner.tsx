@@ -12,7 +12,7 @@ import { exitDemo } from "@/lib/tree/demo-actions";
 
 export function DemoBanner() {
 	return (
-		<div className="flex shrink-0 items-center gap-2 border-b border-hairline bg-surface px-4 py-1.5 sm:gap-3 sm:px-6 sm:py-2">
+		<div className="kf-demo-banner flex shrink-0 items-center gap-2 border-b border-hairline bg-surface px-4 py-1.5 sm:gap-3 sm:px-6 sm:py-2">
 			<Eye aria-hidden className="size-3.5 shrink-0 text-accent" strokeWidth={1.5} />
 			{/* Truncates rather than wrapping. The full sentence is worth three lines
 			    on a desktop and zero on a phone, where the tree needs the room. */}
