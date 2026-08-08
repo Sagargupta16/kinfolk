@@ -7,7 +7,7 @@ Postgres, no accounts beyond Neon and GitHub.
 cp .env.example .env.local
 ```
 
-Then replace each `REPLACE_ME` using the steps below. Do all three sections
+Then fill in each value using the steps below. Do all three sections
 before starting the dev server: the app boots without them, but `/tree` can only
 show sample data until the database is reachable, and sign-in needs all four.
 
@@ -96,7 +96,7 @@ pnpm dev --port 3007
 - <http://localhost:3007> -- landing page
 - <http://localhost:3007/tree> -- your graph. Signing in for the first time
   creates a graph containing one node, you.
-- The **See a sample graph** button needs none of the above and is the fastest
+- The **See the sample graph** button needs none of the above and is the fastest
   way to check the canvas renders.
 
 ## Troubleshooting
