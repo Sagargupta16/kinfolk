@@ -73,7 +73,7 @@ The 0.3.0 release baseline also includes `pnpm build` and `pnpm --dir frontend b
 
 Neon project `kinfolk` (`steep-king-95741708`) in org `org-young-dawn-25789104`, `aws-ap-southeast-1`, Postgres 17 -- the same org and region as `prod/kalchar`. Created 2026-07-29 via the Composio Neon toolkit. Schema pushed with `pnpm db:push`: 12 tables, 10 enums, 29 indexes, 24 foreign keys.
 
-**Migration `0003_fearless_mongu.sql` remains pending in production.** The `production` GitHub Environment and Actions repository have no `DATABASE_URL` secret, so the 0.2.4 workflow reported: `DATABASE_URL is not set, so migrations were SKIPPED. Add the secret to the production environment to enable them.` Do not copy a credential from Vercel or `.env.local`, and do not describe the migration as applied until the workflow's complete check proves it.
+**Migration `0003_fearless_mongu.sql` is applied in production.** [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754) verified 3/4 committed migrations before `drizzle-kit migrate`, then complete-checked 4/4 and passed every public endpoint probe. The file is tracked schema history—not a database dump—and contains one `CREATE UNIQUE INDEX` for `people_claimed_user_idx`, with no genealogy rows or credentials. The `production` GitHub Environment now holds the scoped `DATABASE_URL`; never copy or print its value.
 
 ## Entry points
 

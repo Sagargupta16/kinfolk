@@ -79,12 +79,13 @@ boundaries remain unchanged.
   clear pointer lanes. The command dock is fully transparent and non-interactive while
   a detail/feed sheet is open. Fresh console runs produced no warnings or errors.
 
-### Deployment boundary
+### Deployment result
 
-- Migration `0003_fearless_mongu.sql` is still committed but not claimed as applied.
-  The production GitHub Environment currently has no `DATABASE_URL` secret, so the
-  0.2.4 deployment skipped migrations. This visual release does not read or rewrite
-  production genealogy rows.
+- Production [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754)
+  verified 3/4 committed migrations, applied `0003_fearless_mongu.sql`, then
+  complete-checked 4/4 before all public endpoint probes passed. The migration is one
+  schema statement creating the unique `people_claimed_user_idx`; it contains no
+  genealogy rows or credentials.
 
 ## 0.2.4 -- 2026-08-08 (the audit hardening rework)
 
