@@ -20,9 +20,9 @@
  *   3. Every write is a server action from lib/tree/edit-actions.ts. Nothing here decides
  *      what is allowed; it only reports what the server refused.
  */
-import { GitBranch, Link2, MoreHorizontal, Plus, UserPlus, X } from "lucide-react";
+import { GitBranch, Link2, MoreHorizontal, Plus, X } from "lucide-react";
 import { useEffect, useId, useState, useTransition } from "react";
-import { addPerson, addRelation, addUnion, type Result } from "@/lib/tree/edit-actions";
+import { addRelation, addUnion, type Result } from "@/lib/tree/edit-actions";
 import { kindsByCategory, RELATION_KINDS } from "@/lib/tree/relations";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
@@ -30,10 +30,9 @@ import { useEscapeClose } from "./escape";
 /** A person the pickers can offer. Names only -- see `editablePeople()`. */
 export type PickablePerson = { id: string; name: string };
 
-type Tab = "person" | "relation" | "partnership";
+type Tab = "relation" | "partnership";
 
 const TABS: { value: Tab; label: string; Icon: typeof Plus }[] = [
-	{ value: "person", label: "Person", Icon: UserPlus },
 	{ value: "relation", label: "Relation", Icon: Link2 },
 	{ value: "partnership", label: "Partners", Icon: Plus },
 ];
@@ -75,15 +74,12 @@ function Labelled({ text, children }: { text: string; children: (id: string) => 
 }
 
 export function EditorPanel({
-	treeId,
 	people,
 	/** The card most recently selected on the canvas, pre-filling the "from" side. */
 	selectedId,
 	selectedName,
 	onQuickAdd,
 }: {
-	/** The graph being edited. Absent in demo mode, where the panel is not rendered. */
-	treeId: string;
 	people: PickablePerson[];
 	selectedId?: string | null;
 	selectedName?: string | null;
@@ -91,8 +87,9 @@ export function EditorPanel({
 	onQuickAdd?: () => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const [tab, setTab] = useState<Tab>("person");
+	const [tab, setTab] = useState<Tab>("relation");
 	const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+	const [confirmAdditional, setConfirmAdditional] = useState(false);
 	const [pending, startTransition] = useTransition();
 
 	// The "from" person, seeded from the canvas selection but overridable: clicking a card
@@ -104,6 +101,7 @@ export function EditorPanel({
 		// person after the user had explicitly clicked the empty pane.
 		setFromId(selectedId ?? "");
 		setMessage(null);
+		setConfirmAdditional(false);
 	}, [selectedId]);
 
 	/**
@@ -118,6 +116,7 @@ export function EditorPanel({
 	    session's result. */
 	function openPanel() {
 		setMessage(null);
+		setConfirmAdditional(false);
 		setOpen(true);
 	}
 
@@ -131,66 +130,56 @@ export function EditorPanel({
 		};
 	}
 
+	function submitRelation(form: FormData) {
+		setMessage(null);
+		startTransition(async () => {
+			const result = await addRelation(form);
+			if (!result.ok && result.confirmation === "additional-relation") {
+				setConfirmAdditional(true);
+				setMessage({ ok: false, text: result.error });
+				return;
+			}
+			setConfirmAdditional(false);
+			setMessage(result.ok ? { ok: true, text: "Saved." } : { ok: false, text: result.error });
+		});
+	}
+
 	if (!open) {
-		if (selectedName && onQuickAdd) {
-			return (
-				<div className="pointer-events-auto flex max-w-[min(22rem,calc(100vw-1.5rem))] items-stretch gap-1.5">
-					<button
-						type="button"
-						onClick={onQuickAdd}
-						className={cn(
-							"flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-ink px-3.5 text-canvas",
-							"shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-transform",
-							"duration-(--duration-fast) ease-(--ease-out)",
-							"hover:-translate-y-px active:translate-y-0",
-						)}
-					>
-						<GitBranch aria-hidden className="size-4 shrink-0" strokeWidth={1.8} />
-						<span className="min-w-0 text-left">
-							<span className="block text-[0.8125rem] font-medium leading-tight">Add relative</span>
-							<span className="block truncate text-[0.625rem] leading-tight opacity-65">
-								to {selectedName}
-							</span>
-						</span>
-					</button>
-					<button
-						type="button"
-						onClick={openPanel}
-						aria-label="More ways to add or connect people"
-						title="More ways to add or connect people"
-						className={cn(
-							"kf-glass flex size-11 shrink-0 items-center justify-center rounded-lg",
-							"text-ink-faint transition-colors hover:text-ink",
-						)}
-					>
-						<MoreHorizontal aria-hidden className="size-4" strokeWidth={1.75} />
-					</button>
-				</div>
-			);
-		}
+		if (!selectedName || !onQuickAdd) return null;
 
 		return (
-			<button
-				type="button"
-				onClick={openPanel}
-				className={cn(
-					"pointer-events-auto flex min-h-11 items-center gap-2 rounded-md px-3.5",
-					// Solid ink on the canvas, unlike every other control up here.
-					//
-					// The rest of the chrome is a hairline on a translucent surface, which is
-					// correct for things that modify the VIEW -- they should recede behind the
-					// graph. This is the one control that changes the DATA, and a canvas with
-					// nothing on it needs the way in to be findable rather than tasteful. Ink
-					// rather than the accent: amber is spoken for by "you" and "this relation",
-					// and spending it here would cost it its meaning.
-					"bg-ink text-sm font-medium text-canvas shadow-[0_2px_8px_rgba(0,0,0,0.4)]",
-					"transition-transform duration-(--duration-fast) ease-(--ease-out)",
-					"hover:-translate-y-px active:translate-y-0",
-				)}
-			>
-				<Plus aria-hidden className="size-4 shrink-0" strokeWidth={2} />
-				Add person
-			</button>
+			<div className="pointer-events-auto flex max-w-[min(22rem,calc(100vw-1.5rem))] items-stretch gap-1.5">
+				<button
+					type="button"
+					onClick={onQuickAdd}
+					className={cn(
+						"flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-ink px-3.5 text-canvas",
+						"shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-transform",
+						"duration-(--duration-fast) ease-(--ease-out)",
+						"hover:-translate-y-px active:translate-y-0",
+					)}
+				>
+					<GitBranch aria-hidden className="size-4 shrink-0" strokeWidth={1.8} />
+					<span className="min-w-0 text-left">
+						<span className="block text-[0.8125rem] font-medium leading-tight">Add relative</span>
+						<span className="block truncate text-[0.625rem] leading-tight opacity-65">
+							to {selectedName}
+						</span>
+					</span>
+				</button>
+				<button
+					type="button"
+					onClick={openPanel}
+					aria-label="Connect existing people"
+					title="Connect existing people"
+					className={cn(
+						"kf-glass flex size-11 shrink-0 items-center justify-center rounded-lg",
+						"text-ink-faint transition-colors hover:text-ink",
+					)}
+				>
+					<MoreHorizontal aria-hidden className="size-4" strokeWidth={1.75} />
+				</button>
+			</div>
 		);
 	}
 
@@ -238,6 +227,7 @@ export function EditorPanel({
 						onClick={() => {
 							setTab(value);
 							setMessage(null);
+							setConfirmAdditional(false);
 						}}
 						aria-pressed={tab === value}
 						className={cn(
@@ -256,76 +246,17 @@ export function EditorPanel({
 			</fieldset>
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
-				{tab === "person" && (
-					<form action={submit(addPerson)} className="space-y-3">
-						<input type="hidden" name="treeId" value={treeId} />
-
-						<div className="grid grid-cols-2 gap-2">
-							<Labelled text="Given name">
-								{(id) => <input id={id} name="givenName" className={field} autoComplete="off" />}
-							</Labelled>
-							<Labelled text="Family name">
-								{(id) => <input id={id} name="familyName" className={field} autoComplete="off" />}
-							</Labelled>
-						</div>
-
-						<Labelled text="Sex">
-							{/* Defaults to unknown, and that is the honest default rather than a
-							    placeholder. It is a STORED value, so a guess outlives the guess --
-							    which is why nothing here infers it from the name. */}
-							{(id) => (
-								<select id={id} name="sex" className={field} defaultValue="unknown">
-									<option value="unknown">Not recorded</option>
-									<option value="female">Female</option>
-									<option value="male">Male</option>
-									<option value="other">Other</option>
-								</select>
-							)}
-						</Labelled>
-
-						<Labelled text="Living">
-							{(id) => (
-								<select id={id} name="living" className={field} defaultValue="unknown">
-									<option value="unknown">Not recorded</option>
-									<option value="living">Living</option>
-									<option value="deceased">Deceased</option>
-								</select>
-							)}
-						</Labelled>
-
-						<div className="grid grid-cols-2 gap-2">
-							<Labelled text="Born">
-								{(id) => <input id={id} type="date" name="birthDate" className={field} />}
-							</Labelled>
-							<Labelled text="Or roughly">
-								{/* The fuzzy column, because "about 1890" is a real genealogical
-								    answer and coercing it to a date invents a precision nobody has. */}
-								{(id) => (
-									<input
-										id={id}
-										name="birthDateApprox"
-										placeholder="about 1890"
-										className={field}
-										autoComplete="off"
-									/>
-								)}
-							</Labelled>
-						</div>
-
-						<Labelled text="Where they live">
-							{(id) => <input id={id} name="currentPlace" className={field} autoComplete="off" />}
-						</Labelled>
-
-						<Labelled text="Occupation">
-							{(id) => <input id={id} name="occupation" className={field} autoComplete="off" />}
-						</Labelled>
-
-						<Submit pending={pending} text="Add person" />
-					</form>
-				)}
-
 				{tab === "relation" && (
-					<form action={submit(addRelation)} className="space-y-3">
+					<form
+						action={submitRelation}
+						onChange={() => {
+							if (!confirmAdditional) return;
+							setConfirmAdditional(false);
+							setMessage(null);
+						}}
+						className="space-y-3"
+					>
+						{confirmAdditional && <input type="hidden" name="confirmAdditional" value="true" />}
 						<Labelled text="From">
 							{(id) => (
 								<PersonSelect
@@ -382,7 +313,10 @@ export function EditorPanel({
 							the other end.
 						</p>
 
-						<Submit pending={pending} text="Connect them" />
+						<Submit
+							pending={pending}
+							text={confirmAdditional ? "Confirm separate connection" : "Connect them"}
+						/>
 					</form>
 				)}
 

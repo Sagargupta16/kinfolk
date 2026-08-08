@@ -23,9 +23,7 @@ import { db } from "@/lib/db/client";
 import { accounts, sessions, users } from "@/lib/db/schema";
 import type { GitHubProfile } from "./oauth-github";
 import { claimInvites, provisionGraph } from "./provision";
-
-/** Thirty days, matching the Auth.js default so the two flows expire alike. */
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+import { SESSION_MAX_AGE_MS } from "./session-lifetime";
 
 export type SignInResult = {
 	token: string;
@@ -47,7 +45,7 @@ export async function signInWithGitHub(profile: GitHubProfile): Promise<SignInRe
 	await db.update(users).set({ githubLogin: profile.login }).where(eq(users.id, userId));
 
 	const token = crypto.randomUUID();
-	const expires = new Date(Date.now() + SESSION_TTL_MS);
+	const expires = new Date(Date.now() + SESSION_MAX_AGE_MS);
 	await db.insert(sessions).values({ sessionToken: token, userId, expires });
 
 	// Last, and both swallow their own failures. Provision on every sign-in so a

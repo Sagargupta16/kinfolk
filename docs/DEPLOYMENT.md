@@ -12,12 +12,18 @@ Fully configured. All five health probes pass.
 | API and Next fallback, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree and authenticated API answer. |
 | Sign-in | **Configured.** `/api/auth/providers` returns 200 and reports the GitHub provider. |
 
-> **Migration status:** current. Production
+> **Migration baseline:** Production
 > [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754)
 > verified 3/4 committed migrations, ran `drizzle-kit migrate`, then complete-checked
-> 4/4 before the endpoint verification passed. `0003_fearless_mongu.sql` is tracked
-> migration source, not a database dump: its only statement creates the unique
-> `people_claimed_user_idx`, and it contains no genealogy rows or credentials.
+> 4/4 before endpoint verification passed. Release 0.3.1 adds
+> `0004_dusty_karen_page.sql`, which contains only the atomic creation-budget table
+> and its cascading tree foreign key—no genealogy rows or credentials. The deploy
+> workflow applies every committed migration before its complete-history check.
+
+The 0.3.1 runtime temporarily falls back to the prior timestamp-count budget if the app
+promotion reaches production before migration `0004`; once the additive table exists,
+capacity is reserved by one conditional Postgres upsert so concurrent serverless instances
+cannot all pass together.
 
 `DATABASE_URL` is a manually configured encrypted Vercel variable pointing at the existing
 Neon project. The native integration was disconnected after it provisioned a separate empty

@@ -10,10 +10,9 @@
  * `Referer` -- and a code is a one-time credential until it is spent. A POST body is
  * none of those things.
  *
- * The failure messages are deliberately plain and DIFFERENT from each other. The
- * server-rendered flow answers every problem with `?error=Configuration`, which
- * cost real time to diagnose because a bad state, a spent code and a missing secret
- * were indistinguishable. Here they are not.
+ * Expected client errors are specific enough to recover from. Unexpected failures
+ * record only their non-sensitive stage and return one generic message so query text,
+ * provider details, and nested database causes never cross the trust boundary.
  */
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -70,11 +69,7 @@ export async function POST(request: NextRequest) {
 		);
 	}
 
-	// Which step we reached, so a 500 says WHERE it failed rather than only that it
-	// did. Three network-or-database stages sit inside one try, and from outside they
-	// are indistinguishable -- which is the same "generic error" problem the Auth.js
-	// `?error=Configuration` page has, reinvented one layer down. The value is echoed
-	// in the response because the alternative is asking somebody to fetch a log.
+	// Track the failing stage for server logs. It is never included in the response.
 	let stage = "exchange";
 
 	try {
@@ -108,35 +103,12 @@ export async function POST(request: NextRequest) {
 			},
 			{ headers: cors },
 		);
-	} catch (error) {
-		// The access token is never logged, and neither is the code.
-		console.error(`[oauth] callback failed at ${stage}`, error);
-
-		// The message reaches the browser, which is a deliberate trade. It names the
-		// stage and the thrown message -- never a token, a code or a connection string
-		// -- because the alternative is a visitor who can only report "it failed" and a
-		// maintainer who cannot get at the platform log. A misconfigured deployment is
-		// not a secret worth protecting at the cost of being undiagnosable.
-		// `cause` matters more than `message` here, and the last attempt proved it.
-		// Drizzle reports a failed query as "Failed query: select ..." with the real
-		// Postgres error nested in `cause` -- so echoing only the message named the
-		// STATEMENT while hiding the reason, which is the half that identifies the
-		// fault. A statement without its error is a symptom without a diagnosis.
-		const detail = error instanceof Error ? error.message : "unknown error";
-		const cause =
-			error instanceof Error && error.cause instanceof Error
-				? error.cause.message
-				: error instanceof Error && error.cause
-					? String(error.cause)
-					: null;
-
+	} catch {
+		// Keep credentials, profile data, SQL, and bound parameters out of platform logs.
+		// The stage is enough to route diagnosis without persisting request data.
+		console.error(`[oauth] callback failed at ${stage}`);
 		return NextResponse.json(
-			{
-				error: `could not complete sign-in (${stage}: ${detail})`,
-				// Separate field rather than concatenated: the statement is long, and a
-				// single string buries the one line worth reading.
-				cause,
-			},
+			{ error: "Could not complete sign-in. Try again." },
 			{ status: 500, headers: cors },
 		);
 	}

@@ -1,16 +1,10 @@
 # CLAUDE.md
 
-> This file stacks on top of the workspace root at `C:\Code\GitHub\`:
-> - Root [`CLAUDE.md`](../../CLAUDE.md) -- voice, rules, routing map, references, skills, slash commands, conventions.
-> - Root [`MEMORY.md`](../../MEMORY.md) -- live facts across repos.
-> - Root [`STATUS.md`](../../STATUS.md) -- live PR/CI/security dashboard.
-> - [`.claude/resources/`](../../.claude/resources/README.md) -- deep reference for collaboration, workflow, git, OSS, debugging, voice.
->
-> Read those first. The guidance below only adds **repo-specific context** -- it does not override anything in the root.
+Repository-specific guidance for Kinfolk. See [CONTRIBUTING.md](CONTRIBUTING.md) for the public development workflow.
 
 ## Project
 
-Kinfolk is a family tree maker where relatives each keep their own tree and then link them, so the combined graph shows how several families actually join up. Private repo, GitHub OAuth sign-in.
+Kinfolk is a family tree maker where relatives each keep their own tree and then link them, so the combined graph shows how several families actually join up. It uses GitHub OAuth sign-in.
 
 The distinguishing feature is the combined view: two people who have never met can both record the same grandparent, and Kinfolk merges those records without either side losing their own data.
 
@@ -24,29 +18,29 @@ It is also a contact graph, not only a pedigree. Anyone can be a node -- a frien
 - **Auth**: Auth.js v5 (`next-auth@5` beta), GitHub provider only, database sessions
 - **UI**: Tailwind 4 with one shared archival field-desk system, React Flow (`@xyflow/react`) canvas, ELK (`elkjs`) layout, Motion, lucide-react. `BrandFrame` shares public framing across Next and Vite without sharing runtime actions.
 - **Package manager**: pnpm
-- **Deploy target**: Vite SPA on GitHub Pages, with the API and server-rendered fallback on Vercel + Neon. Vercel is pinned to `sin1` in [vercel.json](vercel.json) beside the Neon project in `aws-ap-southeast-1`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- **Deploy target**: Vite SPA on GitHub Pages, with the API and server-rendered fallback on Vercel + Neon. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Deploy state, as of 2026-08-08
 
-Two deployments, and both are live. Sign-in and the sample tree are configured.
+Two deployments are live:
 
-- **The static SPA is live** at <https://sagargupta.online/kinfolk/> -- GitHub Pages builds `frontend/` via [.github/workflows/pages.yml](.github/workflows/pages.yml) and uploads only `frontend/dist`, never repository source or source maps. It shares the graph components and domain logic with Next, then calls the Vercel JSON API.
-- **The app IS live and sign-in IS configured** at <https://kinfolk-neon.vercel.app> (`kinfolk`, `prj_WwpV2fGZE8vTVuBKzudinnxOKXDl`, team `team_JRIGUjkX1bhNTJGczNcTgVRd`, `sin1`, Node 24). Verified 2026-08-06: `/demo` 307s to `/tree` with 151 nodes and 150 edges, `/api/auth/providers` returns 200 reporting a `callbackUrl` that matches the OAuth app exactly, GitHub ACCEPTS the redirect URI with PKCE `S256`, `/api/auth/session` returns `null` rather than an `AdapterError` (which is the proof the Drizzle adapter reached Postgres), and all 5 health probes pass.
-- **VERCEL'S NEON INTEGRATION PROVISIONS ITS OWN EMPTY DATABASE, which is not the project you pushed the schema to.** This was a live outage and took a long time to find, because every plausible theory was wrong and the symptom pointed away from the cause. Production answered `relation "sessions" does not exist` while the project in the org held 12 tables including that one -- same code, same driver, same query, different database. The integration's variables all carry one `storeId` (`store_0WcRS5ItymKB0aZj`) belonging to a Vercel-managed Neon project that does NOT appear in `NEON_RETRIEVE_PROJECTS_LIST` for the org, so it is invisible from the Neon side and easy to assume is the same database. Ruled out first, each with a live check: the SQL (runs green locally), the pooler (both hosts work), grants (one role, holding SELECT), `search_path` (identical on both hosts), and a second Neon project (only two exist, and `kinfolk` compute wakes on every request). The fix is to point `DATABASE_URL` at the project that HAS the data rather than pushing the schema into the managed store, because two databases means two schemas to keep in step and the next migration only reaches one.
-- **A 500 with an EMPTY BODY is what made that take several passes, and it was a defect in its own right.** Neither database call in [app/api/tree/route.ts](app/api/tree/route.ts) was wrapped, so an unhandled throw was indistinguishable from a crashed function. `drizzle`'s message holds only the STATEMENT while the real Postgres error sits in `error.cause`, so echoing the message reports a symptom and withholds the diagnosis -- the first instrumentation pass made exactly that mistake and had to be redone. Wrap a database call, mark the stage, and report `cause`. Do not rely on the platform log here: Vercel's log API returns an empty tail for this project and has timed out repeatedly, and a direct `curl` through a function timed out at six minutes.
-- **RESOLVED 2026-08-06: `DATABASE_URL` is now a plain encrypted variable pointing at the pooler host of `steep-king-95741708`, and the integration is disconnected.** The sequence that worked, in order, because two of the three steps look sufficient on their own and are not: disconnect the Neon integration in Vercel's Storage tab (until then the variable is an `integration-store-secret` that cannot be edited OR read, so there is nothing to fix in place), set `DATABASE_URL` by hand, then REDEPLOY -- an environment variable does not reach a running deployment. Verified live afterwards with a throwaway account: a read returns 200 with kinship, a write returns 200 and the row lands in Postgres, and a junk token returns 401 rather than a 500. The 401 is the tell that the fix landed: the query ran and found nothing, where before it could not run at all.
-- **The advice below is now WRONG for this project and is kept only as the reason it was tried.** Vercel provisions and rotates the credential inside the project, so it never passes through a terminal, a transcript or a third-party API -- which solves the problem that `NEON_GET_PROJECT_CONNECTION_URI` returns a live password inline. Storage -> Connect Database -> Neon. It also sets `POSTGRES_*`, `PG*` and `DATABASE_URL_UNPOOLED`; those are unused here and harmless, since this app reads only `DATABASE_URL`.
-- **The NEXT app cannot be statically exported; the separate Vite SPA is the solution.** `output: "export"` still fails on `/demo`, Auth.js and the server actions. `frontend/` instead calls the JSON API and performs a client-side OAuth exchange. Its bearer token lives in `sessionStorage`, not `localStorage`, so it dies with the tab; the Vercel fallback retains the stronger httpOnly-cookie flow.
-- **There is ONE deployment environment, production, and two settings enforce it.** `previewDeploymentsDisabled: true` on the Vercel project stops a branch or PR producing its own deployment, and `ignoreCommand` in [vercel.json](vercel.json) runs [scripts/vercel-ignore-build.sh](scripts/vercel-ignore-build.sh) so a commit touching only `docs/`, `drizzle/`, `.github/`, `.claude/` or markdown never builds at all. Measured on PR #11: one changed markdown file produced a full production-grade build AND a preview deployment, which on a Hobby plan is the single concurrent build slot spent on a file the runtime never reads. The ignore script's filter is a DENY list on purpose -- a new top-level directory builds until somebody decides otherwise, because a wrongly skipped deploy is a deployment that silently never happens, far worse than one wasted build. It also always builds when `VERCEL_ENV=production` and whenever it cannot diff (no `VERCEL_GIT_PREVIOUS_SHA`, or a shallow clone missing the parent).
-- **An OAuth client id is NOT a secret and is stored as `plain`.** RFC 6749 section 2.2 says so outright, and it appears in the authorize URL every user's browser visits, so marking it `sensitive` would imply a secrecy it does not have. The client SECRET is a different matter entirely.
-- **Never drive the last step of a sign-in to "prove" it works.** Entering real GitHub credentials mints a real session for a real account, which the workspace rules forbid. Reaching GitHub's login page with an ACCEPTED `redirect_uri` is the strongest honest assertion available, and provisioning was proven by a live smoke script (`pnpm db:smoke`, since removed) against the same database instead.
-- **Use `kinfolk-neon.vercel.app` and NOT the other two aliases, which is not a cosmetic choice.** Vercel assigned three. `kinfolk-sagargupta16s-projects.vercel.app` sits behind `ssoProtection: all_except_custom_domains` and 302s every request to `https://vercel.com/sso-api`, so a public visitor is sent to a login for an account they do not have -- and that redirect looks exactly like a broken deployment when probed. `kinfolk.vercel.app` belongs to an unrelated project entirely, which is the trap [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) already warned about and which once produced three green checks against a stranger's site.
-- **Linking the repo was a DASHBOARD action and could not be done through the API.** Before the GitHub App was installed, every route in was refused: `VERCEL_CREATE_PROJECT2` with `gitRepository` returned 400 "You need to add a Login Connection to your GitHub account first" in BOTH the personal and the team scope, `github-limited` failed identically, and `VERCEL_CREATE_NEW_DEPLOYMENT` with a `gitSource` returned `incorrect_git_source_info` even with the correct numeric repo id (`1314486182`). Once the App was installed by hand, that SAME `gitSource` call succeeded and built on the first attempt -- so the error never named its real cause. `VERCEL_CREATE_AUTH_TOKEN` does exist and would let the CLI deploy from local files, but using it means putting a live token on a command line or on disk, so it is not the route.
-- **`NEXT_PUBLIC_BASE_PATH` no longer exists; the Next app's mount-path support was removed in the 0.2.0 rework.** The variable existed so the app could live under a subpath on a shared domain, but the Vercel deployment gets its own hostname -- setting it there produced a redundant `/kinfolk` segment on a host with nothing else on it, so it was set at project creation, deliberately deleted, and finally the code stopped reading it altogether. The `/kinfolk` mount belongs to the Vite SPA on Pages, which handles it with Vite's own `base`.
-- **`AUTH_TRUST_HOST=true` is required on Vercel**, because Auth.js sits behind a proxy and will not trust the forwarded host without it. `AUTH_URL` must be the deployment origin with NO trailing slash and must match the GitHub OAuth app's callback exactly, or sign-in fails with `redirect_uri_mismatch`. Both are set (non-secret, so safe to set through the API).
-- **On VERCEL, `DATABASE_URL` is the POOLER host; only `drizzle-kit push` wants the direct one.** These are opposite requirements and easy to conflate. A serverless function opens a connection per invocation, which is what the pooler is for, while `push` opens a plain TCP connection the pooler will not serve -- and that command runs from a laptop, never from Vercel. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) is the authority; a session already gave the wrong one verbally.
-- **A secret may never be set through Composio.** `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` are typed into Vercel's dashboard by their owner. `environmentVariables` values are echoed in the API response, and pasting a live database credential through a third-party execution surface crosses a trust boundary the local shell does not. A Vercel auth token minted through Composio is returned INLINE in the response, so it lands in the transcript and must be revoked immediately (`VERCEL_DELETE_AUTH_TOKEN`) -- done once on 2026-08-05 and verified gone from the token list.
-- **Deleting `.next` while `pnpm dev` is running breaks the dev server, not the app.** It loses its own manifests and every route 500s with `ENOENT ... pages-manifest.json` plus `Cannot find module '../chunks/ssr/[turbopack]_runtime.js'`, which reads exactly like a broken route. Restart the server; do not debug the route. Cost one wrong-diagnosis pass after a production build was run alongside a live dev server.
+- The Vite SPA is served from <https://sagargupta.online/kinfolk/> by GitHub Pages.
+  Pages uploads only `frontend/dist`; source maps remain disabled.
+- The API, OAuth exchange, writes, and server-rendered fallback are served from
+  <https://kinfolk-neon.vercel.app>.
+- The Next app cannot be statically exported because Auth.js, route handlers, and server
+  actions require a server. The Vite SPA is the static front end and stores its bearer
+  token in `sessionStorage`; the Next fallback uses an httpOnly cookie.
+- Production uses one deployment environment. `scripts/vercel-ignore-build.sh` skips
+  documentation-only Vercel builds, while unknown paths build by default.
+- `AUTH_TRUST_HOST=true` is required behind Vercel's proxy. `AUTH_URL` must be the exact
+  deployment origin, and the GitHub OAuth callback must match it exactly.
+- Vercel uses the Neon pooler URL. Local Drizzle schema commands use a direct URL. Ordered
+  production schema changes go through committed migrations, never `db:push`.
+- Unexpected API failures log only a non-sensitive stage or operation; browser responses remain
+  generic, and error objects with SQL, bound values, or provider payloads are not persisted.
+- Set secrets only through the deployment provider's trusted secret interface. Never put
+  credentials in automation transcripts, commands, logs, issues, or repository files.
 
 ## Run
 
@@ -56,24 +50,30 @@ pnpm dev --port 3007
 pnpm build
 ```
 
-Preview via the Browser pane uses [`.claude/launch.json`](../../.claude/launch.json) at the **workspace root**, not this repo -- the tool only reads the root file.
-
 ## Test
 
 ```
-pnpm typecheck
 pnpm lint
+pnpm typecheck
+pnpm --dir frontend typecheck
+pnpm build
+pnpm --dir frontend build
+pnpm audit --audit-level=low
+pnpm audit --prod --audit-level=low
+git diff --check
 ```
 
-These two are the whole gate: the unit suite and the live smoke scripts (`scripts/smoke-db.mts`, `scripts/smoke-kin.mts`) were removed in the 0.2.0 rework, and the lessons they bought are kept in Gotchas, cited past tense.
-
-The 0.3.0 release baseline also includes `pnpm build` and `pnpm --dir frontend build`, plus live Next/Vite checks at 1440x900 and 375x812 in both schemes. The sample must keep 151 nodes (117 people and 34 unions), 150 family edges, zero parent-below-child violations, zero person-card or union/person overlaps, zero sampled partner-path/card crossings at every LOD, 450 finite SVG paths, exactly one durable viewed marker, fixed 168x92 / 148x40 / 56x34 LOD geometry, no draggable structured nodes, no horizontal overflow and no fresh console warnings/errors. The mobile detail rail is 55dvh; it must leave its subject, search, editable dock and current-person docket unobscured, while the command dock becomes transparent and non-interactive until the detail/feed sheet closes.
+The unit suite and live smoke scripts were removed in the 0.2.0 rework. For canvas
+changes, also verify the documented node/edge counts, geometry, mobile layout, and a
+clean browser console in both frontends.
 
 ## Database
 
-Neon project `kinfolk` (`steep-king-95741708`) in org `org-young-dawn-25789104`, `aws-ap-southeast-1`, Postgres 17 -- the same org and region as `prod/kalchar`. Created 2026-07-29 via the Composio Neon toolkit. Schema pushed with `pnpm db:push`: 12 tables, 10 enums, 29 indexes, 24 foreign keys.
+The production database runs Postgres 17. Schema changes are committed as ordered Drizzle migrations and applied by the deployment workflow.
 
-**Migration `0003_fearless_mongu.sql` is applied in production.** [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754) verified 3/4 committed migrations before `drizzle-kit migrate`, then complete-checked 4/4 and passed every public endpoint probe. The file is tracked schema history—not a database dump—and contains one `CREATE UNIQUE INDEX` for `people_claimed_user_idx`, with no genealogy rows or credentials. The `production` GitHub Environment now holds the scoped `DATABASE_URL`; never copy or print its value.
+**Migration `0003_fearless_mongu.sql` is applied in production.** [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754) verified 3/4 committed migrations before `drizzle-kit migrate`, then complete-checked 4/4 and passed every public endpoint probe. The file is tracked schema history—not a database dump—and contains one `CREATE UNIQUE INDEX` for `people_claimed_user_idx`, with no genealogy rows or credentials.
+
+Release 0.3.1 adds schema-only migration `0004_dusty_karen_page.sql`: one atomic creation-budget counter table and its cascading tree foreign key. It contains no family records or credentials. The runtime temporarily falls back to the previous timestamp count if application promotion wins the race with migration deployment.
 
 ## Entry points
 
@@ -97,7 +97,7 @@ Neon project `kinfolk` (`steep-king-95741708`) in org `org-young-dawn-25789104`,
 - [lib/tree/visibility.ts](lib/tree/visibility.ts) -- server-side contact filtering. Nothing else may decide what a viewer receives.
 - [lib/tree/authz.ts](lib/tree/authz.ts) -- who may WRITE. Separate from the read path on purpose; every mutation starts here.
 - [lib/tree/edit-actions.ts](lib/tree/edit-actions.ts) -- every write the editor can perform, as server actions
-- [components/tree/EditorPanel.tsx](components/tree/EditorPanel.tsx) -- the docked Add sheet: person, relation, partnership
+- [components/tree/EditorPanel.tsx](components/tree/EditorPanel.tsx) -- advanced existing-person relation and partnership tools; ordinary creation starts from a selected profile through Quick Add
 - [lib/tree/neighbourhood.ts](lib/tree/neighbourhood.ts) -- who lights up on hover, traversing through union dots
 - [lib/tree/relatives.ts](lib/tree/relatives.ts) -- one person's family in ROLES (parents, partners, children, siblings, relations), for the detail panel. Distinct from kinship.ts, which answers what somebody is to the VIEWER: open your grandmother's panel and it must list HER children, not yours.
 - [lib/tree/collapse.ts](lib/tree/collapse.ts) -- expand/collapse as REACHABILITY, not subtraction. A family tree is a DAG, so "the subtree below X" is not a set X owns.
@@ -260,8 +260,7 @@ Read this before adding a table or a query -- most "obvious" schema changes here
 - **Edge colour is semantic and scheme-specific.** `--color-edge` carries the family skeleton; `--color-edge-soft` carries relation fallback and legend samples. The skeleton rule is `.react-flow .react-flow__edge-path`, doubly qualified on purpose: React Flow's stylesheet is imported after globals.css, so a single-class rule loses on source order and silently falls back to the library default. Read the computed stroke from a real element in both themes whenever an override or token changes.
 - **The layout stack is elkjs + React Flow, and the alternatives were measured rather than assumed** (2026-07-29, versions live from the npm registry). Do not swap one in without re-running this: `family-chart` (3.5k weekly) and `relatives-tree` (2.1k) both require a binary `gender`/`Gender` on every node, so adopting either means corrupting a record whose `sexEnum` is `["female","male","other","unknown"]` and defaults to `"unknown"` -- and neither models non-family relations, which is half of what Kinfolk is. `d3-flextree` is a strict tree (one parent per node) and last published 2021-11-08; a family tree is a DAG. `d3-dag` 1.2.2 is the one real contender (DAG-native, variable node sizes, 56k weekly) but it is synchronous on the main thread with no edge routing, so it trades ELK's worker and port routing for nothing we lack. `sigma`, `cytoscape`, `g6` and `@cosmograph/cosmos` (still `2.0.0-beta.20`, 2024-12-19) are force-directed network renderers built for thousands of nodes, which is the opposite of a generation-banded pedigree. Already on the latest `elkjs` 0.12.0 and `@xyflow/react` 12.11.2.
 - **`react-tree-graph` was evaluated on 2026-07-29 and rejected, on the same grounds as `d3-flextree`.** Registry facts, not memory: 8.0.3, published 2025-01-13, 3.7k weekly, built on `d3-hierarchy` (pinned `^2.0.0`, a full major behind the current 3.1.2 from 2022). `d3-hierarchy` is "layout algorithms for visualizing HIERARCHICAL data" -- a strict tree, one parent per node. A Kinfolk graph is a DAG: a child belongs to two unions (birth and adoptive), parentage hangs off `unions` precisely so remarriages and half-siblings work, and half the product is non-family relations that carry no generation at all. Feeding that to a strict-tree layout means either dropping the second parent or duplicating the node. It also has no edge routing, no port model and no non-family edge concept, so it cannot express the sibling bar, the relation overlay, or `anchorFamilylessNodes()`. The name matches what Kinfolk looked like three commits ago; it does not match what the schema models.
-- **Never send this repo's content to an external LLM API.** It is private and the files carry family data shapes. The graphify run here is local-AST-only for exactly this reason (0 tokens, no key), and the Gemini semantic pass stays off. `graphify-out/` is gitignored.
-- Private repo, so no Renovate.
+- **Never send real user records, credentials, or private deployment data to an external LLM API.** Synthetic source and fixtures still need the same secret/PII review as any other outbound data.
 
 ## Demo mode
 
@@ -274,9 +273,9 @@ Sample data is reachable before auth exists, following the ledger-sync pattern: 
 
 ## Status
 
-Current version: 0.3.0, 2026-08-08. The shared archival field-desk redesign is recorded in [CHANGELOG.md](CHANGELOG.md), alongside the 0.2.0 rework (PR #31), the 0.2.1 screenshot audit plus 0.2.2 family feed and motion pass (PR #32), the 0.2.3 JSON-Date hotfix (PR #33), and the 0.2.4 audit hardening rework.
+Current version: 0.3.1, 2026-08-08. This release adds profile-first creation, precise connection removal, additional-relation confirmation, and public-release hardening. See [CHANGELOG.md](CHANGELOG.md).
 
-0.3.0 validation is complete: Biome formatting/lint, both strict TypeScript projects and both production builds pass. Live Next/Vite desktop/mobile/light/dark checks preserve the 151-node/150-edge graph and fixed LOD geometry, keep every parent above its children, produce no person/junction overlaps or sampled partner-path/card crossings, remap the viewed source across mine/combined navigation, defer Orbit travel until an omitted target exists, keep mobile active chrome clear with the command dock non-interactive behind reading sheets, and introduce no browser warnings, errors or horizontal overflow.
+0.3.1 validation requires Biome formatting/lint, both strict TypeScript projects, both production builds, dependency audits, and `git diff --check`.
 
 The visualisation layer was rewritten 2026-07-31, keeping the data model and every `lib/tree/` contract intact. What is new: light + dark + system themes on `[data-theme]` with a no-flash bootstrap (inline in Next, external under the SPA CSP) and a fresh contrast-scored token set; an in-app motion switch instead of `prefers-reduced-motion`; a person detail panel (side rail on a pointer device, bottom sheet on a phone) listing parents, partners with their union status, children, siblings, connections read from the subject's own end, channels-without-values and sources; DAG-safe expand/collapse in both directions with per-card hidden counts; a visited-history breadcrumb trail that rewinds rather than repeating; eleven keyboard shortcuts whose bindings and help sheet come from one array; and loading / error / alone / search-empty / offline states. `motion` (now v13) was added and is used for CHROME only -- the 117 cards and 150 edges stay CSS keyframes, because a JS animation re-renders a node and React Flow re-measures on render.
 
@@ -298,7 +297,7 @@ Two deploy rules worth stating outright. **`deploy.yml` runs `db:migrate`, never
 
 **`ci.yml` is inline rather than calling `Sagargupta16/shared-workflows`, and the shared workflow was improved instead of forced to fit.** At the time it lacked three things this repo needed -- a typecheck step, env for the build, and tests BEFORE the build. Rather than fork it, `node-ci.yml` gained `run-typecheck`, `tests-before-build` and a `build-env` secret on 2026-08-05, all defaulting to the old behaviour so the five repos already calling it are untouched (`code-arena`, `Contact-Manager-Mern`, `Financial-Dashboard`, `ledger-sync`, `orbit`). Kinfolk still does not call it: since the 0.2.0 rework its CI is one job -- lint, both typechecks, the Next build, the Vite Pages build, and the dead-Tailwind guard -- and that guard greps THIS repo's built CSS, so it would have to be an inline step anyway. Revisit only if a second repo needs the same guard. That repo runs actionlint in its own CI, which is the check that cannot be run locally here.
 
-The editor landed 2026-07-29: an Add sheet docked TOP-left (moved from bottom-left, where it sat beside React Flow's zoom stack in the corner a reader scans last) with three tabs (person, relation, partnership), backed by [lib/tree/edit-actions.ts](lib/tree/edit-actions.ts) and gated by [lib/tree/authz.ts](lib/tree/authz.ts). Verified live against Neon -- 10 authorization checks including "cannot edit another user's graph" and "cross-graph pair refused" -- plus in the browser that demo mode renders no Add button at all.
+The editor is profile-first: select a person and use **Add relative** for parents, partners, siblings, or children. The advanced sheet keeps only relation and partnership tools for connecting people who already exist. Non-structural connections can be removed individually from a profile without deleting either person or changing parentage.
 
 Sign-in works end to end as of 2026-07-29: the GitHub OAuth app exists, a real round trip completed, and sign-out is verified down to the session row being deleted from Postgres. Sharing by invite shipped alongside it (invite by email or GitHub username, 14-day expiry, `viewer` by default, claimed in the `signIn` event) with 10 live checks including viewer-cannot-edit and expired-invite-refused. There is no mail sender, so an invite returns its explanatory text for the inviter to pass on.
 

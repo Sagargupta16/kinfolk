@@ -5,9 +5,10 @@ people without overwriting either family's account.
 
 **[sagargupta.online/kinfolk](https://sagargupta.online/kinfolk/)** -- the public SPA.
 **[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
-server-rendered fallback, with a sample tree you can explore without an account. Private repo.
+server-rendered fallback, with a sample tree you can explore without an account.
 
-Current release: **0.3.0**, the shared archival field-desk redesign.
+Current release: **0.3.1**, with profile-first relative creation, precise connection
+removal, and public-release security hardening.
 
 ## Why this is not just a tree widget
 
@@ -36,9 +37,13 @@ canvas dock, and opaque reading sheets. The public landing structure lives in
 `components/ui/BrandFrame.tsx`; authentication and demo actions remain host-specific
 slots, so sharing the design does not blur the Next/Vite runtime boundary.
 
-The visual rework deliberately leaves `NODE_METRICS`, ELK inputs, graph projection,
-privacy filtering, API contracts and auth unchanged. Contact values never appear on
-cards or in their accessible labels.
+The editor is profile-first: select a person, then use **Add relative** to add a parent,
+partner, sibling, or child in context. The advanced menu connects people who already
+exist. If those people are already immediate family or already share another connection,
+Kinfolk requires a second confirmation. A connection can be removed from the person's
+**Connections** section without deleting either person or changing structural family links.
+
+Contact values never appear on cards or in their accessible labels.
 
 ## Stack
 
@@ -89,20 +94,16 @@ Full setup, click by click, is in [docs/SETUP.md](docs/SETUP.md).
 ## Test
 
 ```bash
-pnpm typecheck
-```
-
-```bash
 pnpm lint
+pnpm typecheck
+pnpm --dir frontend typecheck
+pnpm build
+pnpm --dir frontend build
 ```
 
-The unit suite and the live smoke scripts were removed in the 0.2.0 rework, so these two
-commands are the whole gate. Graph maths still lives in `lib/tree/` with no React or
-database imports -- while the suite existed it found two defects that were invisible on
-screen, because a person who vanishes from a canvas does not announce that they were
-dropped for the wrong reason. A live smoke script (since removed) caught the one defect
-nothing offline could: the Neon HTTP driver has no transaction support, so
-`db.transaction()` type-checks perfectly and throws at runtime.
+The unit suite and live smoke scripts were removed in the 0.2.0 rework. Graph maths
+still lives in `lib/tree/` without React or database imports so it can be tested without
+restructuring the application.
 
 ## Data model
 
@@ -116,7 +117,9 @@ Seven tables that matter, in `lib/db/schema.ts`:
 - `person_links` -- cross-tree identity assertions, consent-gated.
 - `contact_details` -- one row per channel per person, each with its own visibility.
 
-Plus `tree_members` and `tree_invites` for access grants and pending invitations.
+Plus `tree_members` and `tree_invites` for access grants and pending invitations. The
+auxiliary `people_creation_budgets` table stores only per-tree counters used to reserve
+creation capacity atomically; it contains no family records.
 
 Private by default: no `tree_members` row means no access. Contact values are filtered
 server-side and never reach the canvas, because a canvas gets screenshotted.
@@ -126,17 +129,12 @@ server-side and never reach the canvas, because a canvas gets screenshotted.
 GitHub Pages builds `frontend/` and serves the public SPA at
 [sagargupta.online/kinfolk](https://sagargupta.online/kinfolk/). It reuses the same graph
 components and domain code as the Next app, then calls the JSON API on Vercel. Pages uploads
-only `frontend/dist`, so the private source repository is not published.
+only the generated `frontend/dist` artifact, and production source maps are disabled.
 
 Vercel serves the API, OAuth exchange, database writes, and the server-rendered fallback at
 [kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/). The SPA keeps its bearer token
 in `sessionStorage`; the Vercel app keeps the stronger httpOnly-cookie flow available. This
 split is necessary because Pages cannot run Auth.js, query Neon, or execute server actions.
-
-Use that hostname, not the other aliases Vercel assigned:
-`kinfolk-sagargupta16s-projects.vercel.app` sits behind Vercel's SSO protection and
-redirects every visitor to a Vercel login, and `kinfolk.vercel.app` belongs to an
-unrelated project.
 
 Both the sample tree and GitHub sign-in work. `/api/auth/providers` returns 200, which is
 the canary for a fully configured deployment: it answers 200 only when `AUTH_SECRET` and
@@ -147,14 +145,27 @@ after it provisioned a separate empty database.
 Details in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Changes are in
 [CHANGELOG.md](CHANGELOG.md).
 
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow. Do not put real family
+records, credentials, environment files, database dumps, or local MCP configuration in a
+commit. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+No open-source license has been selected yet. Until a root `LICENSE` is added, copyright
+law reserves all rights; source availability does not grant permission to copy, modify, or
+redistribute the project.
+
 ## Status
 
 Working: the schema on a live Neon branch, fusion across trees, the layered pedigree with
 sibling bars and generation bands, an orbit arrangement, kinship terms on every card,
 reveal-on-focus relations, archival light and dark themes, index-record person cards,
 expand and collapse, the detail panel and family feed as responsive reading sheets,
-search, an instrument-style command dock, a census-driven legend, quick add by
-relationship, person editing, sign-in, sharing by invite, and demo mode.
+search, an instrument-style command dock, a census-driven legend, profile-first quick add by
+relationship, precise removal of non-structural connections, person editing, sign-in,
+sharing by invite, and demo mode.
 
 Not built: merge-proposal UI, a contact editor form, a person delete form, and attaching
 an existing child to a partnership from the UI. Card avatars are initials rather than

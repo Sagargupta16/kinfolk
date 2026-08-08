@@ -34,8 +34,9 @@ export async function GET(request: NextRequest) {
 		// caller asking about a graph they cannot see is refused inside it rather than
 		// here. This route decides nothing about permission.
 		return NextResponse.json(await shareState(treeId), { headers: cors });
-	} catch (error) {
-		console.error("[share] state failed", error);
+	} catch {
+		// Database errors may carry bound values; log the operation, not the object.
+		console.error("[share] state failed");
 		return NextResponse.json(
 			{ error: "could not read the sharing state" },
 			{ status: 500, headers: cors },

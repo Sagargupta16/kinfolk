@@ -6,6 +6,62 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.3.1 -- 2026-08-08 (profile-first editing and public-release hardening)
+
+### Changed
+
+- Removed standalone person creation from the general editor. New people now start from a
+  selected profile through **Add relative**, which records the role and family structure in
+  one flow. The advanced sheet remains for connecting people who already exist.
+- Added a deliberate second confirmation before recording another non-structural relation
+  between people who are already immediate family or already share a different relation.
+  An exact duplicate remains an idempotent success.
+- New Auth.js cookie sessions and SPA bearer sessions now expire after 7 days instead of
+  30. Existing database sessions retain their stored expiry until they end or the user
+  signs out.
+
+### Fixed
+
+- Added per-connection removal in a profile's **Connections** section. The graph projection
+  now carries the exact relation row and owning tree, the control appears only to an editor
+  of that tree, and its confirmation states that neither person nor any parent, child,
+  sibling, or partnership link will be changed.
+- Production CORS no longer trusts localhost, OAuth token delivery accepts only the exact
+  production callback path, and development callbacks exist only outside production.
+- Unexpected API and OAuth failures now return generic browser messages and log only a
+  non-sensitive stage or operation; SQL, bound values, profile payloads, and nested causes
+  are not persisted in platform logs.
+- Restored an atomic Postgres-backed per-tree creation budget and response security headers,
+  including CSP, clickjacking protection, MIME sniffing protection, a permissions policy,
+  a referrer policy, and production HSTS. Migration `0004_dusty_karen_page.sql` adds only
+  the counter table and its tree foreign key.
+
+### Repository
+
+- Added `SECURITY.md` and `CONTRIBUTING.md`, repository/homepage/issue metadata, sensitive
+  local-file and data-export ignore patterns, and public-safe deployment comments. Ad hoc
+  SQL files are ignored while ordered `drizzle/*.sql` migration source remains versioned.
+- Removed private-repository claims, local absolute paths, provider resource identifiers,
+  and stale operational details from current public-facing guidance. The separately merged
+  production record for migration `0003_fearless_mongu.sql` remains documented.
+- No open-source license has been selected. The repository remains all-rights-reserved and
+  must stay private until the owner chooses a license and resolves the known historical PII
+  exposure described by the release audit.
+
+### Verification
+
+- Biome formatting/lint, both strict TypeScript projects, the Next production build, the
+  GitHub Pages-mode Vite build, both full and production dependency audits, and
+  `git diff --check` pass. Both audits report no known vulnerabilities.
+- The built Pages artifact uses the `/kinfolk/` base, contains only the production API in
+  `connect-src`, has no unresolved CSP marker or source map, and passes the CI dead-Tailwind
+  guard. The Next production header set contains CSP, Permissions-Policy, Referrer-Policy,
+  nosniff, DENY framing, and HSTS with no localhost source.
+- Migration `0004_dusty_karen_page.sql` was generated from the schema and inspected: it
+  creates only `people_creation_budgets` and its cascading tree foreign key. Current-tree
+  secret and public-metadata scans found no live credential; ignored local environment,
+  MCP, and Claude settings remain untracked.
+
 ## 0.3.0 -- 2026-08-08 (the archival field-desk redesign)
 
 A deliberately visible frontend release across both permanent hosts. The Next app

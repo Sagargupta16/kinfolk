@@ -4,7 +4,7 @@
  * Who you are signed in as, and how to stop being.
  *
  * There was no sign-out anywhere in the app, which is worse than an inconvenience on a
- * shared computer: a database session lasts 30 days by default, so the only way out was
+ * shared computer: a database session remains valid for days, so the only way out was
  * clearing cookies by hand. It also meant nothing on screen said WHOSE graph you were
  * looking at, which matters here more than in most apps -- the whole product is several
  * people's records joined together.

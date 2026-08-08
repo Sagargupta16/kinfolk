@@ -1,8 +1,16 @@
 {
 	"name": "kinfolk",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"private": true,
 	"description": "Collaborative family tree maker: build your branch, connect it to relatives, see the combined tree",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Sagargupta16/kinfolk.git"
+	},
+	"homepage": "https://sagargupta.online/kinfolk/",
+	"bugs": {
+		"url": "https://github.com/Sagargupta16/kinfolk/issues"
+	},
 	"packageManager": "pnpm@11.10.0",
 	"engines": {
 		"node": ">=22"

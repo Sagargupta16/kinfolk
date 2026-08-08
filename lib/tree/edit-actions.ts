@@ -51,9 +51,12 @@ import {
 	ROLE_SEX,
 } from "./kin-plan";
 import { buildPersonPatch, oneOf } from "./person-patch";
+import { reservePeopleBudget } from "./rate-limit";
 import { canonicalPair, RELATION_KINDS } from "./relations";
 
-export type Result = { ok: true; id?: string } | { ok: false; error: string };
+export type Result =
+	| { ok: true; id?: string }
+	| { ok: false; error: string; confirmation?: "additional-relation" };
 
 /**
  * The signed-in user id, or a refusal.
@@ -131,6 +134,9 @@ export async function addPerson(form: FormData): Promise<Result> {
 		if (!sex.ok) return { ok: false, error: "Choose a valid gender." };
 		const living = oneOf(form.get("living"), livingStatusEnum.enumValues, "unknown");
 		if (!living.ok) return { ok: false, error: "Choose a valid living status." };
+
+		const budget = await reservePeopleBudget(treeId);
+		if (!budget.ok) return budget;
 
 		const [row] = await db
 			.insert(people)
@@ -265,6 +271,39 @@ export async function addRelation(form: FormData): Promise<Result> {
 		await assertCanEditTree(auth.userId, treeId);
 
 		const pair = canonicalPair(kind, personAId, personBId);
+		const existing = await db
+			.select({
+				id: personRelations.id,
+				personAId: personRelations.personAId,
+				personBId: personRelations.personBId,
+				kind: personRelations.kind,
+			})
+			.from(personRelations)
+			.where(
+				or(
+					and(eq(personRelations.personAId, personAId), eq(personRelations.personBId, personBId)),
+					and(eq(personRelations.personAId, personBId), eq(personRelations.personBId, personAId)),
+				),
+			);
+
+		const duplicate = existing.find(
+			(row) =>
+				row.personAId === pair.personAId && row.personBId === pair.personBId && row.kind === kind,
+		);
+		if (duplicate) return { ok: true, id: duplicate.id };
+
+		if (form.get("confirmAdditional") !== "true") {
+			const immediateFamily = await areImmediateFamily(personAId, personBId, treeId);
+			if (immediateFamily || existing.length > 0) {
+				return {
+					ok: false,
+					error:
+						"These people are already immediate family or have another recorded connection. Confirm that you want to add this separate connection too.",
+					confirmation: "additional-relation",
+				};
+			}
+		}
+
 		const closenessRaw = orNull(form.get("closeness"));
 		const closeness = closenessRaw ? Number(closenessRaw) : null;
 
@@ -319,6 +358,28 @@ export async function deleteRelation(form: FormData): Promise<Result> {
 	} catch (error) {
 		return refuse(error);
 	}
+}
+
+/** Whether two people already share an immediate structural family link. */
+async function areImmediateFamily(
+	personAId: string,
+	personBId: string,
+	treeId: string,
+): Promise<boolean> {
+	const [a, b] = await Promise.all([
+		familyShape(personAId, treeId),
+		familyShape(personBId, treeId),
+	]);
+
+	const includes = (union: FamilyShape["ownUnions"][number], personId: string) =>
+		union.partnerAId === personId || union.partnerBId === personId;
+
+	if (a.ownUnions.some((union) => includes(union, personBId))) return true;
+	if (a.parentUnions.some((union) => includes(union, personBId))) return true;
+	if (b.parentUnions.some((union) => includes(union, personAId))) return true;
+
+	const aParentUnions = new Set(a.parentUnions.map((union) => union.id));
+	return b.parentUnions.some((union) => aParentUnions.has(union.id));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -653,6 +714,9 @@ export async function addRelative(form: FormData): Promise<Result> {
 			}
 			unionStatus = postedStatus.value;
 		}
+
+		const budget = await reservePeopleBudget(treeId, plan.create.count);
+		if (!budget.ok) return budget;
 
 		let unionId: string | null = null;
 		if (plan.union.kind === "existing") {
