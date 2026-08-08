@@ -6,6 +6,106 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.2 -- 2026-08-08 (the family feed, and a motion pass)
+
+### Added
+
+- **The family feed**: the record as a stream, newest first, behind a FEED
+  toggle beside the legend. Rows read the way every feed does -- avatar, name,
+  verb, a right-aligned time -- and are scoped the way nothing on a feed is:
+  derived entirely from the nodes the viewer already received
+  (`lib/tree/feed.ts`), so it can never show a person the canvas would not.
+  Three event kinds fall out of timestamps the schema already carries: added to
+  the record (`createdAt`), record updated (`updatedAt`, floored so an insert
+  does not announce itself twice), and partnership recorded (a union's
+  `createdAt`). No events table, no migration, works in the demo and in both
+  frontends. Clicking a row travels to that person and opens their panel; the
+  feed waits underneath and returns when the panel closes. Grouped into "this
+  week / this month / earlier", capped at 80.
+- A DELIBERATE boundary, stated in the panel's own header: only people with
+  access see the feed. A PUBLIC discovery feed would be an opt-in per tree and
+  is not built -- it is a different privacy posture, not a missing feature.
+- **Sample data now has a believable timeline.** Every demo row carried the
+  same epoch timestamp, which would render the feed as one giant dump. Rows now
+  get deterministic moments hashed from their own ids (the demo rebuilds per
+  request, and a feed that reshuffles on reload reads as broken), spread over
+  seven months with a quarter of records touched again later.
+
+### Fixed
+
+- **Closing a panel after arriving from search could reopen it by itself.** The
+  travel request (`goTo`) was never acknowledged, so it sat in state forever
+  and any re-fire of the travel effect -- React Flow re-measuring during a
+  hover className rewrite is enough -- replayed the last navigation. Found the
+  first time a feed row was clicked, but reachable from search all along. The
+  canvas now reports the travel handled and the stage clears it, the same
+  contract quick-add already used.
+
+### Motion
+
+- The account menu settles in and out with a quick scale-fade instead of
+  popping; the feed panel slides on the detail panel's own spring; feed rows
+  cascade with a capped stagger so a long section arrives as a column, not a
+  minute of drizzle.
+- The sign-in page now enters with the landing page's stagger. The two screens
+  are one surface, and only one of them arriving with rhythm made the other
+  read as a fallback.
+- All of it chrome, none of it canvas: the 117 cards and 150 edges stay CSS,
+  because a JS animation re-renders a node and React Flow re-measures on
+  render. The in-app motion switch governs everything new.
+
+### Verified
+
+- Live against the dev server: the feed opens with 80 events across three
+  sections, rows carry kinship chips and relative times, clicking a row
+  travels, selects the card and opens the panel, one Escape closes it and the
+  feed returns; search-to-travel still works; consoles clean on fresh loads;
+  Biome, both typechecks and both production builds green.
+
+## 0.2.1 -- 2026-08-07 (a screenshot audit of every surface)
+
+A full UI sweep with a live browser -- landing, sign-in, the canvas at three
+detail levels, the detail panel, the legend, both themes, 1440px and 375px, and
+the SPA -- measuring rather than eyeballing. Three real defects and one
+under-sized control came out of it, all fixed and re-measured.
+
+### Fixed
+
+- **Five junction beads sat on people's faces.** The marriage-line placement put
+  a couple's bead at their midpoint, which is only clear space when the couple
+  is laid out adjacent -- with somebody between them (a remarriage chain, a
+  fused graph) the midpoint is the middle of that person's card, and union
+  nodes painted above cards. Measured: 5 of 34 beads. Two-part fix: the bead's
+  x is clamped to the nearest clear gutter between the partners
+  (`nearestClearPoint()` in layout.ts), and person cards now carry a higher
+  node z-index than junctions so a couple with NO clear gutter hides its bead
+  behind a card instead of wearing it. After: 0 of 34, with the marriage-line
+  geometry unchanged (68/68 flat, 82/82 drops from the bead centre, 0 NaN).
+- **Every right-edge control died while the detail panel was open.** The
+  desktop panel is a 22rem rail pinned to the same edge as the arrangement,
+  detail-level and legend controls, and it is deliberately non-modal -- so the
+  controls underneath it swallowed every click (proved by a click that timed
+  out, not by eye). The cluster now slides 22.75rem left while the panel is
+  open and slides back when it closes; on a phone the panel is a bottom sheet
+  and nothing moves.
+- **The overview map floated 152 bare dashes over the canvas.** No backdrop, so
+  in a busy corner it read as rendering garbage. It now sits on the same opaque
+  bordered surface as the legend.
+- **Icon-only toolbar buttons were 35px wide on a phone** (labels hide below
+  `sm`), under the 44px floor every other control on this canvas clears. Now
+  `min-w-11`.
+
+### Verified
+
+- Re-measured live after each fix, in the Next app and through the SPA: 0 beads
+  on cards, 0 NaN paths, marriage lines and child drops byte-identical to
+  before the clamp, the KEY/arrangement/detail controls clickable with the
+  panel open, clean consoles, and both production builds green.
+- Also checked and found healthy: landing and sign-in at both sizes and themes,
+  the mobile bottom sheet (55dvh, subject card visible), search, breadcrumbs,
+  fold controls, the fixed-frame minimap projection, and horizontal overflow
+  (none anywhere).
+
 ## 0.2.0 -- 2026-08-07 (leaner, redrawn, and staying on the ledger-sync shape)
 
 Three things happened in one release: the working surface got smaller (tests and

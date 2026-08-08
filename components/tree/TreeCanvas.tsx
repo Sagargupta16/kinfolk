@@ -264,6 +264,16 @@ type Props = {
 	 * searched has to bring you back, and a plain string would compare equal.
 	 */
 	goTo?: { id: string } | null;
+	/**
+	 * Acknowledge a handled travel, so the request cannot replay.
+	 *
+	 * Without this, `goTo` sits in state forever and ANY re-fire of the travel
+	 * effect -- `useNodesInitialized` flickering during a className rewrite is
+	 * enough -- replays the last navigation: close a panel after arriving from
+	 * search or the feed, and it reopens by itself. Same contract as
+	 * `onQuickAddHandled`.
+	 */
+	onGoToHandled?: () => void;
 	/** How connected each person is. Passed in because search ranks by it too. */
 	degree: Map<string, Degree>;
 	/** What each person is to the viewer. Computed server-side: it needs the whole graph. */
@@ -272,6 +282,8 @@ type Props = {
 	onFocusSearch?: () => void;
 	/** Called with the clicked person, so the editor can pre-fill its "from" field. */
 	onPick?: (person: { id: string; name: string } | null) => void;
+	/** Called with whether the detail panel is open, so the stage can move its chrome. */
+	onDetailOpenChange?: (open: boolean) => void;
 	/** Opens relationship-first add for a selected fused person. */
 	quickAddRequest?: { id: string; nonce: number } | null;
 	/** Clears the request after the canvas has resolved its editable source row. */
@@ -290,10 +302,12 @@ function Canvas({
 	canEdit = false,
 	editableTreeIds = [],
 	goTo,
+	onGoToHandled,
 	degree,
 	kinship,
 	onFocusSearch,
 	onPick,
+	onDetailOpenChange,
 	quickAddRequest,
 	onQuickAddHandled,
 }: Props) {
@@ -399,6 +413,13 @@ function Canvas({
 	const [pinnedId, setPinnedId] = useState<string | null>(null);
 	/** Whose detail panel is open. Separate from the pin: closing the panel keeps the pin. */
 	const [detailId, setDetailId] = useState<string | null>(null);
+
+	// Reported upward so the stage can slide its control cluster out from under the
+	// desktop panel: the panel is deliberately non-modal, and a control that cannot
+	// be clicked while it is open is a dead control, not a design.
+	useEffect(() => {
+		onDetailOpenChange?.(detailId !== null);
+	}, [detailId, onDetailOpenChange]);
 	const [trail, setTrail] = useState<string[]>([]);
 	const [helpOpen, setHelpOpen] = useState(false);
 	/**
@@ -765,6 +786,11 @@ function Canvas({
 						// Union dots are structural; dragging them would desync the layout from the
 						// data. Nothing is draggable by finger, so a swipe from anywhere pans.
 						draggable: node.type === "person" && !coarsePointer,
+						// Union beads paint BELOW the cards. The bead placement already aims for a
+						// clear gutter, but a fused graph can leave a couple with no gutter at all
+						// -- and a bead behind an opaque card is quiet, where a bead on somebody's
+						// face reads as a defect.
+						zIndex: node.type === "person" ? 2 : 1,
 						// The animation itself is CSS (see globals.css); React Flow owns the node's
 						// transform, so a JS-driven entrance would fight it.
 						// `kf-depth` tilts the CARD, never the pane: React Flow owns the wrapper's
@@ -1093,7 +1119,8 @@ function Canvas({
 	useEffect(() => {
 		if (!goTo || !measured) return;
 		travelTo(goTo.id, { openDetail: true });
-	}, [goTo, measured, travelTo]);
+		onGoToHandled?.();
+	}, [goTo, measured, travelTo, onGoToHandled]);
 
 	/**
 	 * Who lights up when somebody is focused. Traverses through union dots, so hovering a

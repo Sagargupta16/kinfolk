@@ -341,9 +341,77 @@ function placeUnionJunctions(
 		// their two rows rather than through either of them.
 		const railY = boxes.reduce((sum, box) => sum + box.y + box.height / 2, 0) / boxes.length;
 
-		dot.x = midX - dot.width / 2;
+		/*
+		 * The bead must land in a GUTTER, never on a card.
+		 *
+		 * The couple's midpoint is only clear space when the partners are adjacent.
+		 * With somebody laid out between them (a remarriage chain, a fused graph),
+		 * the midpoint is the middle of that person's card -- and union nodes paint
+		 * above cards, so the bead sat on a stranger's face. Measured on the sample
+		 * tree: 5 of 34 beads. So the x is clamped to the nearest clear point
+		 * between the partners; a couple with NO clear gutter keeps ELK's y in the
+		 * generation gap instead, which is the pre-marriage-line rendering and
+		 * always safe.
+		 */
+		const clearance = dot.width / 2 + 4;
+		const blockers: Array<{ start: number; end: number }> = [];
+		for (const node of nodes) {
+			if (node.type !== "person") continue;
+			const box = positions.get(node.id);
+			if (!box || railY < box.y || railY > box.y + box.height) continue;
+			blockers.push({ start: box.x - clearance, end: box.x + box.width + clearance });
+		}
+		const beadX = nearestClearPoint(midX, Math.min(...centres), Math.max(...centres), blockers);
+		if (beadX === null) {
+			dot.x = midX - dot.width / 2;
+			continue;
+		}
+
+		dot.x = beadX - dot.width / 2;
 		dot.y = railY - dot.height / 2;
 	}
+}
+
+/**
+ * The point nearest `target` inside [lo, hi] that no blocker covers, or null.
+ *
+ * Blockers are merged first, so two touching cards read as one wall rather than
+ * as a zero-width gap between them. The partners' own cards are always blockers
+ * (their centres are inside them), which is what pushes the answer into the
+ * gutter between the couple instead of onto either of them.
+ */
+function nearestClearPoint(
+	target: number,
+	lo: number,
+	hi: number,
+	blockers: Array<{ start: number; end: number }>,
+): number | null {
+	const sorted = [...blockers].sort((a, b) => a.start - b.start);
+	const merged: Array<{ start: number; end: number }> = [];
+	for (const blocker of sorted) {
+		const last = merged[merged.length - 1];
+		if (last && blocker.start <= last.end) last.end = Math.max(last.end, blocker.end);
+		else merged.push({ ...blocker });
+	}
+
+	const gaps: Array<{ start: number; end: number }> = [];
+	let cursor = lo;
+	for (const wall of merged) {
+		if (wall.end <= lo) continue;
+		if (wall.start >= hi) break;
+		if (wall.start > cursor) gaps.push({ start: cursor, end: Math.min(wall.start, hi) });
+		cursor = Math.max(cursor, wall.end);
+		if (cursor >= hi) break;
+	}
+	if (cursor < hi) gaps.push({ start: cursor, end: hi });
+
+	let best: number | null = null;
+	for (const gap of gaps) {
+		if (gap.end - gap.start < 1) continue;
+		const point = Math.min(Math.max(target, gap.start), gap.end);
+		if (best === null || Math.abs(point - target) < Math.abs(best - target)) best = point;
+	}
+	return best;
 }
 
 /**

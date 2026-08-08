@@ -60,7 +60,7 @@ export function ViewControls({
 							aria-pressed={mode === value}
 							title={unavailable ? "Select a person first, then orbit around them" : hint}
 							className={cn(
-								"flex min-h-11 items-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
+								"flex min-h-11 min-w-11 items-center justify-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
 								"font-mono text-[0.625rem] uppercase tracking-wider",
 								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 								mode === value
@@ -90,7 +90,7 @@ export function ViewControls({
 				aria-pressed={depth}
 				title={depth ? "Lay the cards flat" : "Tilt the cards into depth"}
 				className={cn(
-					"kf-glass flex min-h-11 items-center gap-1.5 rounded-lg px-2.5",
+					"kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
 					"font-mono text-[0.625rem] uppercase tracking-wider",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					depth ? "text-accent-ink" : "text-ink-faint hover:text-ink",

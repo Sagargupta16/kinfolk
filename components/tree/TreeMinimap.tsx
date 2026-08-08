@@ -198,26 +198,34 @@ export function TreeMinimap({ nodes, extent }: { nodes: OverviewNode[]; extent: 
 	return (
 		<div className="pointer-events-auto flex flex-col items-end gap-1.5">
 			{open && (
-				<svg
-					ref={svgRef}
-					width={OVERVIEW_WIDTH}
-					height={height}
-					viewBox={`0 0 ${OVERVIEW_WIDTH} ${height}`}
-					className="kf-overview"
-					onPointerDown={travel}
-					// Dragging keeps aiming, so a viewer can sweep along a generation and watch
-					// the canvas follow. Keyed on `buttons` rather than a captured flag: a
-					// pointerup outside the panel would leave a boolean stuck on.
-					onPointerMove={(event) => {
-						if (event.buttons === 1) travel(event);
-					}}
-					role="img"
-					aria-label="Overview of the whole graph. Click to travel there."
-				>
-					<title>Overview of the whole graph. Click to travel there.</title>
-					<OverviewShapes nodes={nodes} extent={extent} height={height} />
-					<ViewportRect extent={extent} height={height} />
-				</svg>
+				/*
+				 * An OPAQUE panel, like the legend. The svg alone floated its 152 dashes
+				 * directly over whatever cards happened to be in the corner, which read as
+				 * rendering garbage rather than as an overview -- the map only works as a
+				 * reference if it owns its own quiet surface.
+				 */
+				<div className="rounded-lg border border-hairline-strong bg-surface p-1 shadow-(--kf-shadow-panel)">
+					<svg
+						ref={svgRef}
+						width={OVERVIEW_WIDTH}
+						height={height}
+						viewBox={`0 0 ${OVERVIEW_WIDTH} ${height}`}
+						className="kf-overview block"
+						onPointerDown={travel}
+						// Dragging keeps aiming, so a viewer can sweep along a generation and watch
+						// the canvas follow. Keyed on `buttons` rather than a captured flag: a
+						// pointerup outside the panel would leave a boolean stuck on.
+						onPointerMove={(event) => {
+							if (event.buttons === 1) travel(event);
+						}}
+						role="img"
+						aria-label="Overview of the whole graph. Click to travel there."
+					>
+						<title>Overview of the whole graph. Click to travel there.</title>
+						<OverviewShapes nodes={nodes} extent={extent} height={height} />
+						<ViewportRect extent={extent} height={height} />
+					</svg>
+				</div>
 			)}
 
 			<button

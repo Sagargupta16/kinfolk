@@ -14,15 +14,17 @@
  * button group displays it, so the two have to read one value. The canvas is handed the
  * value and a setter.
  */
-import { Rows3, Square, SquareDot } from "lucide-react";
+import { Activity, Rows3, Square, SquareDot } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
+import { familyFeed } from "@/lib/tree/feed";
 import { displayName, type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 import { EditorPanel, type PickablePerson } from "./EditorPanel";
+import { FeedPanel } from "./FeedPanel";
 import { TreeCanvas } from "./TreeCanvas";
 import { TreeLegend } from "./TreeLegend";
 import { TreeSearch } from "./TreeSearch";
@@ -105,6 +107,29 @@ export function TreeStage({
 	const [goTo, setGoTo] = useState<{ id: string } | null>(null);
 	const onGoTo = useCallback((id: string) => setGoTo({ id }), []);
 
+	/**
+	 * Whether the person detail panel is open, reported by the canvas.
+	 *
+	 * On a desktop that panel is a full-height 22rem rail pinned to the RIGHT -- the
+	 * same edge this stage parks the arrangement, detail and legend controls on. The
+	 * panel is deliberately non-modal, so leaving the controls underneath it made
+	 * them dead while it was open (measured: every click landed on the panel). They
+	 * slide left instead of stacking above it, because chrome floating OVER a panel
+	 * of text is noise, and a control that moved aside is still where the eye saw it
+	 * go.
+	 */
+	const [detailOpen, setDetailOpen] = useState(false);
+
+	/**
+	 * The family feed: the record as a stream, derived from the nodes already in
+	 * memory (see lib/tree/feed.ts). It shares the detail panel's rail, so the two
+	 * are mutually exclusive by construction -- opening a person closes the feed
+	 * rather than stacking two sheets of glass on one edge.
+	 */
+	const [feedOpen, setFeedOpen] = useState(false);
+	const feedEvents = useMemo(() => familyFeed(nodes), [nodes]);
+	const feedVisible = feedOpen && !detailOpen;
+
 	/*
 	 * Computed here rather than in each consumer: the canvas draws presence rings from it
 	 * and search ranks namesakes by it, and doing it twice over 151 nodes on every render
@@ -143,11 +168,13 @@ export function TreeStage({
 				// names several, and `editTarget` cannot then be the thing that gets it wrong.
 				editableTreeIds={editableTreeId ? [editableTreeId] : []}
 				goTo={goTo}
+				onGoToHandled={() => setGoTo(null)}
 				degree={degree}
 				kinship={kinship}
 				showRelations={showRelations}
 				onFocusSearch={onFocusSearch}
 				onPick={setPicked}
+				onDetailOpenChange={setDetailOpen}
 				quickAddRequest={quickAddRequest}
 				onQuickAddHandled={() => setQuickAddRequest(null)}
 			/>
@@ -167,8 +194,16 @@ export function TreeStage({
 
 			{/* Top-right: React Flow puts its own zoom controls bottom-left, and the two must
 			    not share an edge on a phone. z-30 beats the search dropdown's z-20 -- both can
-			    be open at once on a phone, and the one just clicked has to be on top. */}
-			<div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5">
+			    be open at once on a phone, and the one just clicked has to be on top. Slides
+			    left when the desktop detail panel opens, since the panel owns this edge then;
+			    on a phone the panel is a bottom sheet and nothing needs to move. */}
+			<div
+				className={cn(
+					"absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5",
+					"transition-transform duration-(--duration-base) ease-(--ease-out)",
+					(detailOpen || feedVisible) && "sm:-translate-x-[22.75rem]",
+				)}
+			>
 				{/* Arrangement first, because it changes what the detail control is describing:
 				    "cards / rows / dots" applies to either view, but the reader picks the shape
 				    before they pick how much of each person to draw.
@@ -196,8 +231,9 @@ export function TreeStage({
 							aria-pressed={lod === value}
 							title={hint}
 							className={cn(
-								// 44px tall: this is a primary control on a touch screen.
-								"flex min-h-11 items-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
+								// 44px tall AND wide: this is a primary control on a touch screen, and
+								// below `sm` the label is hidden so the icon alone carried only 35px.
+								"flex min-h-11 min-w-11 items-center justify-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
 								"font-mono text-[0.625rem] uppercase tracking-wider",
 								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 								lod === value
@@ -220,6 +256,28 @@ export function TreeStage({
 				    with the detail level, since a dot encodes living/dead in its fill where a
 				    card uses the rail. */}
 				<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} />
+
+				{/*
+				 * The feed toggle, at the bottom of the cluster: it opens a reading surface
+				 * rather than changing the canvas, so it sits below the controls that do.
+				 */}
+				<button
+					type="button"
+					onClick={() => setFeedOpen((current) => !current)}
+					aria-pressed={feedVisible}
+					title={
+						feedVisible ? "Close the family feed" : "What changed in this record, newest first"
+					}
+					className={cn(
+						"kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
+						"font-mono text-[0.625rem] uppercase tracking-wider",
+						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
+						feedVisible ? "text-accent" : "text-ink-faint hover:text-ink",
+					)}
+				>
+					<Activity aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
+					Feed
+				</button>
 			</div>
 
 			{/*
@@ -246,6 +304,19 @@ export function TreeStage({
 					/>
 				</div>
 			)}
+
+			{/*
+			 * The feed rail. Travelling from a row opens that person's detail panel,
+			 * which takes over the rail; closing it returns to the feed, because
+			 * `feedOpen` survives underneath. Browse, peek, come back.
+			 */}
+			<FeedPanel
+				open={feedVisible}
+				events={feedEvents}
+				kinship={kinship}
+				onGoTo={onGoTo}
+				onClose={() => setFeedOpen(false)}
+			/>
 		</div>
 	);
 }
