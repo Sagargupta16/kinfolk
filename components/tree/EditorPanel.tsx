@@ -25,6 +25,7 @@ import { useEffect, useId, useState, useTransition } from "react";
 import { addPerson, addRelation, addUnion, type Result } from "@/lib/tree/edit-actions";
 import { kindsByCategory, RELATION_KINDS } from "@/lib/tree/relations";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 
 /** A person the pickers can offer. Names only -- see `editablePeople()`. */
 export type PickablePerson = { id: string; name: string };
@@ -55,16 +56,20 @@ const field = cn(
 
 const label = "mb-1 block font-mono text-[0.625rem] uppercase tracking-wider text-ink-faint";
 
-function Labelled({ text, children }: { text: string; children: React.ReactNode }) {
+/**
+ * One labelled field. The control is a render prop handed the generated id, because
+ * `htmlFor` must point at the CONTROL element: the previous shape wrapped children in
+ * a `<div id>`, which satisfies no association at all -- clicking any label focused
+ * nothing, on every field in this panel.
+ */
+function Labelled({ text, children }: { text: string; children: (id: string) => React.ReactNode }) {
 	const id = useId();
 	return (
 		<div>
-			{/* The label wraps its control, so the association needs no matching id pair --
-			    one less thing to get wrong than htmlFor plus id on every field. */}
 			<label className={label} htmlFor={id}>
 				{text}
 			</label>
-			<div id={id}>{children}</div>
+			{children(id)}
 		</div>
 	);
 }
@@ -100,15 +105,17 @@ export function EditorPanel({
 	/**
 	 * Escape closes. Deliberately not a focus trap: the panel is docked, not modal, and
 	 * trapping focus would make the canvas behind it unreachable by keyboard -- which is
-	 * the one thing this layout exists to keep available.
+	 * the one thing this layout exists to keep available. In the shared surface stack
+	 * (escape.ts), and only while open, so a closed editor cannot swallow the press.
 	 */
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setOpen(false);
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	useEscapeClose(open, () => setOpen(false));
+
+	/** Open the sheet with yesterday's "Saved." cleared: a stale status reads as this
+	    session's result. */
+	function openPanel() {
+		setMessage(null);
+		setOpen(true);
+	}
 
 	function submit(action: (form: FormData) => Promise<Result>) {
 		return (form: FormData) => {
@@ -144,7 +151,7 @@ export function EditorPanel({
 					</button>
 					<button
 						type="button"
-						onClick={() => setOpen(true)}
+						onClick={openPanel}
 						aria-label="More ways to add or connect people"
 						title="More ways to add or connect people"
 						className={cn(
@@ -161,7 +168,7 @@ export function EditorPanel({
 		return (
 			<button
 				type="button"
-				onClick={() => setOpen(true)}
+				onClick={openPanel}
 				className={cn(
 					"pointer-events-auto flex min-h-11 items-center gap-2 rounded-md px-3.5",
 					// Solid ink on the canvas, unlike every other control up here.
@@ -251,10 +258,10 @@ export function EditorPanel({
 
 						<div className="grid grid-cols-2 gap-2">
 							<Labelled text="Given name">
-								<input name="givenName" className={field} autoComplete="off" />
+								{(id) => <input id={id} name="givenName" className={field} autoComplete="off" />}
 							</Labelled>
 							<Labelled text="Family name">
-								<input name="familyName" className={field} autoComplete="off" />
+								{(id) => <input id={id} name="familyName" className={field} autoComplete="off" />}
 							</Labelled>
 						</div>
 
@@ -262,44 +269,51 @@ export function EditorPanel({
 							{/* Defaults to unknown, and that is the honest default rather than a
 							    placeholder. It is a STORED value, so a guess outlives the guess --
 							    which is why nothing here infers it from the name. */}
-							<select name="sex" className={field} defaultValue="unknown">
-								<option value="unknown">Not recorded</option>
-								<option value="female">Female</option>
-								<option value="male">Male</option>
-								<option value="other">Other</option>
-							</select>
+							{(id) => (
+								<select id={id} name="sex" className={field} defaultValue="unknown">
+									<option value="unknown">Not recorded</option>
+									<option value="female">Female</option>
+									<option value="male">Male</option>
+									<option value="other">Other</option>
+								</select>
+							)}
 						</Labelled>
 
 						<Labelled text="Living">
-							<select name="living" className={field} defaultValue="unknown">
-								<option value="unknown">Not recorded</option>
-								<option value="living">Living</option>
-								<option value="deceased">Deceased</option>
-							</select>
+							{(id) => (
+								<select id={id} name="living" className={field} defaultValue="unknown">
+									<option value="unknown">Not recorded</option>
+									<option value="living">Living</option>
+									<option value="deceased">Deceased</option>
+								</select>
+							)}
 						</Labelled>
 
 						<div className="grid grid-cols-2 gap-2">
 							<Labelled text="Born">
-								<input type="date" name="birthDate" className={field} />
+								{(id) => <input id={id} type="date" name="birthDate" className={field} />}
 							</Labelled>
 							<Labelled text="Or roughly">
 								{/* The fuzzy column, because "about 1890" is a real genealogical
 								    answer and coercing it to a date invents a precision nobody has. */}
-								<input
-									name="birthDateApprox"
-									placeholder="about 1890"
-									className={field}
-									autoComplete="off"
-								/>
+								{(id) => (
+									<input
+										id={id}
+										name="birthDateApprox"
+										placeholder="about 1890"
+										className={field}
+										autoComplete="off"
+									/>
+								)}
 							</Labelled>
 						</div>
 
 						<Labelled text="Where they live">
-							<input name="currentPlace" className={field} autoComplete="off" />
+							{(id) => <input id={id} name="currentPlace" className={field} autoComplete="off" />}
 						</Labelled>
 
 						<Labelled text="Occupation">
-							<input name="occupation" className={field} autoComplete="off" />
+							{(id) => <input id={id} name="occupation" className={field} autoComplete="off" />}
 						</Labelled>
 
 						<Submit pending={pending} text="Add person" />
@@ -309,42 +323,54 @@ export function EditorPanel({
 				{tab === "relation" && (
 					<form action={submit(addRelation)} className="space-y-3">
 						<Labelled text="From">
-							<PersonSelect name="personAId" people={people} value={fromId} onChange={setFromId} />
+							{(id) => (
+								<PersonSelect
+									id={id}
+									name="personAId"
+									people={people}
+									value={fromId}
+									onChange={setFromId}
+								/>
+							)}
 						</Labelled>
 
 						<Labelled text="Is the...">
-							<select name="kind" className={field} defaultValue="friend">
-								{(Object.keys(GROUPED) as (keyof typeof GROUPED)[]).map((category) =>
-									GROUPED[category].length === 0 ? null : (
-										<optgroup key={category} label={CATEGORY_LABELS[category]}>
-											{GROUPED[category].map((kind) => (
-												<option key={kind} value={kind}>
-													{RELATION_KINDS[kind].label}
-												</option>
-											))}
-										</optgroup>
-									),
-								)}
-							</select>
+							{(id) => (
+								<select id={id} name="kind" className={field} defaultValue="friend">
+									{(Object.keys(GROUPED) as (keyof typeof GROUPED)[]).map((category) =>
+										GROUPED[category].length === 0 ? null : (
+											<optgroup key={category} label={CATEGORY_LABELS[category]}>
+												{GROUPED[category].map((kind) => (
+													<option key={kind} value={kind}>
+														{RELATION_KINDS[kind].label}
+													</option>
+												))}
+											</optgroup>
+										),
+									)}
+								</select>
+							)}
 						</Labelled>
 
 						<Labelled text="Of">
-							<PersonSelect name="personBId" people={people} exclude={fromId} />
+							{(id) => <PersonSelect id={id} name="personBId" people={people} exclude={fromId} />}
 						</Labelled>
 
 						<Labelled text="How close">
 							{/* Blank means "use the kind's default", which is not the same as 1 --
 							    it lets the default improve later without rewriting stored rows. */}
-							<select name="closeness" className={field} defaultValue="">
-								<option value="">Use the default for this kind</option>
-								<option value="1">Acquaintance</option>
-								<option value="2">Close</option>
-								<option value="3">Very close</option>
-							</select>
+							{(id) => (
+								<select id={id} name="closeness" className={field} defaultValue="">
+									<option value="">Use the default for this kind</option>
+									<option value="1">Acquaintance</option>
+									<option value="2">Close</option>
+									<option value="3">Very close</option>
+								</select>
+							)}
 						</Labelled>
 
 						<Labelled text="Ended">
-							<input type="date" name="endDate" className={field} />
+							{(id) => <input id={id} type="date" name="endDate" className={field} />}
 						</Labelled>
 
 						<p className="text-[0.625rem] leading-snug text-ink-faint">
@@ -359,29 +385,42 @@ export function EditorPanel({
 				{tab === "partnership" && (
 					<form action={submit(addUnion)} className="space-y-3">
 						<Labelled text="Partner">
-							<PersonSelect name="partnerAId" people={people} value={fromId} onChange={setFromId} />
+							{(id) => (
+								<PersonSelect
+									id={id}
+									name="partnerAId"
+									people={people}
+									value={fromId}
+									onChange={setFromId}
+								/>
+							)}
 						</Labelled>
 
 						<Labelled text="And">
 							{/* Optional on purpose: a single parent still forms a union, which is what
 							    lets parentage hang off the partnership instead of a parent pair. */}
-							<PersonSelect
-								name="partnerBId"
-								people={people}
-								exclude={fromId}
-								allowEmpty="Nobody recorded"
-							/>
+							{(id) => (
+								<PersonSelect
+									id={id}
+									name="partnerBId"
+									people={people}
+									exclude={fromId}
+									allowEmpty="Nobody recorded"
+								/>
+							)}
 						</Labelled>
 
 						<Labelled text="Status">
-							<select name="status" className={field} defaultValue="married">
-								<option value="married">Married</option>
-								<option value="partnered">Partnered</option>
-								<option value="separated">Separated</option>
-								<option value="divorced">Divorced</option>
-								<option value="widowed">Widowed</option>
-								<option value="unknown">Not recorded</option>
-							</select>
+							{(id) => (
+								<select id={id} name="status" className={field} defaultValue="married">
+									<option value="married">Married</option>
+									<option value="partnered">Partnered</option>
+									<option value="separated">Separated</option>
+									<option value="divorced">Divorced</option>
+									<option value="widowed">Widowed</option>
+									<option value="unknown">Not recorded</option>
+								</select>
+							)}
 						</Labelled>
 
 						<p className="text-[0.625rem] leading-snug text-ink-faint">
@@ -438,6 +477,7 @@ function Submit({ pending, text }: { pending: boolean; text: string }) {
  * fills this field, so typing a name is the fallback path rather than the main one.
  */
 function PersonSelect({
+	id,
 	name,
 	people,
 	value,
@@ -445,6 +485,8 @@ function PersonSelect({
 	exclude,
 	allowEmpty = "Pick somebody",
 }: {
+	/** From the surrounding `Labelled`, so its label actually focuses this select. */
+	id?: string;
 	name: string;
 	people: PickablePerson[];
 	value?: string;
@@ -457,6 +499,7 @@ function PersonSelect({
 
 	return (
 		<select
+			id={id}
 			name={name}
 			className={field}
 			// Controlled only when the parent tracks it. An uncontrolled select with a

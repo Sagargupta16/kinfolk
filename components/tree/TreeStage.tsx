@@ -88,6 +88,21 @@ export function TreeStage({
 	} | null>(null);
 
 	/**
+	 * A list, because a merged person can carry a row in more than one graph the viewer
+	 * may write to. Today the view names one; the shape is right for when it names
+	 * several, and `editTarget` cannot then be the thing that gets it wrong.
+	 *
+	 * Memoised because the canvas's `openQuickAdd` closes over it and the LAYOUT effect
+	 * closes over that: a fresh array literal per render gave `openQuickAdd` a fresh
+	 * identity per render, and every click or panel toggle re-ran ELK and re-framed the
+	 * viewport for a graph that had not changed.
+	 */
+	const editableTreeIds = useMemo<string[]>(
+		() => (editableTreeId ? [editableTreeId] : []),
+		[editableTreeId],
+	);
+
+	/**
 	 * People the pickers can offer, derived from the nodes already on screen.
 	 *
 	 * Not a server round trip: these nodes are in memory, carry their names, and are
@@ -130,6 +145,24 @@ export function TreeStage({
 	const feedEvents = useMemo(() => familyFeed(nodes), [nodes]);
 	const feedVisible = feedOpen && !detailOpen;
 
+	/**
+	 * Ask the canvas to close the person panel, same nonce contract as `quickAddRequest`.
+	 *
+	 * The detail panel and the feed share one rail, and `detailId` lives inside the
+	 * canvas -- so without this, pressing FEED while a person was open toggled state the
+	 * viewer could not see: the button looked dead and `aria-pressed` disagreed with the
+	 * screen. Pressing FEED now means "show me the feed", whatever the rail holds.
+	 */
+	const [closeDetailRequest, setCloseDetailRequest] = useState<{ nonce: number } | null>(null);
+	const toggleFeed = useCallback(() => {
+		if (feedVisible) {
+			setFeedOpen(false);
+			return;
+		}
+		setFeedOpen(true);
+		setCloseDetailRequest({ nonce: Date.now() });
+	}, [feedVisible]);
+
 	/*
 	 * Computed here rather than in each consumer: the canvas draws presence rings from it
 	 * and search ranks namesakes by it, and doing it twice over 151 nodes on every render
@@ -163,10 +196,7 @@ export function TreeStage({
 				view={view}
 				depth={depth}
 				canEdit={Boolean(editableTreeId)}
-				// A list, because a merged person can carry a row in more than one graph the
-				// viewer may write to. Today the view names one; the shape is right for when it
-				// names several, and `editTarget` cannot then be the thing that gets it wrong.
-				editableTreeIds={editableTreeId ? [editableTreeId] : []}
+				editableTreeIds={editableTreeIds}
 				goTo={goTo}
 				onGoToHandled={() => setGoTo(null)}
 				degree={degree}
@@ -177,6 +207,8 @@ export function TreeStage({
 				onDetailOpenChange={setDetailOpen}
 				quickAddRequest={quickAddRequest}
 				onQuickAddHandled={() => setQuickAddRequest(null)}
+				closeDetailRequest={closeDetailRequest}
+				onCloseDetailHandled={() => setCloseDetailRequest(null)}
 			/>
 
 			{/* Top-left, opposite the detail control. Capped and NOT full width on a phone:
@@ -263,7 +295,7 @@ export function TreeStage({
 				 */}
 				<button
 					type="button"
-					onClick={() => setFeedOpen((current) => !current)}
+					onClick={toggleFeed}
 					aria-pressed={feedVisible}
 					title={
 						feedVisible ? "Close the family feed" : "What changed in this record, newest first"
@@ -272,7 +304,9 @@ export function TreeStage({
 						"kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
 						"font-mono text-[0.625rem] uppercase tracking-wider",
 						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-						feedVisible ? "text-accent" : "text-ink-faint hover:text-ink",
+						// `accent-ink`, not the raw accent: this is 10px text on glass, and the
+						// hue that clears 3:1 as a graphic mark does not clear 4.5:1 as type.
+						feedVisible ? "text-accent-ink" : "text-ink-faint hover:text-ink",
 					)}
 				>
 					<Activity aria-hidden="true" className="size-3.5" strokeWidth={1.5} />

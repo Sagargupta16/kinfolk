@@ -26,11 +26,12 @@
  *      never again.
  */
 import { AtSign, KeyRound, Phone, ShieldQuestion, X } from "lucide-react";
-import { type CSSProperties, type ReactNode, useEffect, useId, useState } from "react";
+import { type CSSProperties, type ReactNode, useId, useState } from "react";
 import type { TreeCensus } from "@/lib/tree/census";
 import type { Lod } from "@/lib/tree/layout";
 import { RELATION_KINDS, type RelationCategory } from "@/lib/tree/relations";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 import { PROVENANCE, SEX_MARKS } from "./PersonNode";
 
 /**
@@ -506,29 +507,14 @@ export function TreeLegend({
 	const panelId = useId();
 
 	/**
-	 * `?` opens it, Escape closes it.
+	 * Escape closes, through the shared surface stack (escape.ts).
 	 *
-	 * `?` is the convention for "what am I looking at" everywhere it exists, and this
-	 * panel is the answer. Guarded on the event target the same way search guards `/`:
-	 * a question mark typed into the search box is a search, not a shortcut.
+	 * This component used to bind `?` as well, and that was a double booking: the
+	 * shortcuts table (TreeShortcuts.tsx) binds `?` to the help sheet, so one press
+	 * opened BOTH panels on top of each other. One key, one meaning -- `?` belongs to
+	 * the table, and this panel opens by its button.
 	 */
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				setOpen(false);
-				return;
-			}
-			if (event.key !== "?" || event.metaKey || event.ctrlKey) return;
-			const target = event.target as HTMLElement | null;
-			if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-			if (target?.isContentEditable) return;
-			event.preventDefault();
-			setOpen((current) => !current);
-		};
-
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	useEscapeClose(open, () => setOpen(false));
 
 	return (
 		<div className="relative">
@@ -537,7 +523,7 @@ export function TreeLegend({
 				onClick={() => setOpen((current) => !current)}
 				aria-expanded={open}
 				aria-controls={panelId}
-				title="What the marks mean (?)"
+				title="What the marks mean"
 				className={cn(
 					"flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
 					"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider backdrop-blur-sm",

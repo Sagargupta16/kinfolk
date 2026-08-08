@@ -110,6 +110,10 @@ export function TreeSearch({
 
 	function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
 		if (event.key === "Escape") {
+			// Claim the press BEFORE the surface stack sees it (React handlers run
+			// first): leaving the search box is this key's whole job here, and without
+			// the claim the same press would also close whatever panel is open behind.
+			event.preventDefault();
 			setOpen(false);
 			inputRef.current?.blur();
 			return;
@@ -148,7 +152,11 @@ export function TreeSearch({
 				<input
 					ref={inputRef}
 					type="search"
-					role="combobox"
+					// No `role="combobox"`: the full pattern needs aria-activedescendant
+					// tracking the highlighted row, and this list manages its cursor in
+					// state instead. Claiming the role without the wiring makes a screen
+					// reader hunt for options it cannot reach; the plain searchbox with an
+					// aria-controls hint is honest about what is implemented.
 					value={query}
 					onChange={(event) => {
 						setQuery(event.target.value);
@@ -158,9 +166,7 @@ export function TreeSearch({
 					onKeyDown={onKeyDown}
 					placeholder="Find a person"
 					aria-label="Find a person in this graph"
-					aria-expanded={showList}
 					aria-controls={listId}
-					aria-autocomplete="list"
 					// 44px, and the appearance reset removes the browser's own clear button:
 					// there is already one to its right, and two would be a choice nobody
 					// asked to make.

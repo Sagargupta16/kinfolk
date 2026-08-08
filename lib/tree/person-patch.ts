@@ -14,7 +14,7 @@
  * that rule one action can serve a compact quick-edit and a full form without either being
  * able to damage the other's fields.
  */
-import type { Sex } from "../db/schema";
+import { livingStatusEnum, sexEnum } from "../db/schema";
 import { birthYearColumns } from "./kin-plan";
 
 /** Free-text columns a form may edit. Order is documentation, not behaviour. */
@@ -47,6 +47,24 @@ function orNull(value: FormDataEntryValue | null): string | null {
 }
 
 /**
+ * Parse a client-supplied enum against its allow-list.
+ *
+ * A form value is a client value. `as Sex` accepts any string and hands it to the
+ * database, which answers a forged post with a thrown enum error -- a 500 for what
+ * is an ordinary validation problem. Checked here, junk falls back to the schema's
+ * own honest default instead. The lists come from the pgEnum objects themselves
+ * (`sexEnum.enumValues`), so a new enum member is accepted the day the schema
+ * learns it.
+ */
+export function oneOf<T extends string>(
+	value: string | null,
+	allowed: readonly T[],
+	fallback: T,
+): T {
+	return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+/**
  * The patch for one person, containing only the keys the form submitted.
  *
  * Deliberately returns a plain record rather than a typed `Partial<Person>`: the point is
@@ -61,11 +79,10 @@ export function buildPersonPatch(form: FormData): Record<string, unknown> {
 	}
 
 	// Enums have a NOT NULL default, so they cannot be nulled the way text can -- an absent
-	// choice falls back to the schema's own honest value rather than to nothing.
-	if (form.has("sex")) patch.sex = (orNull(form.get("sex")) as Sex | null) ?? "unknown";
+	// or forged choice falls back to the schema's own honest value rather than to nothing.
+	if (form.has("sex")) patch.sex = oneOf(orNull(form.get("sex")), sexEnum.enumValues, "unknown");
 	if (form.has("living")) {
-		patch.living =
-			(orNull(form.get("living")) as "living" | "deceased" | "unknown" | null) ?? "unknown";
+		patch.living = oneOf(orNull(form.get("living")), livingStatusEnum.enumValues, "unknown");
 	}
 
 	/*

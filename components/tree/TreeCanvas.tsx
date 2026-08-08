@@ -10,7 +10,8 @@
  * changes on HOVER must never reach that memo. Three separate mechanisms exist purely to
  * honour that:
  *
- *   - Focus is applied in its own effect that rewrites `className` and nothing else.
+ *   - Focus, the depth tilt and per-pointer draggability are applied in their own
+ *     effects that rewrite `className`/`draggable` and nothing else.
  *   - The edge array is SPLIT: family edges are state written once per layout, revealed
  *     relations are a memo, and what React Flow renders is a third memo merging them.
  *   - Framing keys off `layoutEpoch`, a counter bumped once per completed layout, rather
@@ -288,6 +289,17 @@ type Props = {
 	quickAddRequest?: { id: string; nonce: number } | null;
 	/** Clears the request after the canvas has resolved its editable source row. */
 	onQuickAddHandled?: () => void;
+	/**
+	 * Ask for the person panel to close, from chrome that lives outside the canvas.
+	 *
+	 * The stage's feed shares the detail panel's rail but cannot see `detailId`; this is
+	 * the same request/acknowledge contract as `quickAddRequest`, and for the same
+	 * reason -- the canvas remounts when the detail level changes, and an
+	 * unacknowledged request would replay there.
+	 */
+	closeDetailRequest?: { nonce: number } | null;
+	/** Acknowledge a handled close, so the request cannot replay. */
+	onCloseDetailHandled?: () => void;
 };
 
 function Canvas({
@@ -310,6 +322,8 @@ function Canvas({
 	onDetailOpenChange,
 	quickAddRequest,
 	onQuickAddHandled,
+	closeDetailRequest,
+	onCloseDetailHandled,
 }: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	/**
@@ -604,6 +618,12 @@ function Canvas({
 		onQuickAddHandled?.();
 	}, [quickAddRequest, people, openQuickAdd, onQuickAddHandled]);
 
+	useEffect(() => {
+		if (!closeDetailRequest) return;
+		setDetailId(null);
+		onCloseDetailHandled?.();
+	}, [closeDetailRequest, onCloseDetailHandled]);
+
 	/**
 	 * The relation edges to actually DRAW -- only those touching the revealed person.
 	 *
@@ -784,19 +804,19 @@ function Canvas({
 							: // A junction is not a destination, so it is not a tab stop.
 								{ focusable: false }),
 						// Union dots are structural; dragging them would desync the layout from the
-						// data. Nothing is draggable by finger, so a swipe from anywhere pans.
-						draggable: node.type === "person" && !coarsePointer,
+						// data. The finger/mouse distinction is applied in its own effect below,
+						// so the pointer type resolving after mount cannot re-run ELK.
+						draggable: node.type === "person",
 						// Union beads paint BELOW the cards. The bead placement already aims for a
 						// clear gutter, but a fused graph can leave a couple with no gutter at all
 						// -- and a bead behind an opaque card is quiet, where a bead on somebody's
 						// face reads as a defect.
 						zIndex: node.type === "person" ? 2 : 1,
 						// The animation itself is CSS (see globals.css); React Flow owns the node's
-						// transform, so a JS-driven entrance would fight it.
-						// `kf-depth` tilts the CARD, never the pane: React Flow owns the wrapper's
-						// transform for positioning, so a pane-level rotateX would leave the layout
-						// and the picture disagreeing about where every node is.
-						className: depth ? "kf-enter kf-depth" : "kf-enter",
+						// transform, so a JS-driven entrance would fight it. Focus and the depth
+						// tilt are className flags applied in their own effect below: the base is
+						// written here, the flags survive a relayout by being reapplied on epoch.
+						className: "kf-enter",
 						style: {
 							"--kf-delay": `${delays.get(node.id) ?? 0}ms`,
 						} as CSSProperties,
@@ -942,7 +962,6 @@ function Canvas({
 		selfId,
 		lod,
 		view,
-		depth,
 		// Null outside orbit mode by construction, so a click in tree mode cannot re-run ELK.
 		orbitFocusId,
 		degree,
@@ -951,7 +970,6 @@ function Canvas({
 		hidden,
 		collapsed,
 		fold,
-		coarsePointer,
 		canEdit,
 		openQuickAdd,
 		attempt,
@@ -1141,25 +1159,53 @@ function Canvas({
 	}, [revealedId, sourceNodes, enabledEdges]);
 
 	/**
-	 * Apply focus by rewriting className only. Deliberately its own effect: folding focus
-	 * into the layout's edge memo would re-run ELK on every hover.
+	 * Apply focus and the depth tilt by rewriting className only. Deliberately its own
+	 * effect: folding either into the layout's edge memo would re-run ELK on every hover
+	 * (or on a purely visual toggle), and letting the layout pass write the flags meant
+	 * a relayout WIPED them -- travel to a person, fold a branch, and the dim/lit state
+	 * vanished until the next hover.
 	 *
 	 * Nodes only. Edge focus is applied in the derived `edges` memo below, so pushing it
 	 * into state as well would store the same fact twice.
 	 */
 	useEffect(() => {
+		// A trigger, not data: a relayout writes fresh base classNames, wiping these
+		// flags, and nothing else in this array changes when that happens. Reading the
+		// epoch is what makes the dependency honest rather than a suppression.
+		void layoutEpoch;
 		setNodes((current) =>
 			current.map((node) => {
+				// `kf-depth` tilts the CARD, never the pane: React Flow owns the wrapper's
+				// transform for positioning, so a pane-level rotateX would leave the layout
+				// and the picture disagreeing about where every node is.
+				let next = withFlag("kf-depth", node.className, depth);
 				// Three states, and the third is why `kf-lit` exists separately from the absence
 				// of `kf-dim`. Dimming answers "not this one" for the rest of the tree; it cannot
 				// answer "this one" when the lit neighbourhood is most of the canvas. The glow
 				// marks the SUBJECT -- its relatives are already identified by the lines to it.
-				let next = withFlag("kf-dim", node.className, Boolean(lit) && !lit?.nodeIds.has(node.id));
+				next = withFlag("kf-dim", next, Boolean(lit) && !lit?.nodeIds.has(node.id));
 				next = withFlag("kf-lit", next, node.id === revealedId);
 				return next === node.className ? node : { ...node, className: next };
 			}),
 		);
-	}, [lit, revealedId, setNodes]);
+	}, [lit, revealedId, depth, layoutEpoch, setNodes]);
+
+	/**
+	 * Cards are draggable with a mouse and not with a finger: on a phone a card is most
+	 * of the screen, so a swipe that starts on one has to pan the canvas. Its own effect
+	 * for the same reason focus is -- the media query resolves AFTER the first layout,
+	 * so reading it in the layout pass re-ran ELK and re-framed the viewport once per
+	 * load on every touch device.
+	 */
+	useEffect(() => {
+		void layoutEpoch;
+		setNodes((current) =>
+			current.map((node) => {
+				const draggable = node.type === "person" && !coarsePointer;
+				return node.draggable === draggable ? node : { ...node, draggable };
+			}),
+		);
+	}, [coarsePointer, layoutEpoch, setNodes]);
 
 	/**
 	 * What React Flow renders: the laid-out skeleton, plus the revealed relations, with

@@ -126,7 +126,9 @@ export type KinPlan = {
 export function planKin(family: FamilyShape, role: KinRole, count = 1): KinPlan {
 	const direction = ROLE_DIRECTION[role];
 	const sex = ROLE_SEX[role];
-	const people = Math.max(1, Math.min(count, MAX_BATCH));
+	// NaN slips through Math.max/Math.min unchanged, so a count parsed from an
+	// empty input would otherwise plan NaN people.
+	const people = Number.isFinite(count) ? Math.max(1, Math.min(count, MAX_BATCH)) : 1;
 
 	switch (direction) {
 		case "parent":
@@ -285,7 +287,12 @@ export function birthYearColumns(input: string): {
 	if (!text) return { birthDate: null, birthDateApprox: null };
 
 	// A full ISO date, which the form does not ask for but a paste might supply.
-	if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return { birthDate: text, birthDateApprox: null };
+	// The shape alone is not enough -- "2024-13-45" matches the pattern -- and
+	// Date.parse rejects out-of-range components for the ISO date-only form, so an
+	// impossible date falls through to the fuzzy column as somebody's own words.
+	if (/^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text))) {
+		return { birthDate: text, birthDateApprox: null };
+	}
 
 	// A plausible year. Bounded because a typo like "19" or "20255" is not a year, and
 	// storing it would put nonsense on a card with no way to tell it from a real value.

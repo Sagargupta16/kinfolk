@@ -99,12 +99,19 @@ export function familyFeed(nodes: FlowNode[], limit = FEED_LIMIT): FeedEvent[] {
 		const b = union.partnerBId ? personById.get(union.partnerBId) : null;
 		// A partnership event needs somebody to name and somebody to travel to; a
 		// union whose partners are both outside the visible graph offers neither.
-		const anchor = union.partnerAId ?? union.partnerBId;
+		// The anchor follows whichever partner the canvas can actually show --
+		// `partnerAId` alone would name the row after B and fly the camera to a
+		// node that is not there.
+		const anchor = a ? union.partnerAId : union.partnerBId;
 		if (!anchor || (!a && !b)) continue;
 
 		const name = a?.name ?? b?.name ?? "Unknown";
 		const other = a && b ? b.name : null;
-		const detail = other ? `and ${other}, recorded as partners` : "recorded as a parent";
+		const detail = other
+			? `and ${other}, recorded as partners`
+			: union.partnerAId && union.partnerBId
+				? "recorded in a partnership"
+				: "recorded as a parent";
 
 		events.push({
 			id: `union:${union.id}`,

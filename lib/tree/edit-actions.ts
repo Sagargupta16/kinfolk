@@ -19,20 +19,24 @@
  * Each action returns a `Result` rather than throwing at the boundary, so a form can
  * show why something was refused. Genuine programming errors still throw.
  */
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sessionOrNull } from "@/auth";
 import { db } from "../db/client";
 import {
-	type ContactKind,
 	contactDetails,
+	contactKindEnum,
+	livingStatusEnum,
+	parentRoleEnum,
 	people,
 	personRelations,
 	type RelationKind,
 	type Sex,
+	sexEnum,
 	unionChildren,
 	unions,
-	type Visibility,
+	unionStatusEnum,
+	visibilityEnum,
 } from "../db/schema";
 import { wouldCreateAncestryCycle } from "./acyclic";
 import { assertSameTree, NotAllowedError, treeIdForEditablePerson } from "./authz";
@@ -46,7 +50,7 @@ import {
 	planKin,
 	ROLE_SEX,
 } from "./kin-plan";
-import { buildPersonPatch } from "./person-patch";
+import { buildPersonPatch, oneOf } from "./person-patch";
 import { canonicalPair, RELATION_KINDS } from "./relations";
 
 export type Result = { ok: true; id?: string } | { ok: false; error: string };
@@ -131,9 +135,8 @@ export async function addPerson(form: FormData): Promise<Result> {
 				familyName,
 				birthFamilyName: orNull(form.get("birthFamilyName")),
 				nickname: orNull(form.get("nickname")),
-				sex: (orNull(form.get("sex")) as Sex | null) ?? "unknown",
-				living:
-					(orNull(form.get("living")) as "living" | "deceased" | "unknown" | null) ?? "unknown",
+				sex: oneOf(orNull(form.get("sex")), sexEnum.enumValues, "unknown"),
+				living: oneOf(orNull(form.get("living")), livingStatusEnum.enumValues, "unknown"),
 				// A real date if it parses, otherwise the fuzzy text column. "about 1890" is
 				// a genuine genealogical answer and must not be coerced into a false precision.
 				birthDate: orNull(form.get("birthDate")),
@@ -350,15 +353,7 @@ export async function addUnion(form: FormData): Promise<Result> {
 				treeId,
 				partnerAId,
 				partnerBId,
-				status:
-					(orNull(form.get("status")) as
-						| "partnered"
-						| "married"
-						| "separated"
-						| "divorced"
-						| "widowed"
-						| "unknown"
-						| null) ?? "unknown",
+				status: oneOf(orNull(form.get("status")), unionStatusEnum.enumValues, "unknown"),
 				startDate: orNull(form.get("startDate")),
 				endDate: orNull(form.get("endDate")),
 				place: orNull(form.get("place")),
@@ -432,14 +427,7 @@ export async function addChild(form: FormData): Promise<Result> {
 			.values({
 				unionId,
 				childId,
-				role:
-					(orNull(form.get("role")) as
-						| "biological"
-						| "adoptive"
-						| "step"
-						| "foster"
-						| "guardian"
-						| null) ?? "biological",
+				role: oneOf(orNull(form.get("role")), parentRoleEnum.enumValues, "biological"),
 			})
 			.onConflictDoNothing();
 
@@ -489,9 +477,14 @@ export async function addContact(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const personId = String(form.get("personId") ?? "");
-	const kind = String(form.get("kind") ?? "") as ContactKind;
+	const kind = orNull(form.get("kind"));
 	const value = orNull(form.get("value"));
 	if (!personId || !value) return { ok: false, error: "A channel needs a value." };
+	// Refused rather than defaulted: silently recording a phone number under "other"
+	// misfiles data the user typed on purpose, which is worse than asking again.
+	if (!oneOf(kind, contactKindEnum.enumValues, null as never)) {
+		return { ok: false, error: "Pick a channel." };
+	}
 
 	try {
 		await treeIdForEditablePerson(auth.userId, personId);
@@ -500,10 +493,10 @@ export async function addContact(form: FormData): Promise<Result> {
 			.insert(contactDetails)
 			.values({
 				personId,
-				kind,
+				kind: oneOf(kind, contactKindEnum.enumValues, "other"),
 				value,
 				label: orNull(form.get("label")),
-				visibility: (orNull(form.get("visibility")) as Visibility | null) ?? "tree",
+				visibility: oneOf(orNull(form.get("visibility")), visibilityEnum.enumValues, "tree"),
 			})
 			.onConflictDoNothing();
 

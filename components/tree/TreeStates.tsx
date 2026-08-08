@@ -211,7 +211,8 @@ export function OfflineNotice() {
 		<motion.div
 			initial={{ opacity: 0, y: -8 }}
 			animate={{ opacity: 1, y: 0 }}
-			exit={{ opacity: 0, y: -8 }}
+			// No `exit`: this renders bare (a conditional return above, no AnimatePresence),
+			// so an exit animation is a prop that can never fire.
 			role="status"
 			aria-live="polite"
 			className={cn(

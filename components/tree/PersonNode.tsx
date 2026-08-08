@@ -30,7 +30,7 @@ import {
 	Transgender,
 	Venus,
 } from "lucide-react";
-import { type CSSProperties, memo, type PointerEvent, useCallback, useRef } from "react";
+import { type CSSProperties, memo, type PointerEvent, useCallback, useEffect, useRef } from "react";
 import type { Sex, Verification } from "@/lib/db/schema";
 import { type Degree, RING_MIN_RANK } from "@/lib/tree/density";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
@@ -127,6 +127,11 @@ function ringSpread(rank: number): number {
 function usePointerWash() {
 	const ref = useRef<HTMLDivElement>(null);
 	const frame = useRef(0);
+
+	// A frame scheduled just before unmount would otherwise fire against a detached
+	// node -- harmless today, but it is exactly the shape of callback that grows a
+	// state write later and becomes an update-after-unmount.
+	useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
 	const onPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
 		const node = ref.current;
