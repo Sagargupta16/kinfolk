@@ -12,12 +12,12 @@ Fully configured. All five health probes pass.
 | API and Next fallback, <https://kinfolk-neon.vercel.app> | **Live.** The sample tree and authenticated API answer. |
 | Sign-in | **Configured.** `/api/auth/providers` returns 200 and reports the GitHub provider. |
 
-> **Migration status:** `0003_fearless_mongu.sql` is committed but was not applied by
-> the 0.2.4 deployment. The `production` GitHub Environment and Actions repository both
-> have no `DATABASE_URL` secret, so the workflow explicitly skipped migrations. Do not
-> copy a credential from Vercel or `.env.local`; add the direct Neon URL as the scoped
-> Environment secret, then run the migration workflow and complete-check it before
-> claiming production is current.
+> **Migration status:** current. Production
+> [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754)
+> verified 3/4 committed migrations, ran `drizzle-kit migrate`, then complete-checked
+> 4/4 before the endpoint verification passed. `0003_fearless_mongu.sql` is tracked
+> migration source, not a database dump: its only statement creates the unique
+> `people_claimed_user_idx`, and it contains no genealogy rows or credentials.
 
 `DATABASE_URL` is a manually configured encrypted Vercel variable pointing at the existing
 Neon project. The native integration was disconnected after it provisioned a separate empty
@@ -34,10 +34,9 @@ What was verified after the secrets landed, rather than assumed:
   redirect URI rather than rejecting it, which is the check that matters.
 - `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
   proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
-- Before migration `0003` was generated, `pnpm db:check-migrations --complete`
-  confirmed the then-committed history. The 0.2.4 workflow later skipped `0003`
-  because the production GitHub Environment has no `DATABASE_URL` secret; that
-  migration remains pending and must not be described as applied.
+- Production [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754)
+  found 3/4 committed migrations, applied `0003_fearless_mongu.sql`, and then
+  complete-checked 4/4. The same run passed all deployment endpoint probes.
 - The live smoke scripts (`db:smoke`, `db:smoke:kin`) passed against the live branch and
   cleaned up after themselves; both were removed in the 0.2.0 rework.
 
