@@ -6,6 +6,34 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.3 -- 2026-08-08 (hotfix: the SPA canvas died on the feed's timestamps)
+
+### Fixed
+
+- **0.2.2 took down the whole SPA canvas in production.** The family feed calls
+  `.getTime()` on person-row timestamps, and over the JSON API those arrive as
+  ISO STRINGS -- so `familyFeed()` threw inside a render-path `useMemo` and the
+  tree screen never mounted: stuck, no visuals, demo included. The
+  server-rendered app was fine, which is exactly why it slipped through: the
+  feed was verified on the Next app and never re-run through the SPA's
+  serialise/parse path. `serialise.ts` had DOCUMENTED this landmine word for
+  word ("would throw only on the API path and work fine locally") and
+  deliberately left timestamps unrevived while nothing read them; the test
+  pinning that contract went out with the suite in 0.2.0.
+- `parseTreeView()` now revives every flattened `Date` -- person `createdAt`,
+  `updatedAt` and `verifiedAt` on both `primary` and every source row, contact
+  `createdAt`/`updatedAt`, union `createdAt` -- so a parsed view is
+  indistinguishable from a served one. The revival lives at the boundary, not
+  defensively inside consumers: a consumer that copes with strings beside one
+  that does not is the same invisible drift as a serialiser disagreeing with
+  its parser.
+
+### Verified
+
+- The exact crash path, live: the SPA against the API renders 151 nodes and 150
+  edges, the feed opens with all 80 rows and correct relative times, and the
+  console is clean. Both typechecks and the Vite build pass.
+
 ## 0.2.2 -- 2026-08-08 (the family feed, and a motion pass)
 
 ### Added
