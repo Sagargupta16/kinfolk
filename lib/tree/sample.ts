@@ -31,6 +31,43 @@ import { canonicalPair } from "./relations";
 const EPOCH = new Date("2026-01-01T00:00:00Z");
 
 /**
+ * When the feed pretends "now" is, for the sample data's own timestamps.
+ *
+ * Row timestamps drive the family feed, and 117 rows all created at EPOCH would
+ * render as one giant "7 months ago" dump -- a feed with no rhythm shows nothing
+ * about what a feed is for. So each row gets a DETERMINISTIC moment in the ~7
+ * months before this reference, hashed from its own id: stable across reloads
+ * (the demo rebuilds per request, and a feed that reshuffles on refresh reads
+ * as broken), and varied enough that days, weeks and months all appear.
+ */
+const FEED_REFERENCE = new Date("2026-08-01T12:00:00Z");
+const DAY_MS = 86_400_000;
+
+/** Deterministic created/updated stamps for one row id. */
+function stamp(id: string): { createdAt: Date; updatedAt: Date } {
+	let hash = 0;
+	for (let index = 0; index < id.length; index += 1) {
+		hash = (Math.imul(hash, 31) + id.charCodeAt(index)) >>> 0;
+	}
+	const roll = rng(hash);
+	const created = new Date(
+		FEED_REFERENCE.getTime() - Math.floor(roll() * 210) * DAY_MS - Math.floor(roll() * DAY_MS),
+	);
+	// A quarter of the records were touched again later, because a real family
+	// archive is corrections as much as arrivals.
+	const updatedAt =
+		roll() < 0.25
+			? new Date(
+					Math.min(
+						created.getTime() + (1 + Math.floor(roll() * 45)) * DAY_MS,
+						FEED_REFERENCE.getTime(),
+					),
+				)
+			: created;
+	return { createdAt: created, updatedAt };
+}
+
+/**
  * Mulberry32. Chosen because it is eight lines, has no dependencies, and its
  * sequence is stable across Node versions -- `Math.random` is seedless and would
  * make the demo different on every reload.
@@ -101,8 +138,7 @@ function p(
 		verifiedAt: null,
 		verifiedById: null,
 		claimedByUserId: null,
-		createdAt: EPOCH,
-		updatedAt: EPOCH,
+		...stamp(id),
 		...extra,
 	};
 }
@@ -124,7 +160,7 @@ function u(
 		startDate: null,
 		endDate: null,
 		place: null,
-		createdAt: EPOCH,
+		createdAt: stamp(id).createdAt,
 		childIds,
 		...extra,
 	};

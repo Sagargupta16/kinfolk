@@ -9,6 +9,7 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { CSSProperties } from "react";
 import { sessionOrNull } from "@/auth";
 import { GitHubIcon } from "@/components/ui/GitHubIcon";
 import { enterDemo } from "@/lib/tree/demo-actions";
@@ -35,7 +36,10 @@ export default async function SignInPage({
 			<div aria-hidden className="kf-lattice" />
 
 			<div className="mx-auto w-full max-w-sm space-y-8">
-				<div className="space-y-3">
+				{/* The landing page's entrance, at the landing page's rhythm: the two screens
+				    are one surface, and only one of them arriving with a stagger would make
+				    the other read as a fallback. */}
+				<div className="kf-rise space-y-3" style={{ "--kf-delay": "0ms" } as CSSProperties}>
 					<Link href="/" className="kf-chip transition-colors hover:border-hairline-strong">
 						<span aria-hidden className="size-1.5 rounded-full bg-living" />
 						Kinfolk
@@ -58,7 +62,7 @@ export default async function SignInPage({
 					</p>
 				)}
 
-				<div className="space-y-3">
+				<div className="kf-rise space-y-3" style={{ "--kf-delay": "90ms" } as CSSProperties}>
 					{/*
 					 * Sign-in happens on the PUBLIC SITE, not here.
 					 *
@@ -91,7 +95,10 @@ export default async function SignInPage({
 					</form>
 				</div>
 
-				<p className="text-xs leading-relaxed text-ink-faint">
+				<p
+					className="kf-rise text-xs leading-relaxed text-ink-faint"
+					style={{ "--kf-delay": "180ms" } as CSSProperties}
+				>
 					GitHub is the only provider for now. Relatives without an account can still be invited by
 					email.
 				</p>

@@ -14,15 +14,17 @@
  * button group displays it, so the two have to read one value. The canvas is handed the
  * value and a setter.
  */
-import { Rows3, Square, SquareDot } from "lucide-react";
+import { Activity, Rows3, Square, SquareDot } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
+import { familyFeed } from "@/lib/tree/feed";
 import { displayName, type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 import { EditorPanel, type PickablePerson } from "./EditorPanel";
+import { FeedPanel } from "./FeedPanel";
 import { TreeCanvas } from "./TreeCanvas";
 import { TreeLegend } from "./TreeLegend";
 import { TreeSearch } from "./TreeSearch";
@@ -118,6 +120,16 @@ export function TreeStage({
 	 */
 	const [detailOpen, setDetailOpen] = useState(false);
 
+	/**
+	 * The family feed: the record as a stream, derived from the nodes already in
+	 * memory (see lib/tree/feed.ts). It shares the detail panel's rail, so the two
+	 * are mutually exclusive by construction -- opening a person closes the feed
+	 * rather than stacking two sheets of glass on one edge.
+	 */
+	const [feedOpen, setFeedOpen] = useState(false);
+	const feedEvents = useMemo(() => familyFeed(nodes), [nodes]);
+	const feedVisible = feedOpen && !detailOpen;
+
 	/*
 	 * Computed here rather than in each consumer: the canvas draws presence rings from it
 	 * and search ranks namesakes by it, and doing it twice over 151 nodes on every render
@@ -156,6 +168,7 @@ export function TreeStage({
 				// names several, and `editTarget` cannot then be the thing that gets it wrong.
 				editableTreeIds={editableTreeId ? [editableTreeId] : []}
 				goTo={goTo}
+				onGoToHandled={() => setGoTo(null)}
 				degree={degree}
 				kinship={kinship}
 				showRelations={showRelations}
@@ -188,7 +201,7 @@ export function TreeStage({
 				className={cn(
 					"absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5",
 					"transition-transform duration-(--duration-base) ease-(--ease-out)",
-					detailOpen && "sm:-translate-x-[22.75rem]",
+					(detailOpen || feedVisible) && "sm:-translate-x-[22.75rem]",
 				)}
 			>
 				{/* Arrangement first, because it changes what the detail control is describing:
@@ -243,6 +256,28 @@ export function TreeStage({
 				    with the detail level, since a dot encodes living/dead in its fill where a
 				    card uses the rail. */}
 				<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} />
+
+				{/*
+				 * The feed toggle, at the bottom of the cluster: it opens a reading surface
+				 * rather than changing the canvas, so it sits below the controls that do.
+				 */}
+				<button
+					type="button"
+					onClick={() => setFeedOpen((current) => !current)}
+					aria-pressed={feedVisible}
+					title={
+						feedVisible ? "Close the family feed" : "What changed in this record, newest first"
+					}
+					className={cn(
+						"kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
+						"font-mono text-[0.625rem] uppercase tracking-wider",
+						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
+						feedVisible ? "text-accent" : "text-ink-faint hover:text-ink",
+					)}
+				>
+					<Activity aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
+					Feed
+				</button>
 			</div>
 
 			{/*
@@ -269,6 +304,19 @@ export function TreeStage({
 					/>
 				</div>
 			)}
+
+			{/*
+			 * The feed rail. Travelling from a row opens that person's detail panel,
+			 * which takes over the rail; closing it returns to the feed, because
+			 * `feedOpen` survives underneath. Browse, peek, come back.
+			 */}
+			<FeedPanel
+				open={feedVisible}
+				events={feedEvents}
+				kinship={kinship}
+				onGoTo={onGoTo}
+				onClose={() => setFeedOpen(false)}
+			/>
 		</div>
 	);
 }

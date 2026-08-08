@@ -6,6 +6,62 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.2.2 -- 2026-08-08 (the family feed, and a motion pass)
+
+### Added
+
+- **The family feed**: the record as a stream, newest first, behind a FEED
+  toggle beside the legend. Rows read the way every feed does -- avatar, name,
+  verb, a right-aligned time -- and are scoped the way nothing on a feed is:
+  derived entirely from the nodes the viewer already received
+  (`lib/tree/feed.ts`), so it can never show a person the canvas would not.
+  Three event kinds fall out of timestamps the schema already carries: added to
+  the record (`createdAt`), record updated (`updatedAt`, floored so an insert
+  does not announce itself twice), and partnership recorded (a union's
+  `createdAt`). No events table, no migration, works in the demo and in both
+  frontends. Clicking a row travels to that person and opens their panel; the
+  feed waits underneath and returns when the panel closes. Grouped into "this
+  week / this month / earlier", capped at 80.
+- A DELIBERATE boundary, stated in the panel's own header: only people with
+  access see the feed. A PUBLIC discovery feed would be an opt-in per tree and
+  is not built -- it is a different privacy posture, not a missing feature.
+- **Sample data now has a believable timeline.** Every demo row carried the
+  same epoch timestamp, which would render the feed as one giant dump. Rows now
+  get deterministic moments hashed from their own ids (the demo rebuilds per
+  request, and a feed that reshuffles on reload reads as broken), spread over
+  seven months with a quarter of records touched again later.
+
+### Fixed
+
+- **Closing a panel after arriving from search could reopen it by itself.** The
+  travel request (`goTo`) was never acknowledged, so it sat in state forever
+  and any re-fire of the travel effect -- React Flow re-measuring during a
+  hover className rewrite is enough -- replayed the last navigation. Found the
+  first time a feed row was clicked, but reachable from search all along. The
+  canvas now reports the travel handled and the stage clears it, the same
+  contract quick-add already used.
+
+### Motion
+
+- The account menu settles in and out with a quick scale-fade instead of
+  popping; the feed panel slides on the detail panel's own spring; feed rows
+  cascade with a capped stagger so a long section arrives as a column, not a
+  minute of drizzle.
+- The sign-in page now enters with the landing page's stagger. The two screens
+  are one surface, and only one of them arriving with rhythm made the other
+  read as a fallback.
+- All of it chrome, none of it canvas: the 117 cards and 150 edges stay CSS,
+  because a JS animation re-renders a node and React Flow re-measures on
+  render. The in-app motion switch governs everything new.
+
+### Verified
+
+- Live against the dev server: the feed opens with 80 events across three
+  sections, rows carry kinship chips and relative times, clicking a row
+  travels, selects the card and opens the panel, one Escape closes it and the
+  feed returns; search-to-travel still works; consoles clean on fresh loads;
+  Biome, both typechecks and both production builds green.
+
 ## 0.2.1 -- 2026-08-07 (a screenshot audit of every surface)
 
 A full UI sweep with a live browser -- landing, sign-in, the canvas at three

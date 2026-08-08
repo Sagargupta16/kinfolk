@@ -264,6 +264,16 @@ type Props = {
 	 * searched has to bring you back, and a plain string would compare equal.
 	 */
 	goTo?: { id: string } | null;
+	/**
+	 * Acknowledge a handled travel, so the request cannot replay.
+	 *
+	 * Without this, `goTo` sits in state forever and ANY re-fire of the travel
+	 * effect -- `useNodesInitialized` flickering during a className rewrite is
+	 * enough -- replays the last navigation: close a panel after arriving from
+	 * search or the feed, and it reopens by itself. Same contract as
+	 * `onQuickAddHandled`.
+	 */
+	onGoToHandled?: () => void;
 	/** How connected each person is. Passed in because search ranks by it too. */
 	degree: Map<string, Degree>;
 	/** What each person is to the viewer. Computed server-side: it needs the whole graph. */
@@ -292,6 +302,7 @@ function Canvas({
 	canEdit = false,
 	editableTreeIds = [],
 	goTo,
+	onGoToHandled,
 	degree,
 	kinship,
 	onFocusSearch,
@@ -1108,7 +1119,8 @@ function Canvas({
 	useEffect(() => {
 		if (!goTo || !measured) return;
 		travelTo(goTo.id, { openDetail: true });
-	}, [goTo, measured, travelTo]);
+		onGoToHandled?.();
+	}, [goTo, measured, travelTo, onGoToHandled]);
 
 	/**
 	 * Who lights up when somebody is focused. Traverses through union dots, so hovering a
