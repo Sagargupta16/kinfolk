@@ -1,8 +1,9 @@
 {
 	"name": "kinfolk",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"private": true,
 	"description": "Collaborative family tree maker: build your branch, connect it to relatives, see the combined tree",
+	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/Sagargupta16/kinfolk.git"

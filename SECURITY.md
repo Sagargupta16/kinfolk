@@ -6,7 +6,7 @@ Security fixes are applied to the latest release on `main`, currently 0.3.x. Old
 
 ## Reporting a vulnerability
 
-Private vulnerability reporting must be enabled before this repository is made public. Once enabled, use GitHub's private report form:
+Use GitHub's private vulnerability reporting form:
 
 <https://github.com/Sagargupta16/kinfolk/security/advisories/new>
 

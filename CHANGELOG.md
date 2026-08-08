@@ -6,6 +6,27 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.3.2 -- 2026-08-08 (MIT licensing and public release)
+
+### Repository
+
+- Added a root MIT license and matching package metadata, making the terms for use,
+  modification, and redistribution explicit.
+- Approved public visibility after confirming that the current tracked tree contains no
+  live credential or real family record. The owner explicitly accepted that the Git and
+  GitHub pull-request history retains the author's public identity and early family-like
+  sample names and dates.
+- Updated the security policy to direct reports to GitHub's private vulnerability form.
+  Runtime behavior and database schema are unchanged from 0.3.1.
+
+### Verification
+
+- Biome formatting/lint, both strict TypeScript projects, both production builds, both
+  dependency audits, and `git diff --check` pass.
+- The root and frontend package metadata both report version 0.3.2 and license MIT, and
+  the current tracked tree remains free of environment files, credentials, database
+  exports, local MCP configuration, and real family records.
+
 ## 0.3.1 -- 2026-08-08 (profile-first editing and public-release hardening)
 
 ### Changed
@@ -44,9 +65,9 @@ read and only showed up on a live canvas.
 - Removed private-repository claims, local absolute paths, provider resource identifiers,
   and stale operational details from current public-facing guidance. The separately merged
   production record for migration `0003_fearless_mongu.sql` remains documented.
-- No open-source license has been selected. The repository remains all-rights-reserved and
-  must stay private until the owner chooses a license and resolves the known historical PII
-  exposure described by the release audit.
+- At the time, no open-source license had been selected. The repository remained
+  all-rights-reserved and private pending the owner's license and historical-PII decisions;
+  0.3.2 records both decisions and adopts MIT.
 
 ### Verification
 
