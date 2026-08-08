@@ -79,12 +79,12 @@ export function SharePanel({
 	return (
 		<div
 			className={cn(
-				"flex w-[min(23rem,calc(100vw-1.5rem))] flex-col overflow-hidden",
+				"kf-sheet kf-share-sheet flex w-[min(23rem,calc(100vw-1.5rem))] flex-col overflow-hidden",
 				"max-h-[min(82dvh,38rem)] rounded-lg border border-hairline-strong",
 				"bg-surface shadow-(--kf-shadow-panel)",
 			)}
 		>
-			<header className="flex shrink-0 items-center gap-3 border-b border-hairline px-3 py-2.5">
+			<header className="kf-sheet-header flex shrink-0 items-center gap-3 border-b border-hairline px-3 py-2.5">
 				<div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent-ink">
 					<ShieldCheck className="size-4" strokeWidth={1.75} aria-hidden="true" />
 				</div>

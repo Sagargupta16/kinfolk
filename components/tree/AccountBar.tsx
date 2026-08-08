@@ -63,7 +63,7 @@ export function AccountBar({
 				 * a normally-positioned child would either stretch the header or be clipped by
 				 * it. Fixed also means the canvas can pan underneath without dragging it along.
 				 */
-				<div className="fixed right-3 top-16 z-40 sm:right-6">
+				<div className="kf-share-anchor fixed right-3 top-16 z-40 sm:right-6">
 					<SharePanel
 						treeId={editableTreeId}
 						state={state}

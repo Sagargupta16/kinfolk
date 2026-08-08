@@ -154,6 +154,210 @@ async function loadElk() {
 	return new ELK();
 }
 
+/**
+ * Turn partner equality and parentage direction into placement invariants.
+ *
+ * ELK receives union edges as ordinary directed edges. That is useful for finding a
+ * readable x order, but it cannot express that partners are peers: a childless union is
+ * literally person -> person, and a remarriage chain can pull partners onto different
+ * layers. This pass keeps ELK's crossing-minimised x order, then applies pedigree
+ * semantics to y and resolves each row as contiguous household groups.
+ */
+function alignPedigreeRows(
+	nodes: FlowNode[],
+	edges: FlowEdge[],
+	positions: Map<string, Box>,
+	metrics: Metrics,
+): void {
+	const people = new Set(nodes.filter((node) => node.type === "person").map((node) => node.id));
+	const unions = new Set(nodes.filter((node) => node.type === "union").map((node) => node.id));
+	const parent = new Map([...people].map((id) => [id, id]));
+
+	const root = (id: string): string => {
+		const next = parent.get(id);
+		if (!next || next === id) return id;
+		const resolved = root(next);
+		parent.set(id, resolved);
+		return resolved;
+	};
+	const join = (left: string, right: string) => {
+		const a = root(left);
+		const b = root(right);
+		if (a === b) return;
+		// Stable representative: input order must not change the household identity.
+		if (a.localeCompare(b) <= 0) parent.set(b, a);
+		else parent.set(a, b);
+	};
+
+	const partnersByUnion = new Map<string, string[]>();
+	const partneredPeople = new Set<string>();
+	for (const edge of edges) {
+		if (!edge.layout || edge.kind !== "partner" || !people.has(edge.source)) continue;
+		partneredPeople.add(edge.source);
+
+		if (unions.has(edge.target)) {
+			const partners = partnersByUnion.get(edge.target);
+			if (partners) partners.push(edge.source);
+			else partnersByUnion.set(edge.target, [edge.source]);
+			continue;
+		}
+
+		// A childless partnership is projected directly from person to person.
+		if (people.has(edge.target)) {
+			partneredPeople.add(edge.target);
+			join(edge.source, edge.target);
+		}
+	}
+	for (const partners of partnersByUnion.values()) {
+		for (let index = 1; index < partners.length; index += 1) {
+			const first = partners[0];
+			const partner = partners[index];
+			if (first && partner) join(first, partner);
+		}
+	}
+
+	const householdOf = new Map([...people].map((id) => [id, root(id)]));
+	const members = new Map<string, string[]>();
+	for (const id of people) {
+		const household = householdOf.get(id) ?? id;
+		const existing = members.get(household);
+		if (existing) existing.push(id);
+		else members.set(household, [id]);
+	}
+
+	const outgoing = new Map<string, Set<string>>();
+	const structured = new Set<string>();
+	for (const id of partneredPeople) structured.add(householdOf.get(id) ?? id);
+
+	for (const edge of edges) {
+		if (!edge.layout || edge.kind !== "child" || !people.has(edge.target)) continue;
+		const childHousehold = householdOf.get(edge.target) ?? edge.target;
+		for (const partnerId of partnersByUnion.get(edge.source) ?? []) {
+			const parentHousehold = householdOf.get(partnerId) ?? partnerId;
+			structured.add(parentHousehold);
+			structured.add(childHousehold);
+			// Partnering an ancestor is contradictory: equality and strict descent cannot
+			// both be drawn. Keep the household intact and skip only the impossible rank edge.
+			if (parentHousehold === childHousehold) continue;
+			const targets = outgoing.get(parentHousehold);
+			if (targets) targets.add(childHousehold);
+			else outgoing.set(parentHousehold, new Set([childHousehold]));
+		}
+	}
+	if (structured.size === 0) return;
+
+	const indegree = new Map([...structured].map((id) => [id, 0]));
+	for (const targets of outgoing.values()) {
+		for (const target of targets) indegree.set(target, (indegree.get(target) ?? 0) + 1);
+	}
+
+	const ranks = new Map([...structured].map((id) => [id, 0]));
+	const queue = [...structured]
+		.filter((id) => (indegree.get(id) ?? 0) === 0)
+		.sort((a, b) => a.localeCompare(b));
+	const placed = new Set<string>();
+	while (queue.length > 0) {
+		const household = queue.shift();
+		if (!household) break;
+		placed.add(household);
+		for (const target of [...(outgoing.get(household) ?? [])].sort((a, b) => a.localeCompare(b))) {
+			ranks.set(target, Math.max(ranks.get(target) ?? 0, (ranks.get(household) ?? 0) + 1));
+			const next = (indegree.get(target) ?? 0) - 1;
+			indegree.set(target, next);
+			if (next === 0) queue.push(target);
+		}
+		queue.sort((a, b) => a.localeCompare(b));
+	}
+
+	const structuredBoxes = [...structured].flatMap((household) =>
+		(members.get(household) ?? []).flatMap((id) => {
+			const box = positions.get(id);
+			return box ? [box] : [];
+		}),
+	);
+	const baseY = Math.min(...structuredBoxes.map((box) => box.y));
+	const pitch = metrics.height + metrics.rowGap;
+
+	// A household-cycle is invalid pedigree data, but the renderer must still be total.
+	// Keep cyclic components near ELK's row while all satisfiable components use the DAG rank.
+	for (const household of structured) {
+		if (!placed.has(household)) {
+			const boxes = (members.get(household) ?? [])
+				.map((id) => positions.get(id))
+				.filter((box): box is Box => Boolean(box));
+			const averageY = boxes.reduce((sum, box) => sum + box.y, 0) / Math.max(boxes.length, 1);
+			ranks.set(household, Math.max(0, Math.round((averageY - baseY) / pitch)));
+		}
+		for (const id of members.get(household) ?? []) {
+			const box = positions.get(id);
+			if (box) box.y = baseY + (ranks.get(household) ?? 0) * pitch;
+		}
+	}
+
+	// Preserve ELK's left-to-right solution, but make each partner component contiguous.
+	// A larger gap between households makes the smaller partner gap read as grouping.
+	const preferredX = new Map([...people].map((id) => [id, positions.get(id)?.x ?? 0] as const));
+	const rows = new Map<number, string[]>();
+	for (const household of structured) {
+		for (const id of members.get(household) ?? []) {
+			const box = positions.get(id);
+			if (!box) continue;
+			const row = rows.get(box.y);
+			if (row) row.push(id);
+			else rows.set(box.y, [id]);
+		}
+	}
+
+	// A junction needs its 12px box plus 4px clearance on both sides. Keep two
+	// additional pixels so exact blocker boundaries do not collapse to a zero-width gap.
+	const partnerGap = Math.max(UNION_SIZE + 10, Math.round(metrics.gap * 0.65));
+	const householdGap = Math.max(partnerGap + 8, Math.round(metrics.gap * 1.75));
+	for (const ids of rows.values()) {
+		const groups = new Map<string, string[]>();
+		for (const id of ids) {
+			const household = householdOf.get(id) ?? id;
+			const group = groups.get(household);
+			if (group) group.push(id);
+			else groups.set(household, [id]);
+		}
+		const ordered = [...groups.entries()]
+			.map(([household, group]) => ({
+				household,
+				ids: group.sort(
+					(a, b) => (preferredX.get(a) ?? 0) - (preferredX.get(b) ?? 0) || a.localeCompare(b),
+				),
+				centre: group.reduce((sum, id) => sum + (preferredX.get(id) ?? 0), 0) / group.length,
+			}))
+			.sort((a, b) => a.centre - b.centre || a.household.localeCompare(b.household));
+
+		const originalLeft = Math.min(...ids.map((id) => preferredX.get(id) ?? 0));
+		const originalRight = Math.max(
+			...ids.map((id) => (preferredX.get(id) ?? 0) + (positions.get(id)?.width ?? metrics.width)),
+		);
+		let totalWidth = 0;
+		for (const [groupIndex, group] of ordered.entries()) {
+			totalWidth += group.ids.reduce(
+				(sum, id) => sum + (positions.get(id)?.width ?? metrics.width),
+				0,
+			);
+			totalWidth += Math.max(0, group.ids.length - 1) * partnerGap;
+			if (groupIndex > 0) totalWidth += householdGap;
+		}
+
+		let cursor = (originalLeft + originalRight) / 2 - totalWidth / 2;
+		for (const [groupIndex, group] of ordered.entries()) {
+			if (groupIndex > 0) cursor += householdGap;
+			for (const [memberIndex, id] of group.ids.entries()) {
+				if (memberIndex > 0) cursor += partnerGap;
+				const box = positions.get(id);
+				if (!box) continue;
+				box.x = cursor;
+				cursor += box.width;
+			}
+		}
+	}
+}
+
 export async function layoutGraph(
 	nodes: FlowNode[],
 	edges: FlowEdge[],
@@ -224,6 +428,7 @@ export async function layoutGraph(
 		]),
 	);
 
+	alignPedigreeRows(nodes, edges, positions, metrics);
 	anchorFamilylessNodes(nodes, edges, positions, metrics.gap);
 	placeUnionJunctions(nodes, edges, positions);
 
@@ -314,25 +519,44 @@ function placeUnionJunctions(
 		else partners.set(edge.target, [edge.source]);
 	}
 
+	const personBoxes = nodes.flatMap((node) => {
+		if (node.type !== "person") return [];
+		const box = positions.get(node.id);
+		return box ? [{ id: node.id, box }] : [];
+	});
+
 	for (const node of nodes) {
 		if (node.type !== "union") continue;
 		const dot = positions.get(node.id);
 		if (!dot) continue;
 
-		const boxes = (partners.get(node.id) ?? [])
-			.map((id) => positions.get(id))
-			.filter((box): box is Box => Boolean(box));
+		const partnerBoxes = (partners.get(node.id) ?? []).flatMap((id) => {
+			const box = positions.get(id);
+			return box ? [{ id, box }] : [];
+		});
+		const boxes = partnerBoxes.map(({ box }) => box);
 		if (boxes.length === 0) continue;
 
 		const centres = boxes.map((box) => box.x + box.width / 2);
+		const childTops = edges
+			.filter((edge) => edge.layout && edge.kind === "child" && edge.source === node.id)
+			.map((edge) => positions.get(edge.target)?.y)
+			.filter((top): top is number => top !== undefined);
+		const parentBottom = Math.max(...boxes.map((box) => box.y + box.height));
+		const childTop = childTops.length > 0 ? Math.min(...childTops) : null;
+		const generationGapY =
+			childTop !== null && childTop > parentBottom
+				? parentBottom + (childTop - parentBottom - dot.height) / 2
+				: null;
 
 		// One parent on the canvas (a single parent, or the other partner sits in a
 		// tree the viewer cannot see): centre the junction under them so the drop to
-		// the children is a straight vertical line. The y ELK assigned keeps it in
-		// the generation gap, below the card rather than on it.
+		// the children is a straight vertical line.
 		if (boxes.length === 1) {
-			const only = centres[0];
-			if (only !== undefined) dot.x = only - dot.width / 2;
+			const onlyBox = boxes[0];
+			if (!onlyBox) continue;
+			dot.x = onlyBox.x + onlyBox.width / 2 - dot.width / 2;
+			if (generationGapY !== null) dot.y = generationGapY;
 			continue;
 		}
 
@@ -346,24 +570,37 @@ function placeUnionJunctions(
 		 *
 		 * The couple's midpoint is only clear space when the partners are adjacent.
 		 * With somebody laid out between them (a remarriage chain, a fused graph),
-		 * the midpoint is the middle of that person's card -- and union nodes paint
-		 * above cards, so the bead sat on a stranger's face. Measured on the sample
-		 * tree: 5 of 34 beads. So the x is clamped to the nearest clear point
-		 * between the partners; a couple with NO clear gutter keeps ELK's y in the
-		 * generation gap instead, which is the pre-marriage-line rendering and
-		 * always safe.
+		 * the midpoint is the middle of that person's card. Find the nearest clear
+		 * point, then prove both partner-to-bead segments avoid every other card.
+		 * If endpoint adjacency is impossible, route the marriage through the empty
+		 * generation lane instead of drawing a horizontal line through a person.
 		 */
 		const clearance = dot.width / 2 + 4;
-		const blockers: Array<{ start: number; end: number }> = [];
-		for (const node of nodes) {
-			if (node.type !== "person") continue;
-			const box = positions.get(node.id);
-			if (!box || railY < box.y || railY > box.y + box.height) continue;
-			blockers.push({ start: box.x - clearance, end: box.x + box.width + clearance });
-		}
+		const blockers = personBoxes
+			.filter(({ box }) => railY >= box.y && railY <= box.y + box.height)
+			.map(({ box }) => ({
+				start: box.x - clearance,
+				end: box.x + box.width + clearance,
+			}));
 		const beadX = nearestClearPoint(midX, Math.min(...centres), Math.max(...centres), blockers);
-		if (beadX === null) {
+		const crossesCard =
+			beadX !== null &&
+			partnerBoxes.some(({ id, box }) => {
+				const sourceX = box.x + box.width / 2;
+				const left = Math.min(sourceX, beadX) + 0.5;
+				const right = Math.max(sourceX, beadX) - 0.5;
+				return personBoxes.some(
+					(person) =>
+						person.id !== id &&
+						railY >= person.box.y &&
+						railY <= person.box.y + person.box.height &&
+						person.box.x < right &&
+						person.box.x + person.box.width > left,
+				);
+			});
+		if (beadX === null || crossesCard) {
 			dot.x = midX - dot.width / 2;
+			if (generationGapY !== null) dot.y = generationGapY;
 			continue;
 		}
 

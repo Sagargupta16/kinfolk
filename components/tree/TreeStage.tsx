@@ -15,7 +15,7 @@
  * value and a setter.
  */
 import { Activity, Rows3, Square, SquareDot } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
 import { familyFeed } from "@/lib/tree/feed";
@@ -42,6 +42,8 @@ const LEVELS: { value: Lod; label: string; hint: string; Icon: typeof Square }[]
 	{ value: "compact", label: "Rows", hint: "Names and dates only", Icon: Rows3 },
 	{ value: "dot", label: "Dots", hint: "Shape of the whole graph", Icon: SquareDot },
 ];
+
+const VIEWED_SOURCES_KEY = "kinfolk.viewed-sources";
 
 export function TreeStage({
 	nodes,
@@ -80,8 +82,89 @@ export function TreeStage({
 	const focusSearch = useRef<(() => void) | null>(null);
 	const onFocusSearch = useCallback(() => focusSearch.current?.(), []);
 
-	/** The card most recently clicked, which pre-fills the editor's "from" field. */
-	const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
+	/**
+	 * The durable subject of the workspace.
+	 *
+	 * This lives above TreeCanvas because changing detail level or arrangement remounts the
+	 * React Flow provider. A viewed person is navigation state, not a transient selection,
+	 * so cards, search, feed, breadcrumbs, editor and orbit all read this one id.
+	 */
+	const defaultViewedNode = useMemo(
+		() =>
+			nodes.find(
+				(node) =>
+					node.type === "person" &&
+					Boolean(selfId && node.data.sources.some((source) => source.id === selfId)),
+			) ?? nodes.find((node) => node.type === "person"),
+		[nodes, selfId],
+	);
+	const defaultViewedId = defaultViewedNode?.id ?? null;
+	const viewedSources = useRef(
+		new Set(
+			defaultViewedNode?.type === "person"
+				? defaultViewedNode.data.sources.map(({ id }) => id)
+				: [],
+		),
+	);
+	const restoredViewedSources = useRef(false);
+	const rememberViewed = useCallback((node: FlowNode | undefined) => {
+		if (node?.type !== "person") return;
+		const ids = node.data.sources.map((source) => source.id);
+		viewedSources.current = new Set(ids);
+		try {
+			sessionStorage.setItem(VIEWED_SOURCES_KEY, JSON.stringify(ids));
+		} catch {
+			// A private window can reject storage. In-memory durability still works.
+		}
+	}, []);
+	const [viewedId, setViewedId] = useState<string | null>(defaultViewedId);
+	const changeViewed = useCallback(
+		(id: string) => {
+			const node = nodes.find((candidate) => candidate.type === "person" && candidate.id === id);
+			rememberViewed(node);
+			setViewedId(id);
+		},
+		[nodes, rememberViewed],
+	);
+	useEffect(() => {
+		let restoring = false;
+		if (!restoredViewedSources.current) {
+			restoredViewedSources.current = true;
+			try {
+				const stored: unknown = JSON.parse(sessionStorage.getItem(VIEWED_SOURCES_KEY) ?? "null");
+				if (Array.isArray(stored) && stored.every((id): id is string => typeof id === "string")) {
+					viewedSources.current = new Set(stored);
+					restoring = stored.length > 0;
+				}
+			} catch {
+				// Invalid or unavailable session storage is equivalent to no remembered subject.
+			}
+		}
+
+		const current = nodes.find((node) => node.type === "person" && node.id === viewedId);
+		if (!restoring && current?.type === "person") {
+			rememberViewed(current);
+			return;
+		}
+
+		// A fused person's id is the smallest contributing source id, so changing the
+		// visible tree set can rename the same human. Follow an intersecting source before
+		// falling back to self; otherwise All trees -> My tree silently changes the subject.
+		const remapped = nodes.find(
+			(node) =>
+				node.type === "person" &&
+				node.data.sources.some((source) => viewedSources.current.has(source.id)),
+		);
+		const next = remapped?.type === "person" ? remapped : defaultViewedNode;
+		rememberViewed(next);
+		setViewedId(next?.id ?? null);
+	}, [defaultViewedNode, nodes, rememberViewed, viewedId]);
+	const picked = useMemo(() => {
+		const node = nodes.find(
+			(candidate) => candidate.type === "person" && candidate.id === viewedId,
+		);
+		return node?.type === "person" ? { id: node.id, name: displayName(node.data.primary) } : null;
+	}, [nodes, viewedId]);
 	const [quickAddRequest, setQuickAddRequest] = useState<{
 		id: string;
 		nonce: number;
@@ -120,7 +203,13 @@ export function TreeStage({
 	// A fresh object per request, so searching the same name twice still travels. The
 	// canvas compares by identity for exactly this reason.
 	const [goTo, setGoTo] = useState<{ id: string } | null>(null);
-	const onGoTo = useCallback((id: string) => setGoTo({ id }), []);
+	const onGoTo = useCallback(
+		(id: string) => {
+			changeViewed(id);
+			setGoTo({ id });
+		},
+		[changeViewed],
+	);
 
 	/**
 	 * Whether the person detail panel is open, reported by the canvas.
@@ -186,11 +275,13 @@ export function TreeStage({
 	const census = useMemo(() => censusOf(nodes, drawn, degree), [nodes, drawn, degree]);
 
 	return (
-		<div className="relative size-full">
+		<div className="kf-canvas-stage relative size-full">
 			<TreeCanvas
 				nodes={nodes}
 				edges={edges}
 				selfId={selfId}
+				viewedId={viewedId}
+				onViewedChange={changeViewed}
 				lod={lod}
 				onLodChange={setLod}
 				view={view}
@@ -203,7 +294,6 @@ export function TreeStage({
 				kinship={kinship}
 				showRelations={showRelations}
 				onFocusSearch={onFocusSearch}
-				onPick={setPicked}
 				onDetailOpenChange={setDetailOpen}
 				quickAddRequest={quickAddRequest}
 				onQuickAddHandled={() => setQuickAddRequest(null)}
@@ -214,7 +304,7 @@ export function TreeStage({
 			{/* Top-left, opposite the detail control. Capped and NOT full width on a phone:
 			    the results drop over the canvas, and a list spanning the screen would hide
 			    the tree it is meant to help you read. */}
-			<div className="absolute left-3 top-3 z-20 w-[min(15rem,calc(100%-8.5rem))]">
+			<div className="kf-search-dock absolute left-3 top-3 z-20 w-[min(18rem,calc(100%-10rem))]">
 				<TreeSearch
 					nodes={nodes}
 					selfId={selfId}
@@ -224,18 +314,17 @@ export function TreeStage({
 				/>
 			</div>
 
-			{/* Top-right: React Flow puts its own zoom controls bottom-left, and the two must
-			    not share an edge on a phone. z-30 beats the search dropdown's z-20 -- both can
-			    be open at once on a phone, and the one just clicked has to be on top. Slides
-			    left when the desktop detail panel opens, since the panel owns this edge then;
-			    on a phone the panel is a bottom sheet and nothing needs to move. */}
+			{/* Top-right on desktop. On a phone it disappears while a reading sheet is
+			    open so the selected card can use the whole unobscured strip above it. */}
 			<div
 				className={cn(
-					"absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5",
-					"transition-transform duration-(--duration-base) ease-(--ease-out)",
-					(detailOpen || feedVisible) && "sm:-translate-x-[22.75rem]",
+					"kf-command-dock absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5 opacity-100",
+					"transition-[transform,opacity] duration-(--duration-base) ease-(--ease-out)",
+					(detailOpen || feedVisible) &&
+						"invisible pointer-events-none opacity-0 sm:visible sm:pointer-events-auto sm:-translate-x-[22.75rem] sm:opacity-100",
 				)}
 			>
+				<span className="kf-command-dock__label hidden sm:block">View desk</span>
 				{/* Arrangement first, because it changes what the detail control is describing:
 				    "cards / rows / dots" applies to either view, but the reader picks the shape
 				    before they pick how much of each person to draw.
@@ -247,14 +336,17 @@ export function TreeStage({
 					onMode={setView}
 					depth={depth}
 					onDepth={setDepth}
-					canOrbit={Boolean(selfId || picked)}
+					canOrbit={Boolean(viewedId)}
 				/>
 
 				{/* A fieldset rather than role="group": same semantics, carried by the native
 				    element with no ARIA attribute to keep in sync. The label lives in
 				    aria-label because a visible <legend> would cost a line of canvas to say
 				    what the three icons already say. */}
-				<fieldset aria-label="Level of detail" className="kf-glass flex overflow-hidden rounded-lg">
+				<fieldset
+					aria-label="Level of detail"
+					className="kf-command-group kf-glass flex overflow-hidden rounded-lg"
+				>
 					{LEVELS.map(({ value, label, hint, Icon }) => (
 						<button
 							key={value}
@@ -301,7 +393,7 @@ export function TreeStage({
 						feedVisible ? "Close the family feed" : "What changed in this record, newest first"
 					}
 					className={cn(
-						"kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
+						"kf-command-button kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
 						"font-mono text-[0.625rem] uppercase tracking-wider",
 						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 						// `accent-ink`, not the raw accent: this is 10px text on glass, and the
@@ -326,7 +418,7 @@ export function TreeStage({
 			 * this button, and the list you are reading has to win.
 			 */}
 			{editableTreeId && (
-				<div className="pointer-events-none absolute left-3 top-16 z-20 flex flex-col items-start gap-1.5">
+				<div className="kf-editor-dock pointer-events-none absolute left-3 top-16 z-20 flex flex-col items-start gap-1.5">
 					<EditorPanel
 						treeId={editableTreeId}
 						people={pickable}

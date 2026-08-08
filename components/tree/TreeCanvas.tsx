@@ -36,7 +36,7 @@ import {
 	useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Crosshair, Maximize2 } from "lucide-react";
+import { Crosshair, LocateFixed, Maximize2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -69,6 +69,7 @@ import {
 	type Lod,
 	layoutGraph,
 	NODE_METRICS,
+	type PositionedNode,
 } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
@@ -176,30 +177,6 @@ function rowFor(y: number, bands: GenerationBand[]): number {
 }
 
 /**
- * Is the pointer a finger?
- *
- * Read in an effect rather than during render: the server has no `matchMedia`, and
- * guessing would make the first client paint disagree with the markup it hydrates.
- * Starting false is the safe default -- a mouse gets the richer behaviour, and a phone
- * loses it for one frame.
- */
-function useCoarsePointer(): boolean {
-	const [coarse, setCoarse] = useState(false);
-
-	useEffect(() => {
-		const query = window.matchMedia("(pointer: coarse)");
-		setCoarse(query.matches);
-		// Subscribed, not sampled once: a tablet with a keyboard attached switches pointer
-		// type without a reload.
-		const onChange = (event: MediaQueryListEvent) => setCoarse(event.matches);
-		query.addEventListener("change", onChange);
-		return () => query.removeEventListener("change", onChange);
-	}, []);
-
-	return coarse;
-}
-
-/**
  * The unions in a projected graph, for the sibling-bar pass.
  *
  * Read back off the union NODES rather than passed alongside them: a union node already
@@ -230,6 +207,10 @@ type Props = {
 	edges: FlowEdge[];
 	showRelations?: boolean;
 	selfId?: string;
+	/** Durable person the workspace is organised around. */
+	viewedId?: string | null;
+	/** Changes the durable subject without conflating it with hover or panel state. */
+	onViewedChange?: (personId: string) => void;
 	lod?: Lod;
 	/** Cycled by the `d` shortcut, so the control lives in the parent but the key is here. */
 	onLodChange?: (lod: Lod) => void;
@@ -281,8 +262,6 @@ type Props = {
 	kinship?: Map<string, Kinship>;
 	/** Focus the search box, for the `/` shortcut. */
 	onFocusSearch?: () => void;
-	/** Called with the clicked person, so the editor can pre-fill its "from" field. */
-	onPick?: (person: { id: string; name: string } | null) => void;
 	/** Called with whether the detail panel is open, so the stage can move its chrome. */
 	onDetailOpenChange?: (open: boolean) => void;
 	/** Opens relationship-first add for a selected fused person. */
@@ -307,6 +286,8 @@ function Canvas({
 	edges: sourceEdges,
 	showRelations = true,
 	selfId,
+	viewedId,
+	onViewedChange,
 	lod = "full",
 	onLodChange,
 	view = "tree",
@@ -318,7 +299,6 @@ function Canvas({
 	degree,
 	kinship,
 	onFocusSearch,
-	onPick,
 	onDetailOpenChange,
 	quickAddRequest,
 	onQuickAddHandled,
@@ -350,6 +330,7 @@ function Canvas({
 		height: 0,
 	});
 	const [overview, setOverview] = useState<OverviewNode[]>([]);
+	const positionedRef = useRef<PositionedNode[]>([]);
 	/**
 	 * Bumped once per completed layout, and the only thing framing keys off.
 	 *
@@ -434,7 +415,55 @@ function Canvas({
 	useEffect(() => {
 		onDetailOpenChange?.(detailId !== null);
 	}, [detailId, onDetailOpenChange]);
-	const [trail, setTrail] = useState<string[]>([]);
+
+	/**
+	 * Keep the open panel's subject in the unobscured part of the canvas.
+	 *
+	 * `setCenter` normally puts the card in the viewport centre, which is behind the
+	 * 55dvh mobile sheet and can sit under the 22rem desktop rail on a narrow screen.
+	 * The panel's layout box is already final while its transform animates, so its
+	 * offset dimensions provide the exact reserved space without duplicating CSS values.
+	 */
+	useEffect(() => {
+		if (!detailId || !measured) return;
+
+		const frame = requestAnimationFrame(() => {
+			const target = getNodes().find((node) => node.id === detailId);
+			const panel = document.querySelector<HTMLElement>(".kf-sheet--rail");
+			if (!target || !panel) return;
+
+			const metrics = NODE_METRICS[lod];
+			const zoom = Math.max(getZoom(), LEGIBLE_ZOOM[lod]);
+			const targetX = target.position.x + (target.measured?.width ?? metrics.width) / 2;
+			const targetY = target.position.y + (target.measured?.height ?? metrics.height) / 2;
+			const desktopRail = panel.offsetLeft > 0;
+			const flow = document.querySelector<HTMLElement>(".react-flow");
+			const flowTop = flow?.getBoundingClientRect().top ?? 0;
+			const topInset = desktopRail
+				? 0
+				: Math.max(
+						0,
+						...[
+							".kf-search-dock",
+							".kf-editor-dock",
+							'[aria-label="Current person and recently viewed"]',
+						].map((selector) => {
+							const element = document.querySelector<HTMLElement>(selector);
+							return element ? element.getBoundingClientRect().bottom - flowTop : 0;
+						}),
+					);
+			const mobileOffset = Math.max(0, panel.offsetHeight - topInset) / (2 * zoom);
+
+			void setCenter(
+				targetX + (desktopRail ? panel.offsetWidth / (2 * zoom) : 0),
+				targetY + (desktopRail ? 0 : mobileOffset),
+				{ zoom, duration: 400 },
+			);
+		});
+
+		return () => cancelAnimationFrame(frame);
+	}, [detailId, measured, getNodes, getZoom, lod, setCenter]);
+	const [trail, setTrail] = useState<string[]>(() => (viewedId ? [viewedId] : []));
 	const [helpOpen, setHelpOpen] = useState(false);
 	/**
 	 * Whose quick-add sheet is open.
@@ -457,9 +486,15 @@ function Canvas({
 	const router = useRouter();
 	const [collapsed, setCollapsed] = useState<Collapsed>(NOTHING_COLLAPSED);
 
-	// Cards are draggable with a mouse and not with a finger. On a phone a card is most of
-	// the screen, so a swipe that starts on one has to pan the canvas.
-	const coarsePointer = useCoarsePointer();
+	const selfNodeId = useMemo(
+		() =>
+			sourceNodes.find(
+				(node) =>
+					node.type === "person" &&
+					Boolean(selfId && node.data.sources.some((source) => source.id === selfId)),
+			)?.id,
+		[sourceNodes, selfId],
+	);
 
 	/**
 	 * The viewer's immediate family, for framing when the tree cannot fit legibly.
@@ -469,11 +504,11 @@ function Canvas({
 	 * -- the very thing this fallback exists to avoid.
 	 */
 	const homeIds = useMemo(() => {
-		if (!selfId) return null;
+		if (!selfNodeId) return null;
 		const unionIds = new Set(sourceNodes.filter((n) => n.type === "union").map((n) => n.id));
 		const family = sourceEdges.filter((edge) => edge.layout);
-		return neighbourhood(family, selfId, (id) => unionIds.has(id)).nodeIds;
-	}, [selfId, sourceNodes, sourceEdges]);
+		return neighbourhood(family, selfNodeId, (id) => unionIds.has(id)).nodeIds;
+	}, [selfNodeId, sourceNodes, sourceEdges]);
 
 	/**
 	 * The edges the viewer has ENABLED, which is neither what layout gets nor what is
@@ -496,11 +531,12 @@ function Canvas({
 	const visibleIds = useMemo(
 		() =>
 			visibleAfterCollapse(sourceNodes, sourceEdges, collapsed, [
-				...(selfId ? [selfId] : []),
+				...(selfNodeId ? [selfNodeId] : []),
+				...(viewedId ? [viewedId] : []),
 				...collapsed.descendants,
 				...collapsed.ancestors,
 			]),
-		[sourceNodes, sourceEdges, collapsed, selfId],
+		[sourceNodes, sourceEdges, collapsed, selfNodeId, viewedId],
 	);
 
 	/** The graph actually laid out: everything, unless something is folded. */
@@ -543,7 +579,7 @@ function Canvas({
 	 * for the whole graph on every card click in tree mode. Gating the value rather than the
 	 * read is what keeps clicking a card cheap.
 	 */
-	const orbitFocusId = view === "orbit" ? (pinnedId ?? selfId ?? null) : null;
+	const orbitFocusId = view === "orbit" ? (viewedId ?? selfNodeId ?? null) : null;
 
 	const folds = useMemo(() => foldable(sourceEdges), [sourceEdges]);
 	const hidden = useMemo(
@@ -562,6 +598,11 @@ function Canvas({
 		for (const node of sourceNodes) if (node.type === "person") byId.set(node.id, node.data);
 		return byId;
 	}, [sourceNodes]);
+
+	useEffect(() => {
+		if (!viewedId || !people.has(viewedId)) return;
+		setTrail((current) => pushTrail(current, viewedId));
+	}, [people, viewedId]);
 
 	/** Whose relations are revealed: the pinned person, else the hovered one. */
 	const revealedId = pinnedId ?? focusedId;
@@ -803,10 +844,9 @@ function Canvas({
 								}
 							: // A junction is not a destination, so it is not a tab stop.
 								{ focusable: false }),
-						// Union dots are structural; dragging them would desync the layout from the
-						// data. The finger/mouse distinction is applied in its own effect below,
-						// so the pointer type resolving after mount cannot re-run ELK.
-						draggable: node.type === "person",
+						// Structured arrangements own their geometry. Free-dragging one card would
+						// immediately break parent/child ranks and leave partner rails behind.
+						draggable: false,
 						// Union beads paint BELOW the cards. The bead placement already aims for a
 						// clear gutter, but a fused graph can leave a couple with no gutter at all
 						// -- and a bead behind an opaque card is quiet, where a bead on somebody's
@@ -875,9 +915,35 @@ function Canvas({
 					const sBox = boxes.get(edge.source);
 					const tBox = boxes.get(edge.target);
 					if (!sBox || !tBox) return null;
+					const sourceMidX = sBox.position.x + sBox.width / 2;
+					const targetMidX = tBox.position.x + tBox.width / 2;
 					const sourceMidY = sBox.position.y + sBox.height / 2;
 					const targetMidY = tBox.position.y + tBox.height / 2;
-					const railY = tBox.type === "union" ? targetMidY : (sourceMidY + targetMidY) / 2;
+					let railY = tBox.type === "union" ? targetMidY : (sourceMidY + targetMidY) / 2;
+
+					// A direct childless partnership has no junction whose placement can choose a
+					// safe lane. If another card lies between its endpoints, route through the
+					// empty generation gap instead of drawing through that person's name.
+					if (tBox.type === "person") {
+						const left = Math.min(sourceMidX, targetMidX);
+						const right = Math.max(sourceMidX, targetMidX);
+						const crossesCard = [...boxes.values()].some(
+							(box) =>
+								box.type === "person" &&
+								box.id !== edge.source &&
+								box.id !== edge.target &&
+								railY >= box.position.y &&
+								railY <= box.position.y + box.height &&
+								box.position.x < right &&
+								box.position.x + box.width > left,
+						);
+						if (crossesCard) {
+							railY =
+								Math.max(sBox.position.y + sBox.height, tBox.position.y + tBox.height) +
+								NODE_METRICS[lod].rowGap / 3;
+						}
+					}
+
 					return { partner: true as const, railY, sourceMidY, targetMidY };
 				};
 
@@ -937,6 +1003,7 @@ function Canvas({
 							};
 						}),
 				);
+				positionedRef.current = positioned;
 				setBands(rows);
 				setExtent(box);
 				setOverview(overviewNodes(positioned, selfId));
@@ -1036,6 +1103,20 @@ function Canvas({
 		void fitView({ padding: 1.6, duration: 400, nodes: [anchor], maxZoom: 1 });
 	}, [homeIds, lod, viewportWidth, viewportHeight, fitView, getNodes, getNodesBounds, setCenter]);
 
+	const frameViewed = useCallback(() => {
+		const anchor = getNodes().find((node) => node.id === viewedId);
+		if (!anchor) {
+			frameSelf();
+			return;
+		}
+		const metrics = NODE_METRICS[lod];
+		void setCenter(
+			anchor.position.x + (anchor.measured?.width ?? metrics.width) / 2,
+			anchor.position.y + (anchor.measured?.height ?? metrics.height) / 2,
+			{ zoom: Math.max(getZoom(), LEGIBLE_ZOOM[lod]), duration: 400 },
+		);
+	}, [frameSelf, getNodes, getZoom, lod, setCenter, viewedId]);
+
 	// Frame the graph once its nodes have actually been measured. Keyed on layoutEpoch, so
 	// switching between combined and mine-only refits but a hover does not.
 	useEffect(() => {
@@ -1077,8 +1158,8 @@ function Canvas({
 			return;
 		}
 
-		// Too big to fit legibly: open on the viewer instead and let them pan or collapse.
-		frameSelf();
+		// Too big to fit legibly: open on the durable subject instead and let them pan or fold.
+		frameViewed();
 	}, [
 		measured,
 		layoutEpoch,
@@ -1086,7 +1167,7 @@ function Canvas({
 		viewportHeight,
 		lod,
 		view,
-		frameSelf,
+		frameViewed,
 		fitView,
 		getNodesBounds,
 		getNodes,
@@ -1104,9 +1185,11 @@ function Canvas({
 	 * a viewer's deliberate zoom-in.
 	 */
 	const travelTo = useCallback(
-		(personId: string, { openDetail = false }: { openDetail?: boolean } = {}) => {
+		(personId: string, { openDetail = false }: { openDetail?: boolean } = {}): boolean => {
 			const target = getNodes().find((node) => node.id === personId);
-			if (!target) return;
+			if (!target) return false;
+
+			onViewedChange?.(personId);
 
 			const metrics = NODE_METRICS[lod];
 			void setCenter(
@@ -1130,15 +1213,18 @@ function Canvas({
 					return node.selected === selected ? node : { ...node, selected };
 				}),
 			);
+			return true;
 		},
-		[getNodes, getZoom, lod, setCenter, setNodes],
+		[getNodes, getZoom, lod, onViewedChange, setCenter, setNodes],
 	);
 
 	useEffect(() => {
 		if (!goTo || !measured) return;
-		travelTo(goTo.id, { openDetail: true });
-		onGoToHandled?.();
-	}, [goTo, measured, travelTo, onGoToHandled]);
+		// A travel requested from an older projection stays pending until the relayout
+		// actually contains its target. `layoutEpoch` is the retry trigger.
+		void layoutEpoch;
+		if (travelTo(goTo.id, { openDetail: true })) onGoToHandled?.();
+	}, [goTo, measured, layoutEpoch, travelTo, onGoToHandled]);
 
 	/**
 	 * Who lights up when somebody is focused. Traverses through union dots, so hovering a
@@ -1190,22 +1276,36 @@ function Canvas({
 		);
 	}, [lit, revealedId, depth, layoutEpoch, setNodes]);
 
-	/**
-	 * Cards are draggable with a mouse and not with a finger: on a phone a card is most
-	 * of the screen, so a swipe that starts on one has to pan the canvas. Its own effect
-	 * for the same reason focus is -- the media query resolves AFTER the first layout,
-	 * so reading it in the layout pass re-ran ELK and re-framed the viewport once per
-	 * load on every touch device.
-	 */
+	/** Keep the durable viewed state explicit in card data, selection and the overview. */
 	useEffect(() => {
 		void layoutEpoch;
 		setNodes((current) =>
 			current.map((node) => {
-				const draggable = node.type === "person" && !coarsePointer;
-				return node.draggable === draggable ? node : { ...node, draggable };
+				if (node.type !== "person") return node;
+				const isViewed = node.id === viewedId;
+				const data = node.data as { isViewed?: boolean };
+				const className = withFlag("kf-viewed", node.className, isViewed);
+				const plainLabel = (node.ariaLabel ?? "").replace(/^Viewing, /, "");
+				const ariaLabel = isViewed ? `Viewing, ${plainLabel}` : plainLabel;
+				if (
+					data.isViewed === isViewed &&
+					node.selected === isViewed &&
+					node.className === className &&
+					node.ariaLabel === ariaLabel
+				) {
+					return node;
+				}
+				return {
+					...node,
+					selected: isViewed,
+					className,
+					ariaLabel,
+					data: data.isViewed === isViewed ? node.data : { ...node.data, isViewed },
+				};
 			}),
 		);
-	}, [coarsePointer, layoutEpoch, setNodes]);
+		setOverview(overviewNodes(positionedRef.current, selfId, viewedId ?? undefined));
+	}, [layoutEpoch, selfId, setNodes, viewedId]);
 
 	/**
 	 * What React Flow renders: the laid-out skeleton, plus the revealed relations, with
@@ -1230,13 +1330,18 @@ function Canvas({
 	const focus = useCallback((_: unknown, node: Node) => setFocusedId(node.id), []);
 	const blur = useCallback(() => setFocusedId(null), []);
 
-	/** Clicking the empty canvas clears the hover, the pin and the panel. */
+	/** Clicking the empty canvas clears transient surfaces, never the durable viewed person. */
 	const clear = useCallback(() => {
 		setFocusedId(null);
 		setPinnedId(null);
 		setDetailId(null);
-		onPick?.(null);
-	}, [onPick]);
+		setNodes((current) =>
+			current.map((node) => {
+				const selected = node.type === "person" && node.id === viewedId;
+				return node.selected === selected ? node : { ...node, selected };
+			}),
+		);
+	}, [setNodes, viewedId]);
 
 	/**
 	 * A click focuses, PINS, opens the panel and names the person.
@@ -1255,14 +1360,11 @@ function Canvas({
 			setPinnedId((current) => (current === node.id ? null : node.id));
 			if (node.type !== "person") return;
 
+			onViewedChange?.(node.id);
 			setDetailId((current) => (current === node.id ? null : node.id));
 			setTrail((current) => pushTrail(current, node.id));
-			const person = node.data as {
-				primary?: Parameters<typeof displayName>[0];
-			};
-			if (person.primary) onPick?.({ id: node.id, name: displayName(person.primary) });
 		},
-		[focus, onPick],
+		[focus, onViewedChange],
 	);
 
 	/**
@@ -1273,7 +1375,7 @@ function Canvas({
 	 * different row as soon as somebody added a great-grandparent.
 	 */
 	const foldGeneration = useCallback(() => {
-		const anchor = revealedId ?? selfId;
+		const anchor = viewedId ?? revealedId ?? selfNodeId;
 		if (!anchor) return;
 
 		const anchorNode = getNodes().find((node) => node.id === anchor);
@@ -1283,7 +1385,7 @@ function Canvas({
 			.filter((node) => node.type === "person" && node.position.y === anchorNode.position.y)
 			.map((node) => node.id);
 		if (row.length > 0) setCollapsed((current) => collapseGeneration(current, row));
-	}, [revealedId, selfId, getNodes]);
+	}, [viewedId, revealedId, selfNodeId, getNodes]);
 
 	const onAction = useCallback(
 		(action: ShortcutAction) => {
@@ -1499,7 +1601,14 @@ function Canvas({
 						 * and the one thing a viewer cannot recover by gesture: pan far enough on a
 						 * phone and every direction looks the same.
 						 */}
-						{selfId && (
+						{viewedId && (
+							<TravelButton onClick={frameViewed}>
+								<LocateFixed className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+								Current
+							</TravelButton>
+						)}
+
+						{selfNodeId && selfNodeId !== viewedId && (
 							<TravelButton onClick={frameSelf}>
 								<Crosshair className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
 								You
@@ -1511,9 +1620,15 @@ function Canvas({
 
 			<OfflineNotice />
 
-			{/* Centred at the top, between search on the left and the detail controls on the
-			    right. `max-w` keeps it from reaching either on a narrow window. */}
-			<div className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[min(28rem,calc(100%-16rem))] -translate-x-1/2 justify-center">
+			{/* Below search on a phone, centred between search and controls from `sm` up.
+			    The narrow mobile width is deliberate: the right-hand command dock keeps its
+			    own pointer lane, while search results paint above this lower-z trail. */}
+			<div
+				className={cn(
+					"pointer-events-none absolute left-3 z-10 flex max-w-[calc(100%-10.5rem)] justify-start sm:left-1/2 sm:top-3 sm:z-20 sm:max-w-[min(28rem,calc(100%-16rem))] sm:-translate-x-1/2 sm:justify-center",
+					canEdit ? "top-28" : "top-16",
+				)}
+			>
 				<div className="pointer-events-auto">
 					<TreeBreadcrumbs trail={trailPeople} onGoTo={(id) => travelTo(id)} />
 				</div>

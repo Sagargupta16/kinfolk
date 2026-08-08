@@ -62,7 +62,8 @@ import { cn } from "@/lib/utils";
  * invisible on the map, where every mark owes the 3:1 a meaningful graphic does.
  */
 const TONE_FILL: Record<OverviewTone, string> = {
-	self: "var(--color-accent)",
+	viewed: "var(--color-accent)",
+	self: "var(--color-self-marker)",
 	living: "var(--color-edge)",
 	past: "var(--color-past)",
 	unsure: "var(--color-past)",
