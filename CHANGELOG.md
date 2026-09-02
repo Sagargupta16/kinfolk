@@ -6,7 +6,18 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
-## Unreleased
+## 0.3.3 -- 2026-09-02 (the nanoid advisory, and the couple-centering fix ships)
+
+### Security
+
+- **nanoid held at `>=3.3.18 <4`** (GHSA-2v37-7h3g-55p8, Dependabot alert #6, high).
+  nanoid below 3.3.18 can loop indefinitely when a custom generator is asked for a
+  size of zero. The copy here is transitive -- postcss depends on it -- so the fix is a
+  fourth entry in the workspace `overrides` block rather than a bump to anything we
+  import. The range is capped below 4 deliberately: nanoid 4+ is ESM-only while postcss
+  requires it as CommonJS, and an open `>=3.3.18` resolved to 6.0.1, which is not a
+  drop-in. This manual bump supersedes the Dependabot update run that had been failing
+  since 2026-08-17.
 
 ### Fixed
 
@@ -57,6 +68,9 @@ read and only showed up on a live canvas.
 
 ### Verification
 
+- Re-ran after the nanoid override: Biome (106 files), both strict TypeScript projects,
+  both production builds, and `pnpm audit --prod --audit-level=low` (no known
+  vulnerabilities) all pass, and the lockfile resolves exactly one nanoid at 3.3.18.
 - Biome, both strict TypeScript projects, both production builds, the dead-Tailwind CSS
   guard (0 matches), `pnpm audit --prod --audit-level=low`, and `git diff --check` pass.
 - Measured on the live canvas at 1600x900, not from a file read: 117 person cards, 150
