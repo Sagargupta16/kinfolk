@@ -7,8 +7,8 @@ people without overwriting either family's account.
 **[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
 server-rendered fallback, with a sample tree you can explore without an account.
 
-Current release: **0.3.2**, which adds MIT licensing and public repository metadata on
-top of the profile-first editing and security hardening in 0.3.1.
+Current release: **0.3.3**, which patches the nanoid infinite-loop advisory and ships the
+couple-over-children alignment fix, on top of the MIT licensing in 0.3.2.
 
 ## Why this is not just a tree widget
 
