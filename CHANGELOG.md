@@ -57,6 +57,8 @@ This entry does not record a release, deployment, or production migration run.
   configuration instead of reporting skipped checks as a healthy release.
 - The action API rejects untrusted request origins before dispatch. A renewed link proposal
   requires fresh consent, and the Pages API origin and CSP share one validated setting.
+- Pages verification uses HTTPS when GitHub reports an inherited custom-domain URL as HTTP,
+  retaining the reported host and path and all strict readiness checks.
 - No new migration is introduced. Photo uploads remain pending approval of a private
   storage provider and its authentication flow.
 

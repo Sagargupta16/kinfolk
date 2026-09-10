@@ -134,4 +134,6 @@ jobs:
         env:
           SPA_URL: ${{ steps.deployment.outputs.page_url }}
           EXPECTED_COMMIT: ${{ github.sha }}
-        run: node --experimental-strip-types scripts/check-production.mts --spa --wait
+        # GitHub reports inherited custom-domain URLs as HTTP even when HTTPS is
+        # available. Keep the reported host/path and use HTTPS for the strict probe.
+        run: SPA_URL="${SPA_URL/#http:/https:}" node --experimental-strip-types scripts/check-production.mts --spa --wait
