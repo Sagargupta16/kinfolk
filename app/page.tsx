@@ -8,20 +8,22 @@ export default function HomePage() {
 			eyebrow="A private family atlas"
 			title={
 				<>
-					Your family is more than a tree.
-					<span className="kf-brand-accent">Map the whole living record.</span>
+					Your people.
+					<br />
+					Their stories.
+					<span className="kf-brand-accent">One family atlas.</span>
 				</>
 			}
-			lede="Kinfolk keeps every family's account intact, then joins matching people only when both sides agree. Trace relatives, chosen family, neighbours, and the relationships that explain how everyone fits."
+			lede="A place for the people who make you, you. Build your family tree, keep the details that matter, and discover how your stories connect."
 			actions={
 				<>
 					<form action={enterDemo}>
 						<button type="submit" className="kf-primary-action">
-							Open the sample archive
+							Explore the sample family
 						</button>
 					</form>
 					<Link href="/signin" className="kf-secondary-action">
-						Sign in to your record
+						Start your family tree
 					</Link>
 				</>
 			}

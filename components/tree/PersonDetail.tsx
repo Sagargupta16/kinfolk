@@ -38,11 +38,14 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import Link from "next/link";
 import { useEffect, useId, useMemo, useState, useTransition } from "react";
-import type { ContactKind } from "@/lib/db/schema";
+import type { ContactKind, ParentRole } from "@/lib/db/schema";
 import { deleteRelation } from "@/lib/tree/edit-actions";
+import { editTarget } from "@/lib/tree/editable";
 import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
+import { parentageLabel } from "@/lib/tree/parentage";
 import type { FamilyIndex, Relatives } from "@/lib/tree/relatives";
 import { relativesOf } from "@/lib/tree/relatives";
 import { cn } from "@/lib/utils";
@@ -114,6 +117,7 @@ export function PersonDetail({
 	 * for free because the state resets when `person` changes identity.
 	 */
 	const [editing, setEditing] = useState(false);
+	const [section, setSection] = useState<"family" | "about" | "contact">("family");
 
 	/*
 	 * A new subject closes the form, because it is now stale.
@@ -130,6 +134,7 @@ export function PersonDetail({
 	useEffect(() => {
 		void subjectId;
 		setEditing(false);
+		setSection("family");
 	}, [subjectId]);
 
 	/**
@@ -155,9 +160,15 @@ export function PersonDetail({
 					// Slides from the right on a pointer device, up from the bottom on a phone.
 					// One transform property either way, so it stays on the compositor.
 					initial={sheetMotion.closed}
-					animate={sheetMotion.open}
-					exit={sheetMotion.closed}
-					transition={{ type: "spring", stiffness: 320, damping: 34, mass: 0.9 }}
+					animate={{ ...sheetMotion.open, pointerEvents: "auto" }}
+					exit={{ ...sheetMotion.closed, pointerEvents: "none" }}
+					transition={{
+						type: "spring",
+						stiffness: 320,
+						damping: 34,
+						mass: 0.9,
+						pointerEvents: { duration: 0 },
+					}}
 					className={cn(
 						"kf-sheet kf-sheet--rail absolute z-40 flex flex-col overflow-hidden",
 						/*
@@ -177,21 +188,28 @@ export function PersonDetail({
 						"sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[22rem] sm:rounded-none sm:rounded-l-2xl",
 					)}
 				>
-					<Header
-						person={person}
-						kinship={kinship?.get(person.id)}
-						titleId={titleId}
-						onClose={onClose}
-					/>
+					<div className="contents" inert={editing}>
+						<Header
+							person={person}
+							kinship={kinship?.get(person.id)}
+							titleId={titleId}
+							onClose={onClose}
+						/>
 
-					<div className="flex border-b border-hairline">
-						{onAddRelative && (
-							<ActionButton label="Add relative" Icon={GitBranch} onClick={onAddRelative} primary />
-						)}
-						{Boolean(editableTreeIds?.length) && (
-							<ActionButton label="Edit" Icon={Pencil} onClick={() => setEditing(true)} />
-						)}
-						{onCenter && <ActionButton label="Center" Icon={Crosshair} onClick={onCenter} />}
+						<div className="flex border-b border-hairline">
+							{onAddRelative && (
+								<ActionButton
+									label="Add relative"
+									Icon={GitBranch}
+									onClick={onAddRelative}
+									primary
+								/>
+							)}
+							{editTarget(person, editableTreeIds ?? []).editable && (
+								<ActionButton label="Edit" Icon={Pencil} onClick={() => setEditing(true)} />
+							)}
+							{onCenter && <ActionButton label="Center" Icon={Crosshair} onClick={onCenter} />}
+						</div>
 					</div>
 
 					{/*
@@ -207,52 +225,124 @@ export function PersonDetail({
 						onClose={() => setEditing(false)}
 					/>
 
-					<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5">
-						<Facts person={person} />
-						<Story person={person} />
-
-						<People
-							title="Parents"
-							Icon={Users}
-							people={relatives.parents}
-							kinship={kinship}
-							onGoTo={onGoTo}
-						/>
-						{relatives.partners.map(({ person: partner, union }) => (
-							<People
-								key={partner.id}
-								title={PARTNER_HEADING[union.status ?? "unknown"] ?? "Partner"}
-								Icon={Heart}
-								people={[partner]}
-								kinship={kinship}
-								onGoTo={onGoTo}
-								note={unionNote(union)}
-							/>
+					<fieldset inert={editing} aria-label="Profile sections" className="kf-profile-tabs">
+						{(["family", "about", "contact"] as const).map((value) => (
+							<button
+								key={value}
+								type="button"
+								aria-pressed={section === value}
+								onClick={() => setSection(value)}
+							>
+								{value === "family" ? "Family" : value === "about" ? "About" : "Contact"}
+							</button>
 						))}
-						<People
-							title="Children"
-							Icon={Baby}
-							people={relatives.children}
-							kinship={kinship}
-							onGoTo={onGoTo}
-						/>
-						<People
-							title="Siblings"
-							Icon={Users}
-							people={relatives.siblings}
-							kinship={kinship}
-							onGoTo={onGoTo}
-						/>
+					</fieldset>
+					<motion.div
+						inert={editing}
+						key={`${person.id}:${section}`}
+						initial={{ opacity: 0, y: 6 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.18 }}
+						className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5"
+					>
+						{section === "about" && (
+							<>
+								<Facts person={person} />
+								<Story person={person} />
+								<Sources person={person} />
+							</>
+						)}
+						{section === "family" && (
+							<>
+								{relatives.parents.length +
+									relatives.partners.length +
+									relatives.children.length +
+									relatives.siblings.length +
+									relatives.relations.length ===
+									0 && (
+									<p className="py-5 text-sm leading-relaxed text-ink-muted">
+										Every family starts with one person.
+										{onAddRelative
+											? " Add a relative to begin this branch."
+											: " No family connections have been recorded yet."}
+									</p>
+								)}
+								<People
+									title="Parents"
+									Icon={Users}
+									people={relatives.parents}
+									parentage={{ roles: relatives.parentRoles, direction: "parent" }}
+									kinship={kinship}
+									onGoTo={onGoTo}
+								/>
+								{relatives.partners.map(({ person: partner, union }) => (
+									<People
+										key={union.id}
+										title={PARTNER_HEADING[union.status ?? "unknown"] ?? "Partner"}
+										Icon={Heart}
+										people={[partner]}
+										kinship={kinship}
+										onGoTo={onGoTo}
+										note={unionNote(union)}
+									/>
+								))}
+								<People
+									title="Children"
+									Icon={Baby}
+									people={relatives.children}
+									parentage={{ roles: relatives.childRoles, direction: "child" }}
+									kinship={kinship}
+									onGoTo={onGoTo}
+								/>
+								<People
+									title="Siblings"
+									Icon={Users}
+									people={relatives.siblings}
+									kinship={kinship}
+									onGoTo={onGoTo}
+								/>
 
-						<Connections
-							relations={relatives.relations}
-							editableTreeIds={editableTreeIds}
-							onGoTo={onGoTo}
-							onSaved={onSaved}
-						/>
-						<Channels person={person} />
-						<Sources person={person} />
-					</div>
+								<Connections
+									relations={relatives.relations}
+									editableTreeIds={editableTreeIds}
+									onGoTo={onGoTo}
+									onSaved={onSaved}
+								/>
+							</>
+						)}
+						{section === "contact" && (
+							<>
+								<Channels person={person} />
+								{person.sources.some((source) => /^[0-9a-f-]{36}$/i.test(source.id)) && (
+									<section className="border-t border-hairline py-3">
+										<p className="text-xs leading-relaxed text-ink-faint">
+											Contact details open on a private page. Each family controls who can see them.
+										</p>
+										{person.sources.map((source, i) => (
+											<Link
+												key={source.id}
+												href={`/contacts/${source.id}`}
+												prefetch={false}
+												className="mt-1 flex min-h-11 items-center text-xs text-accent-ink"
+											>
+												{person.sources.length > 1
+													? `${displayName(source)} · ${editableTreeIds?.includes(source.treeId) ? "Your record" : `Shared record ${i + 1}`}`
+													: editableTreeIds?.includes(source.treeId)
+														? "View or edit contact details"
+														: "View contact details"}
+											</Link>
+										))}
+									</section>
+								)}
+								{!person.sources.some((source) => /^[0-9a-f-]{36}$/i.test(source.id)) && (
+									<p className="py-4 text-sm leading-relaxed text-ink-muted">
+										Contact values are private. This sample only shows the kinds of details a family
+										can keep.
+									</p>
+								)}
+							</>
+						)}
+					</motion.div>
 				</motion.aside>
 			)}
 		</AnimatePresence>
@@ -466,6 +556,7 @@ function People({
 	kinship,
 	onGoTo,
 	note,
+	parentage,
 }: {
 	title: string;
 	Icon: typeof Users;
@@ -473,6 +564,7 @@ function People({
 	kinship?: Map<string, Kinship>;
 	onGoTo: (personId: string) => void;
 	note?: string;
+	parentage?: { roles: Record<string, ParentRole[]>; direction: "parent" | "child" };
 }) {
 	if (people.length === 0) return null;
 
@@ -486,7 +578,22 @@ function People({
 			<ul className="space-y-0.5">
 				{people.map((person) => (
 					<li key={person.id}>
-						<PersonRow person={person} kinship={kinship?.get(person.id)} onGoTo={onGoTo} />
+						<PersonRow
+							person={person}
+							kinship={
+								parentage?.roles[person.id]?.some((role) => role !== "biological")
+									? {
+											label: parentageLabel(
+												parentage.roles[person.id] ?? [],
+												person.primary.sex,
+												parentage.direction,
+											),
+											via: "family",
+										}
+									: kinship?.get(person.id)
+							}
+							onGoTo={onGoTo}
+						/>
 					</li>
 				))}
 			</ul>
@@ -573,14 +680,18 @@ function Connections({
 		startTransition(async () => {
 			const form = new FormData();
 			form.set("relationId", link.relationId);
-			const result = await deleteRelation(form);
-			if (!result.ok) {
-				setError(result.error);
+			try {
+				const result = await deleteRelation(form);
+				if (!result.ok) {
+					setError(result.error);
+					return;
+				}
+				onSaved?.();
+			} catch {
+				setError("Could not remove that connection. Try again.");
+			} finally {
 				setRemovingId(null);
-				return;
 			}
-			setRemovingId(null);
-			onSaved?.();
 		});
 	}
 

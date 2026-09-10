@@ -12,14 +12,13 @@
  *   3. accepted person links among the people actually loaded
  *   4. fuse, project, done
  */
-import { and, eq, inArray, or } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
 import {
 	contactDetails,
+	type ParentRole,
 	people,
-	personLinks,
 	personRelations,
-	treeMembers,
 	trees,
 	unionChildren,
 	unions,
@@ -27,8 +26,9 @@ import {
 import { editableTreeIds } from "./authz";
 import { fuseTrees, type TreeSlice, toFlowGraph, type UnionWithChildren } from "./graph";
 import { kinshipMap } from "./kinship";
+import { treeAccessForUser } from "./read-access";
 import type { TreeView } from "./view";
-import { filterContacts, type ViewerAccess } from "./visibility";
+import { filterContacts } from "./visibility";
 
 export type LoadOptions = {
 	/** False loads only the user's own trees, dropping linked relatives. */
@@ -45,26 +45,6 @@ export type LoadOptions = {
 	viewer?: { name: string | null; email: string | null } | null;
 };
 
-/**
- * Trees this user can reach, with the access level that governs contact
- * visibility. Ownership outranks a membership row, and an explicit member grant
- * outranks nothing else -- absence of a row means no access at all.
- */
-async function accessibleTrees(userId: string): Promise<Map<string, ViewerAccess>> {
-	const rows = await db
-		.select({ id: trees.id, ownerId: trees.ownerId, memberUserId: treeMembers.userId })
-		.from(trees)
-		.leftJoin(treeMembers, and(eq(treeMembers.treeId, trees.id), eq(treeMembers.userId, userId)))
-		.where(or(eq(trees.ownerId, userId), eq(treeMembers.userId, userId)));
-
-	const access = new Map<string, ViewerAccess>();
-	for (const row of rows) {
-		// Owner or explicit member: both see the tree's own private details.
-		access.set(row.id, "member");
-	}
-	return access;
-}
-
 /** Everything one set of trees contains, in the shape `fuseTrees` expects. */
 async function loadSlices(treeIds: string[]): Promise<TreeSlice[]> {
 	if (treeIds.length === 0) return [];
@@ -78,6 +58,7 @@ async function loadSlices(treeIds: string[]): Promise<TreeSlice[]> {
 			.select({
 				unionId: unionChildren.unionId,
 				childId: unionChildren.childId,
+				role: unionChildren.role,
 				treeId: unions.treeId,
 			})
 			.from(unionChildren)
@@ -87,10 +68,14 @@ async function loadSlices(treeIds: string[]): Promise<TreeSlice[]> {
 	]);
 
 	const childIdsByUnion = new Map<string, string[]>();
+	const childRolesByUnion = new Map<string, Record<string, ParentRole[]>>();
 	for (const row of childRows) {
 		const existing = childIdsByUnion.get(row.unionId);
 		if (existing) existing.push(row.childId);
 		else childIdsByUnion.set(row.unionId, [row.childId]);
+		const roles = childRolesByUnion.get(row.unionId) ?? {};
+		roles[row.childId] = [row.role];
+		childRolesByUnion.set(row.unionId, roles);
 	}
 
 	const personIds = personRows.map((person) => person.id);
@@ -106,48 +91,31 @@ async function loadSlices(treeIds: string[]): Promise<TreeSlice[]> {
 		else contactsByPerson.set(row.personId, [row]);
 	}
 
-	return treeRows.map((tree) => {
-		const treePeople = personRows.filter((person) => person.treeId === tree.id);
-		const contacts: Record<string, typeof contactRows> = {};
-		for (const person of treePeople) {
-			const details = contactsByPerson.get(person.id);
-			if (details) contacts[person.id] = details;
-		}
+	return treeRows
+		.sort((a, b) => treeIds.indexOf(a.id) - treeIds.indexOf(b.id))
+		.map((tree) => {
+			const treePeople = personRows.filter((person) => person.treeId === tree.id);
+			const contacts: Record<string, typeof contactRows> = {};
+			for (const person of treePeople) {
+				const details = contactsByPerson.get(person.id);
+				if (details) contacts[person.id] = details;
+			}
 
-		return {
-			treeId: tree.id,
-			treeName: tree.name,
-			people: treePeople,
-			unions: unionRows
-				.filter((union) => union.treeId === tree.id)
-				.map<UnionWithChildren>((union) => ({
-					...union,
-					childIds: childIdsByUnion.get(union.id) ?? [],
-				})),
-			relations: relationRows.filter((relation) => relation.treeId === tree.id),
-			contacts,
-		};
-	});
-}
-
-/**
- * Accepted links touching the given people.
- *
- * Only `accepted` rows are fetched: a pending proposal must never change what
- * anyone sees, which is the invariant `fuseTrees` relies on its callers to keep.
- */
-async function acceptedLinks(personIds: string[]) {
-	if (personIds.length === 0) return [];
-
-	return db
-		.select({ personAId: personLinks.personAId, personBId: personLinks.personBId })
-		.from(personLinks)
-		.where(
-			and(
-				eq(personLinks.status, "accepted"),
-				or(inArray(personLinks.personAId, personIds), inArray(personLinks.personBId, personIds)),
-			),
-		);
+			return {
+				treeId: tree.id,
+				treeName: tree.name,
+				people: treePeople,
+				unions: unionRows
+					.filter((union) => union.treeId === tree.id)
+					.map<UnionWithChildren>((union) => ({
+						...union,
+						childIds: childIdsByUnion.get(union.id) ?? [],
+						childRoles: childRolesByUnion.get(union.id) ?? {},
+					})),
+				relations: relationRows.filter((relation) => relation.treeId === tree.id),
+				contacts,
+			};
+		});
 }
 
 /**
@@ -161,37 +129,11 @@ export async function loadTreeView(
 	userId: string,
 	{ combined = true, showRelations = true, viewer = null }: LoadOptions = {},
 ): Promise<TreeView | null> {
-	const access = await accessibleTrees(userId);
+	const { access, links } = await treeAccessForUser(userId, combined);
 	if (access.size === 0) return null;
 
-	const ownTreeIds = [...access.keys()];
-	const ownSlices = await loadSlices(ownTreeIds);
-	const ownPersonIds = ownSlices.flatMap((slice) => slice.people.map((person) => person.id));
-
-	const links = combined ? await acceptedLinks(ownPersonIds) : [];
-
-	// A link's far end usually lives in a tree this user has no grant on. Those
-	// trees are loaded so the graph can join up, but at `linked` access, so their
-	// tree-private contacts stay out of the response.
-	const ownPersonIdSet = new Set(ownPersonIds);
-	const foreignPersonIds = links
-		.flatMap((link) => [link.personAId, link.personBId])
-		.filter((id) => !ownPersonIdSet.has(id));
-
-	let slices = ownSlices;
-	if (foreignPersonIds.length > 0) {
-		const foreignTreeIds = await db
-			.selectDistinct({ treeId: people.treeId })
-			.from(people)
-			.where(inArray(people.id, foreignPersonIds));
-
-		const extraTreeIds = foreignTreeIds
-			.map((row) => row.treeId)
-			.filter((treeId) => !access.has(treeId));
-
-		for (const treeId of extraTreeIds) access.set(treeId, "linked");
-		if (extraTreeIds.length > 0) slices = [...ownSlices, ...(await loadSlices(extraTreeIds))];
-	}
+	const ownTreeIds = [...access].filter(([, level]) => level === "member").map(([id]) => id);
+	const slices = await loadSlices([...access.keys()]);
 
 	// Contact filtering, before any row leaves the server.
 	const treeIdByPersonId = new Map<string, string>();
@@ -218,7 +160,8 @@ export async function loadTreeView(
 	// edit my records". Recomputed rather than assumed from `access`, because that map
 	// grants `member` for reading and says nothing about write grants.
 	const writable = await editableTreeIds(userId);
-	const editableTreeId = ownTreeIds.find((id) => writable.includes(id)) ?? null;
+	const writableTreeIds = ownTreeIds.filter((id) => writable.includes(id));
+	const editableTreeId = writableTreeIds[0] ?? null;
 
 	return {
 		nodes,
@@ -229,6 +172,14 @@ export async function loadTreeView(
 		treeNames: filtered.map((slice) => slice.treeName),
 		isDemo: false,
 		editableTreeId,
+		editableTreeIds: writableTreeIds,
+		editableTrees: writableTreeIds.map((id) => ({
+			id,
+			name: slices.find((slice) => slice.treeId === id)?.treeName ?? "Family tree",
+		})),
+		editableUnions: slices.flatMap((slice) =>
+			writableTreeIds.includes(slice.treeId) ? slice.unions : [],
+		),
 		viewer,
 		isCombined: combined,
 		showRelations,

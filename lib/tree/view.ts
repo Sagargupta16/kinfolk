@@ -7,7 +7,7 @@
  * data, so "works in the demo" means something. A second rendering path would
  * let the demo drift into a showreel that proves nothing.
  */
-import type { FlowEdge, FlowNode } from "./graph";
+import type { FlowEdge, FlowNode, UnionWithChildren } from "./graph";
 import type { Kinship } from "./kinship";
 
 export type TreeViewStats = {
@@ -60,6 +60,12 @@ export type TreeView = {
 	 * is a value the client can change.
 	 */
 	editableTreeId: string | null;
+	/** Every writable tree, with the default destination first. Rechecked on each mutation. */
+	editableTreeIds: string[];
+	/** Labels for choosing which writable family to share. Optional for older APIs. */
+	editableTrees?: { id: string; name: string }[];
+	/** Unfused records for choosing the exact writable parenting group in quick-add. */
+	editableUnions: UnionWithChildren[];
 	/**
 	 * Who is signed in, for the account menu.
 	 *

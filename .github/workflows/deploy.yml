@@ -27,6 +27,7 @@ on:
       - "next.config.mjs"
       - "drizzle.config.ts"
       - "scripts/check-migrations.mts"
+      - "scripts/check-production.mts"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/deploy.yml"
@@ -72,13 +73,6 @@ jobs:
         # production -- it can drop a column it thinks is redundant. `migrate` runs
         # the committed SQL files in order and nothing else.
         #
-        # Also skipped when DATABASE_URL is absent, and that guard is the point.
-        # The migrations exist now, so the old "is there a drizzle/ directory"
-        # check alone would start running `db:migrate` with an empty connection
-        # string on any repo that has not had the secret added -- turning a green
-        # deploy red for a schema that is already correct. A migration that cannot
-        # reach a database has nothing to say, so it is skipped loudly instead.
-        #
         # The FIRST migration (0000) is a baseline of a schema created with
         # `db:push`, so it must be recorded as applied rather than executed against
         # the live database, whose tables it would try to CREATE. Do that once, by
@@ -87,7 +81,8 @@ jobs:
           if [ ! -d drizzle ] || ! ls drizzle/*.sql >/dev/null 2>&1; then
             echo "No committed migrations -- skipping. Generate them with \`pnpm db:generate\`."
           elif [ -z "$DATABASE_URL" ]; then
-            echo "::warning::DATABASE_URL is not set, so migrations were SKIPPED. Add the secret to the production environment to enable them."
+            echo "::error::DATABASE_URL is required in the production environment. Migration verification did not run."
+            exit 1
           else
             pnpm db:check-migrations
             pnpm db:migrate
@@ -99,7 +94,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   verify:
-    name: verify the deployment answers
+    name: verify the serving commit and database
     needs: migrate
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -111,51 +106,15 @@ jobs:
     # silently tests a stranger's server is worse than no check: it reports success for
     # a deployment that does not exist.
     #
-    # So the URL is required now rather than guessed. Set the repository variable
-    # PRODUCTION_URL (Settings -> Secrets and variables -> Actions -> Variables) and
-    # this starts running; until then it skips and says so.
-    if: vars.PRODUCTION_URL != ''
+    # The readiness script fails if PRODUCTION_URL is missing. A skipped probe
+    # must never make a production release look verified.
     steps:
-      - name: Wait for Vercel to promote the new build
-        # Vercel builds on its own trigger, so this workflow cannot know when the
-        # new deployment is live. A fixed wait is honest about that: the check
-        # below is what actually decides, and it retries.
-        run: sleep 45
-
-      - name: Check the public endpoints
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Wait for this commit and verify readiness
         env:
-          BASE: ${{ vars.PRODUCTION_URL }}
-        run: |
-          set -u
-          fail=0
-
-          probe() {
-            local path="$1" expected="$2" label="$3"
-            local code=""
-            # Retried, because a cold serverless function can exceed the first
-            # timeout and a single 000 would be a false alarm.
-            for attempt in 1 2 3; do
-              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "${BASE}${path}" || echo "000")
-              [ "$code" = "$expected" ] && break
-              sleep 10
-            done
-            if [ "$code" = "$expected" ]; then
-              echo "  ok    ${label}: ${code}"
-            else
-              echo "::error::${label} returned ${code}, expected ${expected} (${BASE}${path})"
-              fail=1
-            fi
-          }
-
-          # The landing page renders with no session and no database read.
-          probe "/" 200 "landing page"
-          # Sign-in must be reachable, or nobody can get in at all.
-          probe "/signin" 200 "sign in"
-          # Auth.js is configured and answering. This one is the real canary: it
-          # returns 200 only when AUTH_SECRET and the GitHub provider are both
-          # present, so it catches a missing secret that the pages would not.
-          probe "/api/auth/providers" 200 "auth providers"
-          # /tree with no session redirects to /signin rather than erroring.
-          probe "/tree" 307 "tree redirects when signed out"
-
-          exit "$fail"
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: node --experimental-strip-types scripts/check-production.mts --api --wait

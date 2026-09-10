@@ -7,8 +7,12 @@ people without overwriting either family's account.
 **[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
 server-rendered fallback, with a sample tree you can explore without an account.
 
-Current release: **0.3.3**, which patches the nanoid infinite-loop advisory and ships the
-couple-over-children alignment fix, on top of the MIT licensing in 0.3.2.
+Version **0.4.0 is unreleased**, prepared on **2026-09-10** on
+`codex/production-corrections`. This branch adds a simpler family workspace,
+consent-based record linking, private contact editing, and stronger safeguards for
+family changes and deployment verification. These changes have not been deployed.
+The [review and verification report](docs/verification-0.4.0.md) records the fixes,
+74 passing regression cases, browser checks, and remaining release steps.
 
 ## Why this is not just a tree widget
 
@@ -31,19 +35,22 @@ the layout engine.
 
 ## Interface
 
-Both hosts now use the same archival field-desk system: warm paper in light mode, deep
-evergreen in dark mode, editorial folio framing, index-card people, an instrument-like
-canvas dock, and opaque reading sheets. The public landing structure lives in
-`components/ui/BrandFrame.tsx`; authentication and demo actions remain host-specific
-slots, so sharing the design does not blur the Next/Vite runtime boundary.
+Both frontends share a family atlas with light and dark themes, locally served fonts, blue
+actions, and purposeful motion. Choose **Tree** for the family structure or **People**
+for a searchable directory. Profiles separate **Family**, **About**, and **Contact**.
+Appearance includes a persistent Full/Reduced motion choice, with Full as the default.
 
-The editor is profile-first: select a person, then use **Add relative** to add a parent,
-partner, sibling, or child in context. The advanced menu connects people who already
-exist. If those people are already immediate family or already share another connection,
+Select a person, then use **Add relative** to add a parent,
+partner, sibling, or child in context. **Options -> Connect existing people** adds
+connections between recorded people and attaches or detaches existing children with
+explicit parent roles. If two people are already immediate family or share another connection,
 Kinfolk requires a second confirmation. A connection can be removed from the person's
 **Connections** section without deleting either person or changing structural family links.
 
-Contact values never appear on cards or in their accessible labels.
+Contact values stay on a separate authorized page. **Share** manages invitations;
+**Link family records** in the account menu proposes a match for the other owner's consent.
+Original records survive linking and unlinking. [Design notes](docs/experience-design.md)
+explain the research and the adapted portfolio-react visual direction.
 
 ## Stack
 
@@ -54,7 +61,7 @@ Contact values never appear on cards or in their accessible labels.
 | Database | Neon Postgres via Drizzle |
 | Auth | Auth.js v5, GitHub OAuth |
 | Graph canvas | React Flow (`@xyflow/react`) with ELK layered layout |
-| Styling | Tailwind 4 with one shared archival field-desk token system |
+| Styling | Tailwind 4 with shared light/dark family-atlas tokens |
 | Motion | Motion 13, for chrome only |
 | Tooling | pnpm, Biome |
 
@@ -72,7 +79,8 @@ before swapping any of it out.
 pnpm install
 ```
 
-Copy `.env.example` to `.env.local` and fill it in, then:
+Copy `.env.example` to `.env.local` and configure a separate development database or
+branch, then create its schema:
 
 ```bash
 pnpm db:push
@@ -95,15 +103,17 @@ Full setup, click by click, is in [docs/SETUP.md](docs/SETUP.md).
 
 ```bash
 pnpm lint
+pnpm test
 pnpm typecheck
 pnpm --dir frontend typecheck
 pnpm build
 pnpm --dir frontend build
 ```
 
-The unit suite and live smoke scripts were removed in the 0.2.0 rework. Graph maths
-still lives in `lib/tree/` without React or database imports so it can be tested without
-restructuring the application.
+The regression suite uses synthetic records and an in-memory PGlite database running
+the committed migrations. It covers OAuth state, exact dates, family roles, authorization,
+atomic writes, record-link consent, contacts, and deployment probes. It needs no Neon
+credentials and makes no production writes.
 
 ## Data model
 
@@ -121,8 +131,10 @@ Plus `tree_members` and `tree_invites` for access grants and pending invitations
 auxiliary `people_creation_budgets` table stores only per-tree counters used to reserve
 creation capacity atomically; it contains no family records.
 
-Private by default: no `tree_members` row means no access. Contact values are filtered
-server-side and never reach the canvas, because a canvas gets screenshotted.
+Access comes from tree ownership, an invitation that grants membership, or one hop
+through an accepted record link. Pending proposals grant no access, and linked viewing
+does not grant editing. Contact values are filtered server-side by audience and stay
+off the canvas.
 
 ## Deployment
 
@@ -136,9 +148,11 @@ Vercel serves the API, OAuth exchange, database writes, and the server-rendered 
 in `sessionStorage`; the Vercel app keeps the stronger httpOnly-cookie flow available. This
 split is necessary because Pages cannot run Auth.js, query Neon, or execute server actions.
 
-Both the sample tree and GitHub sign-in work. `/api/auth/providers` returns 200, which is
-the canary for a fully configured deployment: it answers 200 only when `AUTH_SECRET` and
-the GitHub provider are both present. `DATABASE_URL` is a manually configured encrypted
+The unreleased branch adds `/api/health` to check database connectivity and required
+schema columns, plus authentication configuration. Release probes require the expected
+serving commit and verify protected routes, the sample API, and Pages assets.
+An authentication-provider response alone does
+not prove database readiness. `DATABASE_URL` is a manually configured encrypted
 Vercel variable pointing at the existing Neon project; the native integration was removed
 after it provisioned a separate empty database.
 
@@ -157,15 +171,17 @@ Kinfolk is available under the [MIT License](LICENSE).
 
 ## Status
 
-Working: the schema on a live Neon branch, fusion across trees, the layered pedigree with
+Implemented and locally verified in the working branch, pending release:
+fusion across trees, the layered pedigree with
 sibling bars and generation bands, an orbit arrangement, kinship terms on every card,
-reveal-on-focus relations, archival light and dark themes, index-record person cards,
+reveal-on-focus relations, light and dark themes, person cards,
 expand and collapse, the detail panel and family feed as responsive reading sheets,
-search, an instrument-style command dock, a census-driven legend, profile-first quick add by
+search, a People directory, view options, a census-driven legend, quick add by
 relationship, precise removal of non-structural connections, person editing, sign-in,
-sharing by invite, and demo mode.
+sharing by invite, record-link proposals and consent, private contact editing, deletion
+of unclaimed records, attaching and detaching existing children with explicit parent roles,
+and demo mode.
 
-Not built: merge-proposal UI, a contact editor form, a person delete form, and attaching
-an existing child to a partnership from the UI. Card avatars are initials rather than
-photos because there is no signed-URL route yet, and rendering an `<img>` would either
-404 on every card or leak a bucket path.
+Photo uploads still need an approved private-storage provider and authentication flow.
+Avatars use initials. Profiles linked to an account cannot be deleted; other deletion
+flows preserve the surviving parent's children and require confirmation.

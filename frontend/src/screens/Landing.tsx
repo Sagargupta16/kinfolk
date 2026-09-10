@@ -13,11 +13,13 @@ export function Landing() {
 			eyebrow="A private family atlas"
 			title={
 				<>
-					Your family is more than a tree.
-					<span className="kf-brand-accent">Map the whole living record.</span>
+					Your people.
+					<br />
+					Their stories.
+					<span className="kf-brand-accent">One family atlas.</span>
 				</>
 			}
-			lede="Kinfolk keeps every family's account intact, then joins matching people only when both sides agree. Trace relatives, chosen family, neighbours, and the relationships that explain how everyone fits."
+			lede="A place for the people who make you, you. Build your family tree, keep the details that matter, and discover how your stories connect."
 			actions={
 				<>
 					<button
@@ -30,13 +32,10 @@ export function Landing() {
 							);
 						}}
 					>
-						Sign in with GitHub
+						Start with GitHub
 					</button>
 					<a href={`${base}tree?demo=1`} className="kf-secondary-action">
-						Open the sample archive
-					</a>
-					<a href="https://github.com/Sagargupta16/kinfolk" className="kf-text-action">
-						View source
+						Explore the sample family
 					</a>
 				</>
 			}

@@ -46,6 +46,7 @@ desktop.ini
 .turbo/
 playwright-report/
 test-results/
+coverage/
 
 # Claude / per-user (never commit)
 .claude/settings.local.json

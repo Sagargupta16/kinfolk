@@ -15,6 +15,7 @@
  */
 import type {
 	ContactDetail,
+	ParentRole,
 	Person,
 	PersonRelation,
 	RelationKind,
@@ -26,6 +27,8 @@ import { type Closeness, closenessOf, RELATION_KINDS } from "./relations";
 /** A union plus its children, as loaded from `unions` + `union_children`. */
 export type UnionWithChildren = Union & {
 	childIds: string[];
+	/** Preserve each family's parentage claims when records are fused. Absent in legacy views. */
+	childRoles?: Record<string, ParentRole[]>;
 };
 
 /** One tree's slice of data, fetched by the caller. */
@@ -173,12 +176,22 @@ export function fuseTrees(
 	// Rewrite union endpoints onto fused ids so edges land on the merged nodes.
 	const unions = slices
 		.flatMap((s) => s.unions)
-		.map((u) => ({
-			...u,
-			partnerAId: u.partnerAId ? (idMap.get(u.partnerAId) ?? u.partnerAId) : null,
-			partnerBId: u.partnerBId ? (idMap.get(u.partnerBId) ?? u.partnerBId) : null,
-			childIds: [...new Set(u.childIds.map((id) => idMap.get(id) ?? id))],
-		}));
+		.map((u) => {
+			const childRoles: Record<string, ParentRole[]> = {};
+			for (const id of u.childIds) {
+				const fusedId = idMap.get(id) ?? id;
+				childRoles[fusedId] = [
+					...new Set([...(childRoles[fusedId] ?? []), ...(u.childRoles?.[id] ?? ["biological"])]),
+				];
+			}
+			return {
+				...u,
+				partnerAId: u.partnerAId ? (idMap.get(u.partnerAId) ?? u.partnerAId) : null,
+				partnerBId: u.partnerBId ? (idMap.get(u.partnerBId) ?? u.partnerBId) : null,
+				childIds: [...new Set(u.childIds.map((id) => idMap.get(id) ?? id))],
+				childRoles,
+			};
+		});
 
 	// Same treatment for social/professional edges: after fusion, "my cousin" and
 	// "your cousin" pointing at the same human must become one edge.
@@ -344,7 +357,7 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 			byKey.set(key, union);
 			continue;
 		}
-		existing.childIds = [...new Set([...existing.childIds, ...union.childIds])];
+		mergeChildren(existing, union);
 	}
 
 	const merged: UnionWithChildren[] = [];
@@ -368,13 +381,24 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 			);
 
 		if (sameFamily) {
-			sameFamily.childIds = [...new Set([...sameFamily.childIds, ...union.childIds])];
+			mergeChildren(sameFamily, union);
 			continue;
 		}
 		merged.push({ ...union });
 	}
 
 	return [...full, ...merged];
+}
+
+function mergeChildren(target: UnionWithChildren, source: UnionWithChildren): void {
+	const roles = { ...target.childRoles };
+	for (const id of source.childIds) {
+		roles[id] = [
+			...new Set([...(roles[id] ?? []), ...(source.childRoles?.[id] ?? ["biological"])]),
+		];
+	}
+	target.childIds = [...new Set([...target.childIds, ...source.childIds])];
+	target.childRoles = roles;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -390,6 +414,8 @@ export type FlowEdge = {
 	source: string;
 	target: string;
 	kind: "partner" | "child" | "relation";
+	/** A childless partnership has no junction node, so its record travels on the edge. */
+	union?: UnionWithChildren;
 	/**
 	 * False for edges that must not influence node placement.
 	 *
@@ -417,6 +443,21 @@ export type FlowEdge = {
 	/** True once the relation has an end date. Drawn fainter: it is history. */
 	ended?: boolean;
 };
+
+/** All partnership records, independent of whether they render as a node or an edge. */
+export function unionsInGraph(
+	nodes: readonly FlowNode[],
+	edges: readonly FlowEdge[],
+): UnionWithChildren[] {
+	const unions = new Map<string, UnionWithChildren>();
+	for (const node of nodes) {
+		if (node.type === "union") unions.set(node.data.union.id, node.data.union);
+	}
+	for (const edge of edges) {
+		if (edge.union) unions.set(edge.union.id, edge.union);
+	}
+	return [...unions.values()];
+}
 
 /**
  * Project a fused graph into nodes and edges.
@@ -460,6 +501,7 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 				source: a,
 				target: b,
 				kind: "partner",
+				union,
 				// Still a layout edge: ELK has to keep the pair adjacent, and a couple
 				// pulled apart by an unrelated node reads as two strangers.
 				layout: true,

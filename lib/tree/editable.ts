@@ -76,13 +76,9 @@ export function editInitialValues(person: FusedPerson, personId: string): Person
 }
 
 /**
- * A four-digit year from either date column, for a form that asks for a year.
- *
- * Prefers the exact date, falls back to the fuzzy text. Returns the fuzzy value VERBATIM
- * when it is not a bare year ("about 1890"), because round-tripping it through a year input
- * must not quietly discard the word somebody chose.
+ * Preserve the recorded precision when a date is opened for editing.
+ * Both exact dates and approximate text must survive an unrelated profile edit.
  */
-export function yearValue(exact: string | null, approx: string | null): string {
-	if (exact) return exact.slice(0, 4);
-	return approx ?? "";
+export function dateInputValue(exact: string | null, approx: string | null): string {
+	return exact ?? approx ?? "";
 }

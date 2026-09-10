@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kinfolk</title>
+    <meta name="kinfolk-commit" content="__KINFOLK_COMMIT__" />
     <meta
       name="description"
       content="Relatives each keep their own tree, then link them, so the combined graph shows how several families actually join up."
@@ -12,27 +13,7 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; connect-src __KINFOLK_CONNECT_SOURCES__; font-src 'self' data: https://fonts.gstatic.com; form-action 'self'; frame-src 'none'; img-src 'self' data: https://avatars.githubusercontent.com; media-src 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; worker-src 'self' blob:"
-    />
-
-    <!--
-      Geist, from Google Fonts.
-
-      The Next app uses `next/font/google`, which self-hosts and inlines the CSS at
-      build time. Vite has no equivalent, so the stylesheet is linked instead and the
-      two `--font-geist-*` variables app/globals.css expects are declared in
-      src/frontend.css.
-
-      `preconnect` because a font request that waits on a fresh TLS handshake delays
-      first text. `display=swap` for the same reason: system text first, Geist when it
-      arrives, rather than a blank page. Both variables already carry system
-      fallbacks in globals.css, so a blocked request degrades rather than breaks.
-    -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
+      content="default-src 'self'; base-uri 'self'; connect-src __KINFOLK_CONNECT_SOURCES__; font-src 'self'; form-action 'self'; frame-src 'none'; img-src 'self' data: https://avatars.githubusercontent.com; media-src 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
     />
 
     <!--

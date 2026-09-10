@@ -33,6 +33,7 @@ Run the complete local gate before opening a pull request:
 
 ```bash
 pnpm lint
+pnpm test
 pnpm typecheck
 pnpm --dir frontend typecheck
 pnpm build
@@ -42,7 +43,11 @@ pnpm audit --prod --audit-level=low
 git diff --check
 ```
 
-There is currently no unit-test suite. Do not claim behavior is verified by compilation alone; describe any manual checks needed for canvas, authentication, or database behavior.
+`pnpm test` runs the isolated Vitest regression suite with synthetic records and an
+in-memory PGlite database using the committed migrations. Its configuration disables
+environment-file loading and supplies no production database or OAuth credentials.
+Do not claim behavior is verified by compilation alone; report the canvas, authentication,
+or database checks actually performed and state which checks remain unrun.
 
 ## Pull requests
 

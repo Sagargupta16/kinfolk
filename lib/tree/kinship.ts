@@ -20,6 +20,7 @@
  */
 import type { Person, RelationKind } from "../db/schema";
 import type { FusedGraph, FusedPerson } from "./graph";
+import { parentageLabel, parentRoles } from "./parentage";
 import { relationLabel } from "./relations";
 
 /**
@@ -32,12 +33,14 @@ import { relationLabel } from "./relations";
 type FamilyIndex = {
 	/** Person id to their parents' ids. */
 	parents: Map<string, string[]>;
+	familyParents: Map<string, string[]>;
 	/** Person id to their partners' ids. */
 	partners: Map<string, string[]>;
 };
 
 function indexFamily(graph: FusedGraph): FamilyIndex {
 	const parents = new Map<string, string[]>();
+	const familyParents = new Map<string, string[]>();
 	const partners = new Map<string, string[]>();
 
 	for (const union of graph.unions) {
@@ -51,11 +54,16 @@ function indexFamily(graph: FusedGraph): FamilyIndex {
 		}
 
 		for (const childId of union.childIds) {
-			for (const parentId of couple) push(parents, childId, parentId);
+			const roles = parentRoles(union, childId);
+			for (const parentId of couple) {
+				if (roles.includes("biological")) push(parents, childId, parentId);
+				if (roles.includes("biological") || roles.includes("adoptive"))
+					push(familyParents, childId, parentId);
+			}
 		}
 	}
 
-	return { parents, partners };
+	return { parents, familyParents, partners };
 }
 
 function push(map: Map<string, string[]>, key: string, value: string): void {
@@ -182,7 +190,18 @@ export function bloodTerm(up: number, down: number, sex: Sex): string {
  * 38 characters, and past the first rung the exact degree of somebody you are not
  * related to is not what a viewer is reading the card for.
  */
-function inLawTerm(up: number, down: number, sex: Sex): string {
+function inLawTerm(
+	up: number,
+	down: number,
+	sex: Sex,
+	side: "partners_family" | "relatives_partner",
+): string {
+	// A partner's child is not a child's partner. Likewise, a parent's partner is
+	// not a partner's parent. Keep those paths distinct without inventing parentage.
+	if (side === "partners_family" && up === 0 && down === 1) {
+		return pick(sex, "partner's daughter", "partner's son", "partner's child");
+	}
+	if (side === "relatives_partner" && up === 1 && down === 0) return "parent's partner";
 	if (up === 1 && down === 0) return pick(sex, "mother-in-law", "father-in-law", "parent-in-law");
 	if (up === 1 && down === 1) return pick(sex, "sister-in-law", "brother-in-law", "sibling-in-law");
 	if (up === 0 && down === 1) return pick(sex, "daughter-in-law", "son-in-law", "child-in-law");
@@ -203,7 +222,7 @@ export type Kinship = {
 	 * How the label was arrived at. The card draws blood kin and partners more
 	 * firmly than an in-law guess or a social edge, so it has to know which it got.
 	 */
-	via: "self" | "blood" | "partner" | "in_law" | "relation";
+	via: "self" | "blood" | "family" | "partner" | "in_law" | "relation";
 };
 
 /**
@@ -221,7 +240,7 @@ export function kinshipMap(graph: FusedGraph, selfId?: string): Map<string, Kins
 	const labels = new Map<string, Kinship>();
 	if (!selfId) return labels;
 
-	const { parents, partners } = indexFamily(graph);
+	const { parents, familyParents, partners } = indexFamily(graph);
 	const sexById = new Map<string, Sex>(graph.people.map((p) => [p.id, p.primary.sex]));
 	const sexOf = (id: string): Sex => sexById.get(id) ?? "unknown";
 	if (!sexById.has(selfId)) return labels;
@@ -239,6 +258,34 @@ export function kinshipMap(graph: FusedGraph, selfId?: string): Map<string, Kins
 		});
 	}
 
+	// Recorded non-biological parents and children take precedence over inferred kinship.
+	for (const union of graph.unions) {
+		for (const childId of union.childIds) {
+			const roles = parentRoles(union, childId);
+			for (const parentId of [union.partnerAId, union.partnerBId]) {
+				if (!parentId) continue;
+				const other = childId === selfId ? parentId : parentId === selfId ? childId : null;
+				if (!other || labels.has(other) || !sexById.has(other)) continue;
+				labels.set(other, {
+					label: parentageLabel(roles, sexOf(other), childId === selfId ? "parent" : "child"),
+					via: "family",
+				});
+			}
+		}
+	}
+
+	// Adoption also establishes family ancestry, without claiming biological descent.
+	const familyMine = ancestorDepths(selfId, familyParents);
+	for (const person of graph.people) {
+		if (labels.has(person.id)) continue;
+		const best = nearestCommon(familyMine, ancestorDepths(person.id, familyParents));
+		if (best)
+			labels.set(person.id, {
+				label: bloodTerm(best.up, best.down, sexOf(person.id)),
+				via: "family",
+			});
+	}
+
 	/* 2. The viewer's own partners, which no ancestor walk can reach. */
 	for (const partnerId of partners.get(selfId) ?? []) {
 		if (labels.has(partnerId)) continue;
@@ -250,13 +297,13 @@ export function kinshipMap(graph: FusedGraph, selfId?: string): Map<string, Kins
 
 	/* 3. In-laws: blood kin of a partner, and partners of blood kin. */
 	for (const partnerId of partners.get(selfId) ?? []) {
-		const theirLine = ancestorDepths(partnerId, parents);
+		const theirLine = ancestorDepths(partnerId, familyParents);
 		for (const person of graph.people) {
 			if (labels.has(person.id)) continue;
-			const best = nearestCommon(theirLine, ancestorDepths(person.id, parents));
+			const best = nearestCommon(theirLine, ancestorDepths(person.id, familyParents));
 			if (!best) continue;
 			labels.set(person.id, {
-				label: inLawTerm(best.up, best.down, sexOf(person.id)),
+				label: inLawTerm(best.up, best.down, sexOf(person.id), "partners_family"),
 				via: "in_law",
 			});
 		}
@@ -265,14 +312,14 @@ export function kinshipMap(graph: FusedGraph, selfId?: string): Map<string, Kins
 	// Partner of somebody already placed by blood. Read from the blood relative's
 	// rung, so a sibling's husband is a brother-in-law rather than a bare "in-law".
 	for (const [relativeId, kin] of [...labels]) {
-		if (kin.via !== "blood") continue;
-		const theirs = ancestorDepths(relativeId, parents);
-		const rung = nearestCommon(mine, theirs);
+		if (kin.via !== "blood" && kin.via !== "family") continue;
+		const theirs = ancestorDepths(relativeId, familyParents);
+		const rung = nearestCommon(familyMine, theirs);
 		if (!rung) continue;
 		for (const spouseId of partners.get(relativeId) ?? []) {
 			if (labels.has(spouseId)) continue;
 			labels.set(spouseId, {
-				label: inLawTerm(rung.up, rung.down, sexOf(spouseId)),
+				label: inLawTerm(rung.up, rung.down, sexOf(spouseId), "relatives_partner"),
 				via: "in_law",
 			});
 		}

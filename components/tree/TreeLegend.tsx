@@ -497,11 +497,13 @@ export function TreeLegend({
 	census,
 	lod,
 	hasSelf,
+	inline = false,
 }: {
 	census: TreeCensus;
 	lod: Lod;
 	/** Whether anybody on this canvas is the viewer, which the "you" rows depend on. */
 	hasSelf: boolean;
+	inline?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const panelId = useId();
@@ -538,7 +540,7 @@ export function TreeLegend({
 				) : (
 					<KeyRound aria-hidden className="size-3.5" strokeWidth={1.5} />
 				)}
-				Key
+				{inline ? "What the marks mean" : "Key"}
 			</button>
 
 			{open && (
@@ -555,7 +557,10 @@ export function TreeLegend({
 					 * the list turning into a pan of the tree underneath.
 					 */
 					className={cn(
-						"kf-sheet absolute right-0 top-[calc(100%+0.375rem)] w-[min(17rem,calc(100vw-1.5rem))]",
+						"kf-sheet",
+						inline
+							? "relative mt-2 w-full"
+							: "absolute right-0 top-[calc(100%+0.375rem)] w-[min(17rem,calc(100vw-1.5rem))]",
 						"max-h-[min(60vh,30rem)] overflow-y-auto overscroll-contain rounded-md",
 						"border border-hairline-strong bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
 					)}
@@ -569,7 +574,7 @@ export function TreeLegend({
 						// that produces nothing.
 						note={
 							Object.values(census.categories).some((count) => count > 0)
-								? "The amber lines below appear for one person at a time. Point at somebody, or tap them to keep them up."
+								? "The blue lines below appear for one person at a time. Point at somebody, or tap them to keep them up."
 								: undefined
 						}
 					/>

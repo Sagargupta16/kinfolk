@@ -2,9 +2,41 @@
 
 Local setup is [SETUP.md](SETUP.md). This is the production path.
 
-## Live state, 2026-08-08
+## Release verification in 0.4.0
 
-Fully configured. All five health probes pass.
+Prepared on **2026-09-10** on `codex/production-corrections`. These changes are unpublished;
+the checks below describe the working branch, not a completed production verification.
+Completed local checks and their limits are in the [verification report](verification-0.4.0.md).
+
+The branch adds `GET /api/health`: it returns 200 only when the database query can resolve
+the required tables and columns and authentication variables are present. Failures return 503
+without SQL, credentials, or family data. Responses are not cached.
+
+`scripts/check-production.mts` verifies the expected serving commit, application identity,
+protected reads, sample data, and the Pages asset manifest. Deployment verification waits
+for the requested commit, rather than relying on a fixed delay. The daily health workflow
+checks both surfaces without requiring them to have the same commit.
+
+`PRODUCTION_URL` and the production environment's `DATABASE_URL` must be configured.
+Missing settings fail the relevant job. Pages also embeds its build commit and checks
+the tree deep link and files listed in its asset manifest, including lazy JavaScript
+chunks, CSS, fonts, and `theme-init.js`, after publishing.
+
+```bash
+node --experimental-strip-types scripts/check-production.mts --api --wait
+node --experimental-strip-types scripts/check-production.mts --spa --wait
+```
+
+Set `EXPECTED_COMMIT` to the release SHA, `PRODUCTION_URL` to the confirmed API origin,
+and `SPA_URL` to the Pages mount when running these checks. These commands are read-only.
+No new migration is introduced by 0.4.0. Related application writes use the
+Neon HTTP driver's atomic `db.batch()` support; interactive `db.transaction()` is unsupported.
+Photo uploads remain unconfigured until private storage and its authentication are approved.
+
+## Recorded live state, 2026-08-08
+
+The five probes used at the time passed. This dated record has not been reverified
+for the prepared 0.4.0 branch and does not establish its production migration status.
 
 | Surface | State |
 | --- | --- |
@@ -38,8 +70,8 @@ What was verified after the secrets landed, rather than assumed:
 - Clicking "Continue with GitHub" reaches GitHub's own login with
   `code_challenge_method=S256` and `scope=read:user user:email`. GitHub ACCEPTED the
   redirect URI rather than rejecting it, which is the check that matters.
-- `/api/auth/session` with no cookie returns `null`, not an `AdapterError`. That is the
-  proof the Drizzle adapter reached Postgres: a broken connection surfaces here first.
+- `/api/auth/session` with no cookie returned `null`, not an `AdapterError`. A signed-out
+  response alone does not prove database readiness; 0.4.0 adds a dedicated schema query.
 - Production [Deploy run 31256902754](https://github.com/Sagargupta16/kinfolk/actions/runs/31256902754)
   found 3/4 committed migrations, applied `0003_fearless_mongu.sql`, and then
   complete-checked 4/4. The same run passed all deployment endpoint probes.
@@ -53,7 +85,7 @@ so provisioning (one graph, one self node reading kinship "you") was proven by
 
 ## Why the deployment is split
 
-The Next build still reports dynamic routes:
+The Next application needs a server for routes such as:
 
 ```
 ┌ ○ /                          static
@@ -63,11 +95,13 @@ The Next build still reports dynamic routes:
 └ ƒ /tree                      server-rendered on demand
 ```
 
-Every `ƒ` needs a server at request time:
+These dynamic routes need a server at request time:
 
 - `/tree` reads Neon per request and resolves an Auth.js **database** session.
 - `/demo` is a route handler that sets an httpOnly cookie. A static file cannot set one, which is why it is a route rather than a page.
-- Every write is a server action (`lib/tree/edit-actions.ts`), authorised server-side in `lib/tree/authz.ts`.
+- Writes reach server actions or JSON route handlers. Person and family edits use
+  `lib/tree/edit-actions.ts`; contact and record-link APIs enforce their own server-side
+  access checks. Nothing on Pages writes directly to Neon.
 
 GitHub Pages therefore serves the Vite SPA, not the Next build. The SPA calls Vercel's JSON
 API and OAuth exchange, while the same graph components and domain logic are shared by both
@@ -81,7 +115,8 @@ httpOnly-cookie flow for users who prefer it.
 | The Vite SPA (`frontend/dist`) | GitHub Pages | `https://sagargupta.online/kinfolk/` |
 | API, OAuth exchange and Next fallback | Vercel | `https://kinfolk-neon.vercel.app` |
 
-Pages already resolves this repository to the domain subpath -- `gh api repos/Sagargupta16/kinfolk/pages` reports `html_url: http://sagargupta.online/kinfolk/`, and the existing certificate covers `sagargupta.online`. So the front door is at the URL you want with no DNS work at all.
+The recorded Pages setup uses the existing `sagargupta.online` certificate and `/kinfolk/`
+subpath. Confirm that configuration before changing the production host.
 
 The Pages workflow uploads only the built `frontend/dist` artifact, never repository source
 or source maps. Set the repository variable `VITE_API_BASE_URL` to the Vercel origin; the
@@ -109,14 +144,15 @@ The region is pinned to **`sin1`** (Singapore) to sit beside the Neon project, w
 
 ### 2. Environment variables, in Vercel
 
-Set these for **Production** and **Preview** (Settings -> Environment Variables):
+Set these for **Production** (Settings -> Environment Variables). The recorded deployment
+policy disables Preview builds; do not copy production credentials to a new preview environment.
 
 | Variable | Value |
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. The **pooler** host is correct here -- the app talks over the serverless HTTP driver, and a serverless function opens a connection per invocation. |
 | `AUTH_SECRET` | A fresh 32+ byte random string. **Not** the one from `.env.local`: a local secret that leaks should not be able to forge production sessions. Generate with `node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"`. |
-| `AUTH_URL` | **`https://kinfolk-neon.vercel.app`**, with no trailing slash. Already set. Auth.js builds its callback URL from this, so a wrong value fails sign-in with `redirect_uri_mismatch`. Vercel assigned THREE aliases and only this one is usable: `kinfolk-sagargupta16s-projects.vercel.app` is SSO-gated and 302s every request to a Vercel login, and `kinfolk.vercel.app` belongs to an unrelated project. |
-| `AUTH_TRUST_HOST` | `true`. Already set. Auth.js is behind Vercel's proxy and will not trust the forwarded host without it, so sign-in fails even with every other value correct. |
+| `AUTH_URL` | `https://kinfolk-neon.vercel.app`, with no trailing slash. Auth.js builds its callback URL from this. The 2026-08-08 checks found the other Vercel aliases unsuitable; confirm the intended host rather than guessing. |
+| `AUTH_TRUST_HOST` | `true`. Auth.js must trust Vercel's forwarded host. |
 | `AUTH_GITHUB_ID` | From the production OAuth app below. |
 | `AUTH_GITHUB_SECRET` | Same. |
 
@@ -138,14 +174,19 @@ The development app's callback points at `http://localhost:3007`, so it cannot s
 
 The callback is the SPA's own route. It posts GitHub's one-time code to Vercel's
 `/api/oauth/callback` endpoint, where the secret exchange and session creation happen.
-Keep the Vercel Auth.js callback registered as a second callback only if the
-server-rendered fallback sign-in remains public.
+
+The Next fallback generates a different callback,
+`https://kinfolk-neon.vercel.app/api/auth/callback/github`. Both implementations currently
+read the same `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`. Provider configuration for both
+origins must be verified before claiming both sign-in paths work; the source code alone
+does not establish that GitHub accepts both callbacks. Do not change the working OAuth
+registration merely to satisfy this document.
 
 Device Flow stays off because it exists for inputless devices (a CLI, a TV) that cannot host
 a browser redirect. Kinfolk is a web app with a callback, so enabling it would add a second
 way to mint tokens that nothing here uses.
 
-Two apps rather than two callbacks on one, so revoking local access cannot lock out production.
+Keep local and production registrations separate so revoking local access cannot lock out production.
 
 ### 4. GitHub repository secrets and variables
 
@@ -154,10 +195,13 @@ For the workflows in [`.github/workflows/`](../.github/workflows):
 | Kind | Name | Purpose |
 | --- | --- | --- |
 | Secret | `DATABASE_URL` | Migrations only. Use the **direct** host: drizzle-kit needs TCP. |
-| Variable | `PRODUCTION_URL` | The deployed origin, with no trailing slash. **Required**: the endpoint checks skip until it is set. |
+| Variable | `PRODUCTION_URL` | The confirmed deployed origin, with no trailing slash. Missing configuration fails verification. |
 | Variable | `VITE_API_BASE_URL` | Vercel origin used by the Pages SPA. **Required** by `pages.yml`. |
+| Variable | `PAGES_URL` | Optional override for the daily health check's SPA URL; defaults to `https://sagargupta.online/kinfolk/`. |
 
-`PRODUCTION_URL` is required rather than defaulted, and that is a correction rather than caution. The first version of `deploy.yml` fell back to a guessed `https://kinfolk.vercel.app`, and its first real run reported **three green checks from an unrelated site** already answering on that hostname -- no `_next/static` anywhere in its markup, so not even a Next build. A check that silently probes somebody else's server is worse than no check, because it reports success for a deployment that does not exist. Both workflows now skip with `if: vars.PRODUCTION_URL != ''` instead.
+`PRODUCTION_URL` is required rather than guessed. An earlier workflow checked an unrelated
+site at `kinfolk.vercel.app`; successful status codes did not identify the application.
+Both production workflows now fail if the confirmed origin is missing.
 
 Create a **`production` GitHub Environment** and scope `DATABASE_URL` to it. That way only the migrate job can read it, and a required reviewer can be added later without touching the workflow.
 
@@ -167,22 +211,25 @@ CI needs no secrets at all. `lib/db/client.ts` is built to import cleanly with n
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | every PR and push to `main` | lint, both typechecks, the Next build, the Vite Pages build, and a guard against dead Tailwind utilities in the built CSS |
-| [`deploy.yml`](../.github/workflows/deploy.yml) | push to `main` touching app code | applies committed migrations to Neon, waits, then probes the live endpoints |
-| [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC | probes production, to catch a suspended Neon branch or a rotated secret |
-| [`pages.yml`](../.github/workflows/pages.yml) | push to `main` touching SPA/shared UI code | builds and publishes `frontend/` to GitHub Pages at `sagargupta.online/kinfolk/` |
+| [`ci.yml`](../.github/workflows/ci.yml) | PRs targeting `main`, pushes to `main`, or manual dispatch | frozen-lockfile install, lint, both typechecks, isolated tests, dependency audit at high severity, both builds, and the built-CSS guard |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | pushes to `main` matching its runtime/migration paths, or manual dispatch | requires migration configuration, checks history before and after applying committed migrations, then waits for the exact serving SHA and API readiness |
+| [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC or manual dispatch | checks API identity, schema readiness, auth configuration, protected reads, sample data, and Pages assets without requiring equal deployment SHAs |
+| [`pages.yml`](../.github/workflows/pages.yml) | pushes to `main` matching SPA/shared UI paths, or manual dispatch | builds and publishes `frontend/dist`, then checks the published SHA, manifest assets, and theme script |
 
-Vercel's own Git integration and `deploy.yml` start independently on the same push. The workflow deliberately does **not** duplicate Vercel's build; it applies committed migrations and asserts afterwards that the deployment answers. Because it cannot gate Vercel's promotion, runtime changes must tolerate the previous schema during that rollout window.
+Vercel's Git integration and `deploy.yml` start independently on the same push. The workflow
+applies committed migrations, then requires the requested commit to serve a ready API.
+It cannot gate Vercel's promotion, so runtime changes must tolerate the previous schema
+during that rollout window.
 
 ### Migrations
 
 `deploy.yml` runs `pnpm db:migrate`, never `db:push`. Push diffs the live schema and applies whatever it infers, which is right for a scratch branch and dangerous in production -- it can drop a column it believes is redundant. `migrate` runs the committed SQL in `drizzle/` in order and nothing else.
 
-Migration history now runs from `0000` through `0003`. Before writing, the deploy
+Committed migration history runs from `0000` through `0004`. Before writing, the deploy
 preflight requires the live history to be an exact prefix of those committed files;
 after `db:migrate`, the complete check requires every committed migration. The baseline
-procedure below is historical and must only be used for a fresh database that predates
-migration tracking.
+procedure below is historical and applies only to an existing database created before
+migration tracking. A new empty database should run the committed migrations.
 
 The schema was originally created with `db:push`, so `0000` is a BASELINE: a full
 `CREATE TABLE` script describing tables that already exist. Running it against the live
@@ -194,7 +241,9 @@ each file's contents, and applies any migration whose journal timestamp is newer
 newest recorded row. So seeding one row for `0000` makes `migrate` skip it and run `0001`
 onwards normally.
 
-Do this ONCE, from a laptop with the direct (non-pooler) host in `DATABASE_URL`:
+For an existing untracked database, first verify that its schema matches the committed
+baseline and obtain explicit approval for the production write. Only then record the
+baseline once, using the direct (non-pooler) host in `DATABASE_URL`:
 
 ```sql
 CREATE SCHEMA IF NOT EXISTS drizzle;
@@ -206,9 +255,10 @@ CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id SERIAL PRIMARY KEY, 
 
 Then insert the baseline's hash and its `when` value from
 [drizzle/meta/\_journal.json](../drizzle/meta/_journal.json), where the hash is the sha256
-of `drizzle/0000_*.sql` exactly as committed. Until that row exists, leave the production
-`DATABASE_URL` secret unset: `deploy.yml` skips migrations with a warning when it is absent,
-which is safer than a red deploy or a half-applied schema.
+of `drizzle/0000_*.sql` exactly as committed. Keep deployment blocked until the baseline
+and migration history are verified. Missing production `DATABASE_URL` now fails the
+migration job; it must not be used to skip verification. No baselining was performed
+as part of this documentation update.
 
 `0001` drops `NOT NULL` from `users.email`, which is a real fix rather than housekeeping.
 GitHub does not always return an email -- Auth.js falls back to `GET /user/emails`, but that
@@ -223,6 +273,10 @@ Migration `0003` makes a non-null `people.claimed_by_user_id` unique. Starter-pe
 provisioning also uses the user's UUID as that row's deterministic primary key, so
 parallel sign-ins conflict safely even if Vercel promotes while `0003` is still being
 applied; the index becomes the database-wide backstop once the migration lands.
+
+Migration `0004` adds `people_creation_budgets` for atomic creation-capacity reservations.
+The 0.4.0 readiness query requires that table. The dated 4/4 production check above
+does not establish that `0004` has been applied; the complete-history check must verify it.
 
 After any later schema change, run:
 
@@ -240,23 +294,34 @@ pnpm db:check-migrations --complete
 
 ### What the checks assert
 
-Each status code was verified against a running server rather than assumed:
+The working branch's [`check-production.mts`](../scripts/check-production.mts) checks
+these responses. This table describes the code, not a newly completed production run:
 
 | Path | Expect | Why this one |
 | --- | --- | --- |
-| `/` | 200 | Renders with no session and no database read. |
-| `/signin` | 200 | If this is down nobody can get in at all. |
-| `/api/auth/providers` | 200 | The real canary: 200 only when `AUTH_SECRET` **and** the GitHub provider are both configured, so a rotated secret surfaces here rather than as a user who cannot sign in. |
-| `/tree` | 307 | Redirects to `/signin` when signed out, rather than erroring. |
-| `/demo` | 307 | Sets its cookie and forwards. Reads no session and no database, so it separates "the app is broken" from "Neon is asleep". |
+| `/api/health` | 200 | Requires `ready` database/status and configured auth; deployment checks also compare `commit` with `EXPECTED_COMMIT`. |
+| `/` | 200 | Must contain Kinfolk identity and Next static-asset markup. |
+| `/signin` | 200 | Confirms the sign-in page responds. |
+| `/api/auth/providers` | 200 | Requires the GitHub provider and the exact Auth.js callback on the API origin. It does not complete OAuth or prove the credential is valid. |
+| `/tree` | 307 | Must redirect a signed-out request to `/signin`. |
+| `/api/tree` | 401 | Refuses a signed-out private read. |
+| `/api/tree?demo=1` | 200 | Requires a sample view with nodes and a positive people count. |
+| Pages mount | 200 | Requires the SPA root and Kinfolk title; deployment checks also require the matching commit meta tag. |
+| Pages tree deep link | 200 or 404 | Must serve the same Kinfolk app shell and expected commit, including the GitHub Pages 404 fallback. |
+| Pages `asset-manifest.json` and listed files | 200 | Requires a canvas chunk, nonempty emitted assets including fonts, expected JS/CSS content types, and `theme-init.js`. |
 
-Every probe retries three times. A cold serverless function or a waking Neon branch can exceed the first timeout, and a single `000` would be a false alarm.
+Requests time out after 20 seconds. A normal run retries the check sequence up to three
+times, with 10 seconds between attempts. `--wait` permits up to 30 attempts while the
+deployment promotes, within the workflow's overall timeout.
 
 ## After the first deploy
 
 1. Sign in with GitHub on the deployed site. Provisioning ([`lib/tree/provision.ts`](../lib/tree/provision.ts)) fires in the Auth.js `createUser` event, so the first sign-in is also the test that it works: you should land on `/tree` with one card, yourself.
-2. Confirm `/api/auth/providers` lists `github` with the production callback.
-3. Run the health workflow by hand (`workflow_dispatch`) rather than waiting for the schedule.
+2. Confirm `/api/auth/providers` lists `github` with the production callback and complete
+   the intended OAuth flow. Provider metadata alone cannot validate sign-in.
+3. Confirm the deploy job checked the expected serving SHA and complete migration history,
+   and the Pages job verified its SHA and assets.
+4. Run the health workflow by hand (`workflow_dispatch`) rather than waiting for the schedule.
 
 ## Gotchas
 

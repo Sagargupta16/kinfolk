@@ -46,6 +46,8 @@ const nextConfig = {
 	// The in-app DevTools panel destabilises HMR on Windows + pnpm (same issue
 	// as the kalchar repo); kept off as a dev-stability flag.
 	devIndicators: false,
+	// Keep the repository's reviewed agent instructions intact during local previews.
+	agentRules: false,
 
 	experimental: {
 		// TypeScript 7 removed the compiler API Next.js reaches for directly, so

@@ -1,11 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import { MotionPreference } from "@/components/ui/MotionPreference";
 import { MOTION_ATTR, THEME_ATTR, THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
-
-const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display: "swap" });
-const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
 	title: "Kinfolk",
@@ -25,8 +22,8 @@ export const viewport: Viewport = {
 	initialScale: 1,
 	/** Both, so the fixed toolbars stay on the right surface as the scheme changes. */
 	themeColor: [
-		{ media: "(prefers-color-scheme: dark)", color: "#0d1512" },
-		{ media: "(prefers-color-scheme: light)", color: "#efe8d8" },
+		{ media: "(prefers-color-scheme: dark)", color: "#0b1012" },
+		{ media: "(prefers-color-scheme: light)", color: "#f5f7f8" },
 	],
 };
 
@@ -34,7 +31,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 	return (
 		<html
 			lang="en"
-			className={`${sans.variable} ${mono.variable}`}
 			// The server writes the DEFAULT, and the inline script below corrects it before
 			// paint. Both attributes are present in the markup so CSS has something to match
 			// even if the script is blocked.
@@ -62,7 +58,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 				    content is a module-scope constant in lib/theme.ts with no interpolation. */}
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 			</head>
-			<body>{children}</body>
+			<body>
+				<MotionPreference>{children}</MotionPreference>
+			</body>
 		</html>
 	);
 }

@@ -27,7 +27,7 @@
  */
 import { and, eq, gt } from "drizzle-orm";
 import { db, hasDatabase } from "@/lib/db/client";
-import { sessions } from "@/lib/db/schema";
+import { sessions, users } from "@/lib/db/schema";
 import { bearerToken } from "./bearer-header";
 
 export { bearerToken };
@@ -40,7 +40,9 @@ export { bearerToken };
  * caller distinguish them too, and "this token existed but expired" is more than
  * an unauthenticated request needs to be told.
  */
-export async function userIdFromBearer(header: string | null): Promise<string | null> {
+export async function viewerFromBearer(
+	header: string | null,
+): Promise<{ id: string; name: string | null; email: string | null } | null> {
 	const token = bearerToken(header);
 	if (!token) return null;
 	// Without a database there is nothing to look a session up in, and Auth.js
@@ -48,8 +50,9 @@ export async function userIdFromBearer(header: string | null): Promise<string | 
 	if (!hasDatabase()) return null;
 
 	const rows = await db
-		.select({ userId: sessions.userId })
+		.select({ id: users.id, name: users.name, email: users.email })
 		.from(sessions)
+		.innerJoin(users, eq(users.id, sessions.userId))
 		.where(
 			and(
 				eq(sessions.sessionToken, token),
@@ -62,5 +65,9 @@ export async function userIdFromBearer(header: string | null): Promise<string | 
 		)
 		.limit(1);
 
-	return rows[0]?.userId ?? null;
+	return rows[0] ?? null;
+}
+
+export async function userIdFromBearer(header: string | null): Promise<string | null> {
+	return (await viewerFromBearer(header))?.id ?? null;
 }

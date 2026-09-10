@@ -222,8 +222,8 @@ export function TreeSearch({
 								// which point the list has closed and taken this row with it.
 								onMouseDown={(event) => {
 									event.preventDefault();
-									go(hit.id);
 								}}
+								onClick={() => go(hit.id)}
 								onMouseEnter={() => setCursor({ query, index })}
 								className={cn(
 									"flex min-h-11 w-full items-baseline gap-2 border-b border-hairline px-3",

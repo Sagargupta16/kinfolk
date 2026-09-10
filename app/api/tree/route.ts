@@ -20,7 +20,7 @@
  */
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { userIdFromBearer } from "@/lib/tree/bearer";
+import { viewerFromBearer } from "@/lib/tree/bearer";
 import { corsHeaders, preflightHeaders } from "@/lib/tree/cors";
 import { buildDemoView, DEMO_COOKIE } from "@/lib/tree/demo";
 import { loadTreeView } from "@/lib/tree/load";
@@ -38,7 +38,10 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-	const cors = corsHeaders(request.headers.get("origin"));
+	const cors = {
+		...corsHeaders(request.headers.get("origin")),
+		"Cache-Control": "private, no-store",
+	};
 	const params = request.nextUrl.searchParams;
 
 	// Both default on, matching app/tree/page.tsx: the combined view is the
@@ -56,11 +59,14 @@ export async function GET(request: NextRequest) {
 	// they look identical.
 	let stage = "session lookup";
 	try {
-		const userId = await userIdFromBearer(request.headers.get("authorization"));
+		const viewer = await viewerFromBearer(request.headers.get("authorization"));
 
-		if (userId) {
+		if (viewer) {
 			stage = "load tree";
-			const view = await loadTreeView(userId, options);
+			const view = await loadTreeView(viewer.id, {
+				...options,
+				viewer: { name: viewer.name, email: viewer.email },
+			});
 			// A signed-in user with no tree yet is a new account, not an error. 200 with
 			// a null view lets the client render its empty state; a 404 would say the
 			// ROUTE was missing, which is a different problem with a different fix.

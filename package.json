@@ -1,6 +1,6 @@
 {
 	"name": "kinfolk",
-	"version": "0.3.3",
+	"version": "0.4.0",
 	"private": true,
 	"description": "Collaborative family tree maker: build your branch, connect it to relatives, see the combined tree",
 	"license": "MIT",
@@ -21,6 +21,7 @@
 		"build": "next build",
 		"start": "next start",
 		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
 		"lint": "biome check .",
 		"format": "biome check --write .",
 		"db:push": "drizzle-kit push",
@@ -31,6 +32,9 @@
 	},
 	"dependencies": {
 		"@auth/drizzle-adapter": "^1.11.3",
+		"@fontsource-variable/bricolage-grotesque": "^5.3.0",
+		"@fontsource-variable/inter": "^5.3.0",
+		"@fontsource-variable/jetbrains-mono": "^5.3.0",
 		"@neondatabase/serverless": "^1.1.0",
 		"@xyflow/react": "^12.11.2",
 		"clsx": "^2.1.1",
@@ -38,7 +42,7 @@
 		"elkjs": "^0.12.0",
 		"lucide-react": "^1.29.0",
 		"motion": "^13.0.0",
-		"next": "^16.3.0",
+		"next": "^16.3.4",
 		"next-auth": "5.0.0-beta.32",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
@@ -46,6 +50,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.7",
+		"@electric-sql/pglite": "^0.5.8",
 		"@tailwindcss/postcss": "^4.3.3",
 		"@types/node": "^26.1.2",
 		"@types/react": "^19.2.18",
@@ -55,6 +60,7 @@
 		"postcss": "^8.5.26",
 		"tailwindcss": "^4.3.3",
 		"tsx": "^4.23.9",
-		"typescript": "^7.0.2"
+		"typescript": "^7.0.2",
+		"vitest": "^5.0.0"
 	}
 }

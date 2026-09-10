@@ -939,4 +939,20 @@ function anchorFamilylessNodes(
 			progressed = true;
 		}
 	}
+
+	// Household alignment can move a family onto an isolated person's ELK box.
+	// With no anchored contact, retain their row and move only if that box now
+	// collides. Check vertical extents because their row need not match a family row.
+	const placed = [...positions].filter(([id]) => !pending.has(id)).map(([, box]) => box);
+	for (const id of pending) {
+		const box = positions.get(id);
+		if (!box) continue;
+		const row = placed.filter(
+			(other) => box.y < other.y + other.height && box.y + box.height > other.y,
+		);
+		if (row.some((other) => box.x < other.x + other.width && box.x + box.width > other.x)) {
+			box.x = Math.max(...row.map((other) => other.x + other.width)) + gap;
+		}
+		placed.push(box);
+	}
 }

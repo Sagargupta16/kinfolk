@@ -22,7 +22,7 @@ git log --oneline <last-version-tag>..HEAD
 If the repository does not have a matching version tag, use the commit that introduced the latest `CHANGELOG.md` version as the lower bound and say so. Review all commits in that range so merged work is not omitted.
 
 - Give every release a real semantic version and absolute date; never add an `Unreleased` section.
-- Keep the root `package.json` version and the newest changelog heading aligned. Do not invent a version for `frontend/package.json`, which is intentionally private and unversioned.
+- Keep both existing package versions in `package.json` and `frontend/package.json` aligned with the newest changelog heading. Both workspace packages are private.
 - Update `README.md`, `docs/DEPLOYMENT.md`, `docs/SETUP.md`, and `CLAUDE.md` only when their stated behavior, commands, live state, or current-version status changed. Update badges only if one exists.
 - Record user-visible graph behavior, API contracts, schema/migration changes, and deployment changes. Include measured verification, not claims copied from implementation comments.
 
@@ -35,6 +35,8 @@ pnpm install --frozen-lockfile
 pnpm lint
 pnpm typecheck
 pnpm --dir frontend typecheck
+pnpm test
+pnpm audit --audit-level high
 pnpm build
 pnpm --dir frontend build
 ```
@@ -66,13 +68,13 @@ Review generated SQL and `drizzle/meta/_journal.json` together. Check for destru
 
 Do not use `pnpm db:push` in production. `deploy.yml` must use `pnpm db:migrate`, preceded by `pnpm db:check-migrations` and followed by `pnpm db:check-migrations --complete`. A production migration requires explicit authorization and the direct, non-pooler Neon URL supplied through the protected GitHub environment; never place it in a transcript or command literal. The historical `0000` baseline must be recorded as applied on a pre-existing schema, not executed against tables it describes.
 
-Remember that the Neon HTTP application driver has no transaction support. Review multi-write application changes for safe sequencing; do not assume a typechecking `db.transaction()` works at runtime.
+The Neon HTTP application driver supports atomic HTTP batch transactions through `db.batch()`. Interactive `db.transaction()` is unsupported even though it typechecks. Review multi-write application changes for atomic batches, locking, and race-safe predicates.
 
 ## 4. Verify workflow responsibilities
 
-- `ci.yml`: lint, both typechecks, both builds, and the built-CSS guard.
-- `deploy.yml`: apply committed migrations, then probe Vercel. Vercel's Git integration performs the Next deployment; this workflow must not duplicate it.
-- `health.yml`: daily public endpoint probes.
+- `ci.yml`: lint, both typechecks, isolated regression tests, dependency audit, both builds, and the built-CSS guard.
+- `deploy.yml`: verify and apply committed migrations, then wait for the intended Vercel commit and check readiness. Vercel's Git integration performs the Next deployment; this workflow must not duplicate it.
+- `health.yml`: daily readiness and Pages asset checks.
 - `pages.yml`: require an HTTPS `VITE_API_BASE_URL`, build with the Pages base, copy `index.html` to `404.html`, upload only `frontend/dist`, and deploy with the required Pages permissions.
 
 Check workflow runs and required checks after a push. Do not accept a skipped production probe as a pass: `PRODUCTION_URL` must be configured. Never add a guessed fallback hostname; this repository previously received green checks from an unrelated Vercel project.

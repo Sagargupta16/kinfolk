@@ -39,8 +39,16 @@ import "@xyflow/react/dist/style.css";
 import { Crosshair, LocateFixed, Maximize2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { applyScheme, resolveScheme, THEME_ATTR, THEME_KEY } from "@/lib/theme";
+import {
+	type CSSProperties,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { applyScheme, MOTION_ATTR, resolveScheme, THEME_ATTR, THEME_KEY } from "@/lib/theme";
 import {
 	type Collapsed,
 	collapseGeneration,
@@ -90,6 +98,10 @@ import type { ViewMode } from "./ViewControls";
 
 const nodeTypes = { person: PersonNode, union: UnionNode };
 const edgeTypes = { family: FamilyEdge };
+
+function travelDuration(milliseconds = 280): number {
+	return document.documentElement.getAttribute(MOTION_ATTR) === "off" ? 0 : milliseconds;
+}
 
 /**
  * Per-generation entrance delay.
@@ -240,6 +252,7 @@ type Props = {
 	 * on the far family's row about half the time.
 	 */
 	editableTreeIds?: readonly string[];
+	editableUnions?: UnionWithChildren[];
 	/**
 	 * A person to travel to, set by search. An object rather than a bare id so asking for
 	 * the SAME person twice still moves: after panning away, searching the name you just
@@ -279,6 +292,8 @@ type Props = {
 	closeDetailRequest?: { nonce: number } | null;
 	/** Acknowledge a handled close, so the request cannot replay. */
 	onCloseDetailHandled?: () => void;
+	/** The directory shares this canvas's profile and editing surfaces. */
+	directory?: ReactNode;
 };
 
 function Canvas({
@@ -294,6 +309,7 @@ function Canvas({
 	depth = false,
 	canEdit = false,
 	editableTreeIds = [],
+	editableUnions,
 	goTo,
 	onGoToHandled,
 	degree,
@@ -304,6 +320,7 @@ function Canvas({
 	onQuickAddHandled,
 	closeDetailRequest,
 	onCloseDetailHandled,
+	directory,
 }: Props) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	/**
@@ -457,7 +474,7 @@ function Canvas({
 			void setCenter(
 				targetX + (desktopRail ? panel.offsetWidth / (2 * zoom) : 0),
 				targetY + (desktopRail ? 0 : mobileOffset),
-				{ zoom, duration: 400 },
+				{ zoom, duration: travelDuration() },
 			);
 		});
 
@@ -481,6 +498,13 @@ function Canvas({
 	} | null>(null);
 	/** Set when a `+` is pressed on a person no source row of which the viewer may edit. */
 	const [quickAddRefusal, setQuickAddRefusal] = useState<string | null>(null);
+	const [createdPersonId, setCreatedPersonId] = useState<string | null>(null);
+	const [savedName, setSavedName] = useState<string | null>(null);
+	useEffect(() => {
+		if (!savedName) return;
+		const timer = window.setTimeout(() => setSavedName(null), 5000);
+		return () => window.clearTimeout(timer);
+	}, [savedName]);
 	// Refreshing the server route after a write is what keeps fusion, kinship and the layout
 	// derived from the database rather than from a client-side guess about what changed.
 	const router = useRouter();
@@ -628,28 +652,56 @@ function Canvas({
 				return;
 			}
 
-			/*
-			 * What this person's family already holds, counted over the FUSED graph --
-			 * the same shape the canvas draws, so the picker's "both parents recorded"
-			 * agrees with the picture. Counted here rather than in the sheet because the
-			 * sheet deliberately knows nothing about graphs, only roles.
-			 */
-			const unions = unionsOf(sourceNodes);
-			const parentUnion = unions.find((u) => u.childIds.includes(person.id));
-			const own = unions.filter((u) => u.partnerAId === person.id || u.partnerBId === person.id);
+			// Choices must name writable SOURCE unions, not a fused union from another family.
+			const unions = (editableUnions ?? []).filter((union) => union.treeId === target.treeId);
+			const parentUnions = unions.filter((union) => union.childIds.includes(target.personId));
+			const own = unions.filter(
+				(union) => union.partnerAId === target.personId || union.partnerBId === target.personId,
+			);
+			const names = new Map(
+				sourceNodes.flatMap((node) =>
+					node.type === "person"
+						? node.data.sources.map((source) => [source.id, displayName(source)] as const)
+						: [],
+				),
+			);
+			const choice = (union: UnionWithChildren) => ({
+				id: union.id,
+				label: [
+					[union.partnerAId, union.partnerBId]
+						.flatMap((id) => (id && names.has(id) ? [names.get(id)] : []))
+						.join(" and ") || "Parents not yet recorded",
+					union.startDate?.slice(0, 4),
+					union.status !== "unknown" ? union.status : null,
+				]
+					.filter(Boolean)
+					.join(", "),
+				hasRoom: !union.partnerAId || !union.partnerBId,
+			});
 			const family: FamilyCounts = {
-				parents: parentUnion
-					? [parentUnion.partnerAId, parentUnion.partnerBId].filter(Boolean).length
-					: 0,
-				partners: own.length,
-				children: own.reduce((sum, u) => sum + u.childIds.length, 0),
-				siblings: parentUnion ? parentUnion.childIds.filter((id) => id !== person.id).length : 0,
+				parents: new Set(
+					parentUnions.flatMap((union) => [union.partnerAId, union.partnerBId].filter(Boolean)),
+				).size,
+				partners: new Set(
+					own.flatMap((union) =>
+						[union.partnerAId, union.partnerBId].filter((id) => id && id !== target.personId),
+					),
+				).size,
+				children: new Set(own.flatMap((union) => union.childIds)).size,
+				siblings: new Set(
+					parentUnions.flatMap((union) => union.childIds.filter((id) => id !== target.personId)),
+				).size,
+				canAddParent:
+					parentUnions.length === 0 ||
+					parentUnions.some((union) => !union.partnerAId || !union.partnerBId),
+				parentUnions: parentUnions.map(choice),
+				ownUnions: own.map(choice),
 			};
 
 			setQuickAddRefusal(null);
 			setQuickAdd({ id: target.personId, name: displayName(person.primary), family });
 		},
-		[editableTreeIds, sourceNodes],
+		[editableTreeIds, editableUnions, sourceNodes],
 	);
 
 	useEffect(() => {
@@ -826,7 +878,10 @@ function Canvas({
 										onFold: fold,
 										// Absent on a read-only canvas, which is what hides the `+` entirely
 										// rather than drawing one that cannot do anything.
-										onQuickAdd: canEdit ? openQuickAdd : undefined,
+										onQuickAdd:
+											canEdit && editTarget(node.data, editableTreeIds).editable
+												? openQuickAdd
+												: undefined,
 									}
 								: node.data,
 						// Name, relationship and dates, which is what the card shows. Never a
@@ -1038,6 +1093,7 @@ function Canvas({
 		collapsed,
 		fold,
 		canEdit,
+		editableTreeIds,
 		openQuickAdd,
 		attempt,
 		setNodes,
@@ -1080,7 +1136,7 @@ function Canvas({
 				// designed at, with 146 relatives off screen.
 				void fitView({
 					padding: HOUSEHOLD_PADDING,
-					duration: 400,
+					duration: travelDuration(),
 					nodes: household,
 					maxZoom: 1,
 				});
@@ -1093,14 +1149,14 @@ function Canvas({
 			void setCenter(
 				anchor.position.x + (anchor.measured?.width ?? metrics.width) / 2,
 				anchor.position.y + (anchor.measured?.height ?? metrics.height) / 2,
-				{ zoom: LEGIBLE_ZOOM[lod], duration: 400 },
+				{ zoom: LEGIBLE_ZOOM[lod], duration: travelDuration() },
 			);
 			return;
 		}
 
 		// Nobody to show them with, so keep them at their designed size rather than blowing
 		// one card up to fill the viewport.
-		void fitView({ padding: 1.6, duration: 400, nodes: [anchor], maxZoom: 1 });
+		void fitView({ padding: 1.6, duration: travelDuration(), nodes: [anchor], maxZoom: 1 });
 	}, [homeIds, lod, viewportWidth, viewportHeight, fitView, getNodes, getNodesBounds, setCenter]);
 
 	const frameViewed = useCallback(() => {
@@ -1113,7 +1169,7 @@ function Canvas({
 		void setCenter(
 			anchor.position.x + (anchor.measured?.width ?? metrics.width) / 2,
 			anchor.position.y + (anchor.measured?.height ?? metrics.height) / 2,
-			{ zoom: Math.max(getZoom(), LEGIBLE_ZOOM[lod]), duration: 400 },
+			{ zoom: Math.max(getZoom(), LEGIBLE_ZOOM[lod]), duration: travelDuration() },
 		);
 	}, [frameSelf, getNodes, getZoom, lod, setCenter, viewedId]);
 
@@ -1141,7 +1197,7 @@ function Canvas({
 		);
 
 		if (fitZoom >= LEGIBLE_ZOOM[lod]) {
-			void fitView({ padding: FIT_PADDING, duration: 400 });
+			void fitView({ padding: FIT_PADDING, duration: travelDuration() });
 			return;
 		}
 
@@ -1154,7 +1210,7 @@ function Canvas({
 		 * information here, so seeing them small beats seeing part of one legibly.
 		 */
 		if (view === "orbit") {
-			void fitView({ padding: FIT_PADDING, duration: 400 });
+			void fitView({ padding: FIT_PADDING, duration: travelDuration() });
 			return;
 		}
 
@@ -1197,7 +1253,7 @@ function Canvas({
 				target.position.y + (target.measured?.height ?? metrics.height) / 2,
 				// Read rather than subscribed: depending on the live zoom would re-run this on
 				// every wheel tick and yank the viewport back to the last search hit.
-				{ zoom: Math.max(getZoom(), LEGIBLE_ZOOM[lod]), duration: 400 },
+				{ zoom: Math.max(getZoom(), LEGIBLE_ZOOM[lod]), duration: travelDuration() },
 			);
 
 			setFocusedId(personId);
@@ -1225,6 +1281,18 @@ function Canvas({
 		void layoutEpoch;
 		if (travelTo(goTo.id, { openDetail: true })) onGoToHandled?.();
 	}, [goTo, measured, layoutEpoch, travelTo, onGoToHandled]);
+
+	useEffect(() => {
+		if (!createdPersonId || !measured || phase !== "ready") return;
+		void layoutEpoch;
+		const added = [...people.values()].find((person) =>
+			person.sources.some((source) => source.id === createdPersonId),
+		);
+		if (added && travelTo(added.id, { openDetail: true })) {
+			setSavedName(displayName(added.primary));
+			setCreatedPersonId(null);
+		}
+	}, [createdPersonId, measured, phase, layoutEpoch, people, travelTo]);
 
 	/**
 	 * Who lights up when somebody is focused. Traverses through union dots, so hovering a
@@ -1394,16 +1462,16 @@ function Canvas({
 					onFocusSearch?.();
 					break;
 				case "fit":
-					void fitView({ padding: FIT_PADDING, duration: 400 });
+					void fitView({ padding: FIT_PADDING, duration: travelDuration() });
 					break;
 				case "self":
 					frameSelf();
 					break;
 				case "zoomIn":
-					void zoomIn({ duration: 200 });
+					void zoomIn({ duration: travelDuration(160) });
 					break;
 				case "zoomOut":
-					void zoomOut({ duration: 200 });
+					void zoomOut({ duration: travelDuration(160) });
 					break;
 				case "detail": {
 					const next = LOD_CYCLE[(LOD_CYCLE.indexOf(lod) + 1) % LOD_CYCLE.length];
@@ -1477,159 +1545,168 @@ function Canvas({
 				</div>
 			)}
 
-			<ReactFlow
-				nodes={nodes}
-				edges={edges}
-				onNodesChange={onNodesChange}
-				onEdgesChange={onEdgesChange}
-				onNodeMouseEnter={focus}
-				onNodeMouseLeave={blur}
-				onNodeClick={pick}
-				onPaneClick={clear}
-				nodeTypes={nodeTypes}
-				edgeTypes={edgeTypes}
-				// Connecting nodes by dragging would imply a relationship kind we cannot infer;
-				// relationships are added through the editor instead.
-				nodesConnectable={false}
-				elementsSelectable
-				// React Flow deletes the selected node on Backspace by default. This canvas is
-				// read-only, so that silently drops a person from the view with no undo.
-				deleteKeyCode={null}
-				// 150 edges in the tab order put ~150 stops between a keyboard user and the zoom
-				// controls, for elements that cannot be acted on. People stay focusable; the
-				// lines between them are not destinations.
-				edgesFocusable={false}
-				minZoom={MIN_ZOOM}
-				maxZoom={MAX_ZOOM}
-				proOptions={{ hideAttribution: false }}
-				className="size-full"
+			<div
+				className={cn("size-full", directory && "kf-canvas-hidden")}
+				inert={Boolean(directory)}
+				aria-hidden={Boolean(directory)}
 			>
-				{/*
-				 * The taper gradient, referenced by `.is-directed` in globals.css.
-				 *
-				 * A `<defs>` entry cannot be written in a stylesheet, and it has to live in the
-				 * document rather than inside React Flow's edge SVG -- `url(#id)` resolves against
-				 * the whole document, so one definition serves every edge.
-				 *
-				 * `gradientUnits="objectBoundingBox"` is what makes ONE definition work for paths
-				 * running in every direction: the gradient is expressed in the path's own box, so
-				 * x1=0 is always the source end. A userSpaceOnUse gradient would need per-edge
-				 * coordinates and therefore per-edge defs.
-				 *
-				 * The fade stops at `--kf-taper-fade` rather than 0, and the value is per scheme
-				 * because an alpha is not a colour until you know what is behind it: 0.68 measures
-				 * 3.28:1 on the dark canvas, 0.82 measures 3.45:1 on the light one. A stroke
-				 * reaching transparent would read as cut off rather than as arriving, and the
-				 * terminus is exactly where a reader looks to see WHO a relation lands on.
-				 *
-				 * `var()` DOES resolve inside `<stop stop-color>` -- verified on a live element.
-				 */}
-				{/* `aria-hidden="true"` spelled out rather than as the JSX shorthand: Biome's
+				<ReactFlow
+					nodes={nodes}
+					edges={edges}
+					onNodesChange={onNodesChange}
+					onEdgesChange={onEdgesChange}
+					onNodeMouseEnter={focus}
+					onNodeMouseLeave={blur}
+					onNodeClick={pick}
+					onPaneClick={clear}
+					nodeTypes={nodeTypes}
+					edgeTypes={edgeTypes}
+					// Connecting nodes by dragging would imply a relationship kind we cannot infer;
+					// relationships are added through the editor instead.
+					nodesConnectable={false}
+					elementsSelectable
+					// React Flow deletes the selected node on Backspace by default. This canvas is
+					// read-only, so that silently drops a person from the view with no undo.
+					deleteKeyCode={null}
+					// 150 edges in the tab order put ~150 stops between a keyboard user and the zoom
+					// controls, for elements that cannot be acted on. People stay focusable; the
+					// lines between them are not destinations.
+					edgesFocusable={false}
+					minZoom={MIN_ZOOM}
+					maxZoom={MAX_ZOOM}
+					proOptions={{ hideAttribution: false }}
+					className="size-full"
+				>
+					{/*
+					 * The taper gradient, referenced by `.is-directed` in globals.css.
+					 *
+					 * A `<defs>` entry cannot be written in a stylesheet, and it has to live in the
+					 * document rather than inside React Flow's edge SVG -- `url(#id)` resolves against
+					 * the whole document, so one definition serves every edge.
+					 *
+					 * `gradientUnits="objectBoundingBox"` is what makes ONE definition work for paths
+					 * running in every direction: the gradient is expressed in the path's own box, so
+					 * x1=0 is always the source end. A userSpaceOnUse gradient would need per-edge
+					 * coordinates and therefore per-edge defs.
+					 *
+					 * The fade stops at `--kf-taper-fade` rather than 0, and the value is per scheme
+					 * because an alpha is not a colour until you know what is behind it: 0.68 measures
+					 * 3.28:1 on the dark canvas, 0.82 measures 3.45:1 on the light one. A stroke
+					 * reaching transparent would read as cut off rather than as arriving, and the
+					 * terminus is exactly where a reader looks to see WHO a relation lands on.
+					 *
+					 * `var()` DOES resolve inside `<stop stop-color>` -- verified on a live element.
+					 */}
+					{/* `aria-hidden="true"` spelled out rather than as the JSX shorthand: Biome's
 				    noSvgWithoutTitle only recognises the string form, and this svg holds a
 				    definition with nothing to announce. */}
-				<svg aria-hidden="true" className="pointer-events-none absolute size-0" focusable="false">
-					<defs>
-						<linearGradient
-							id="kf-taper"
-							gradientUnits="objectBoundingBox"
-							x1="0"
-							y1="0"
-							x2="1"
-							y2="0"
-						>
-							{/* Both stops are the ACCENT, matching the revealed relation's own stroke: a
+					<svg aria-hidden="true" className="pointer-events-none absolute size-0" focusable="false">
+						<defs>
+							<linearGradient
+								id="kf-taper"
+								gradientUnits="objectBoundingBox"
+								x1="0"
+								y1="0"
+								x2="1"
+								y2="0"
+							>
+								{/* Both stops are the ACCENT, matching the revealed relation's own stroke: a
 							    taper fading to a different hue than the line it belongs to reads as two
 							    marks rather than one line arriving. */}
-							<stop offset="0%" stopColor="var(--color-accent)" stopOpacity="1" />
-							<stop
-								offset="100%"
-								stopColor="var(--color-accent)"
-								stopOpacity="var(--kf-taper-fade)"
-							/>
-						</linearGradient>
-					</defs>
-				</svg>
+								<stop offset="0%" stopColor="var(--color-accent)" stopOpacity="1" />
+								<stop
+									offset="100%"
+									stopColor="var(--color-accent)"
+									stopOpacity="var(--kf-taper-fade)"
+								/>
+							</linearGradient>
+						</defs>
+					</svg>
 
-				{/* No `color` prop: the dot fill and its edge fade are tokens in globals.css, so
+					{/* No `color` prop: the dot fill and its edge fade are tokens in globals.css, so
 				    the lattice restyles with the rest of the surface stack -- and passing `color`
 				    would write the `-props` variable React Flow checks FIRST, overriding it.
 				    Geometry stays here, since it is not a design token. */}
-				<Background variant={BackgroundVariant.Dots} gap={24} size={1} />
-				<GenerationRails bands={bands} />
+					<Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+					<GenerationRails bands={bands} />
 
-				{/*
-				 * Zoom buttons on a pointer device only.
-				 *
-				 * On a phone they are 133px of vertical canvas spent on a gesture the platform
-				 * already provides better: pinch zooms about the point you are looking at, where a
-				 * + button zooms about the viewport centre and moves whatever you were reading.
-				 * Hidden with CSS rather than a media-query hook, so the server renders the same
-				 * markup either way.
-				 */}
-				<Controls
-					showInteractive={false}
-					className="kf-zoom-controls overflow-hidden rounded-lg border border-hairline"
-				/>
+					{/*
+					 * Zoom buttons on a pointer device only.
+					 *
+					 * On a phone they are 133px of vertical canvas spent on a gesture the platform
+					 * already provides better: pinch zooms about the point you are looking at, where a
+					 * + button zooms about the viewport centre and moves whatever you were reading.
+					 * Hidden with CSS rather than a media-query hook, so the server renders the same
+					 * markup either way.
+					 */}
+					<Controls
+						showInteractive={false}
+						className="kf-zoom-controls overflow-hidden rounded-lg border border-hairline"
+					/>
 
-				{/*
-				 * ONE panel holding the overview and the two travel buttons, not three. React
-				 * Flow positions each Panel absolutely in its corner, so siblings in the same
-				 * corner would stack -- and nudging one with a margin fails because the overview's
-				 * height changes with the detail level. A flex column lets them sit above each
-				 * other by layout instead.
-				 *
-				 * Bottom-RIGHT at every size, opposite React Flow's zoom stack. Flipping sides by
-				 * media query needs a rule that beats `.react-flow__panel.left`, and their
-				 * stylesheet is imported after globals.css, so an equally specific `left: auto`
-				 * loses on source order -- leaving both edges pinned and stretching the panel into
-				 * a full-width invisible strip that eats the drag which should pan the tree.
-				 */}
-				<Panel
-					position="bottom-right"
-					className="kf-locate pointer-events-none flex flex-col items-end gap-1.5"
-				>
-					<TreeMinimap nodes={overview} extent={extent} />
+					{/*
+					 * ONE panel holding the overview and the two travel buttons, not three. React
+					 * Flow positions each Panel absolutely in its corner, so siblings in the same
+					 * corner would stack -- and nudging one with a margin fails because the overview's
+					 * height changes with the detail level. A flex column lets them sit above each
+					 * other by layout instead.
+					 *
+					 * Bottom-RIGHT at every size, opposite React Flow's zoom stack. Flipping sides by
+					 * media query needs a rule that beats `.react-flow__panel.left`, and their
+					 * stylesheet is imported after globals.css, so an equally specific `left: auto`
+					 * loses on source order -- leaving both edges pinned and stretching the panel into
+					 * a full-width invisible strip that eats the drag which should pan the tree.
+					 */}
+					<Panel
+						position="bottom-right"
+						className="kf-locate pointer-events-none flex flex-col items-end gap-1.5"
+					>
+						<TreeMinimap nodes={overview} extent={extent} />
 
-					<div className="flex gap-1.5">
-						<TravelButton onClick={() => void fitView({ padding: FIT_PADDING, duration: 400 })}>
-							<Maximize2 className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-							All
-						</TravelButton>
-
-						{/*
-						 * Back to yourself. The single most valuable control on a canvas 10760px wide,
-						 * and the one thing a viewer cannot recover by gesture: pan far enough on a
-						 * phone and every direction looks the same.
-						 */}
-						{viewedId && (
-							<TravelButton onClick={frameViewed}>
-								<LocateFixed className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-								Current
+						<div className="flex gap-1.5">
+							<TravelButton
+								onClick={() => void fitView({ padding: FIT_PADDING, duration: travelDuration() })}
+							>
+								<Maximize2 className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+								All
 							</TravelButton>
-						)}
 
-						{selfNodeId && selfNodeId !== viewedId && (
-							<TravelButton onClick={frameSelf}>
-								<Crosshair className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-								You
-							</TravelButton>
-						)}
-					</div>
-				</Panel>
-			</ReactFlow>
+							{/*
+							 * Back to yourself. The single most valuable control on a canvas 10760px wide,
+							 * and the one thing a viewer cannot recover by gesture: pan far enough on a
+							 * phone and every direction looks the same.
+							 */}
+							{viewedId && (
+								<TravelButton onClick={frameViewed}>
+									<LocateFixed className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+									Current
+								</TravelButton>
+							)}
 
+							{selfNodeId && selfNodeId !== viewedId && (
+								<TravelButton onClick={frameSelf}>
+									<Crosshair className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+									You
+								</TravelButton>
+							)}
+						</div>
+					</Panel>
+				</ReactFlow>
+			</div>
+
+			{directory}
 			<OfflineNotice />
 
-			{/* Below search on a phone, centred between search and controls from `sm` up.
-			    The narrow mobile width is deliberate: the right-hand command dock keeps its
-			    own pointer lane, while search results paint above this lower-z trail. */}
+			{/* The mobile profile already names the current person. Hide the trail while it
+			    is open so the selected card still fits above the sheet. */}
 			<div
 				className={cn(
-					"pointer-events-none absolute left-3 z-10 flex max-w-[calc(100%-10.5rem)] justify-start sm:left-1/2 sm:top-3 sm:z-20 sm:max-w-[min(28rem,calc(100%-16rem))] sm:-translate-x-1/2 sm:justify-center",
-					canEdit ? "top-28" : "top-16",
+					"pointer-events-none absolute left-3 top-3 z-20 flex min-w-0 max-w-[calc(100%_-_1.5rem)] justify-start",
+					detailId && !directory && "hidden sm:flex",
+					directory && "hidden",
 				)}
 			>
-				<div className="pointer-events-auto">
+				<div className="pointer-events-auto min-w-0 max-w-full">
 					<TreeBreadcrumbs trail={trailPeople} onGoTo={(id) => travelTo(id)} />
 				</div>
 			</div>
@@ -1639,7 +1716,11 @@ function Canvas({
 				index={relativeIndex}
 				kinship={kinship}
 				editableTreeIds={editableTreeIds}
-				onAddRelative={detailPerson && canEdit ? () => openQuickAdd(detailPerson) : undefined}
+				onAddRelative={
+					detailPerson && canEdit && editTarget(detailPerson, editableTreeIds).editable
+						? () => openQuickAdd(detailPerson)
+						: undefined
+				}
 				onCenter={detailPerson ? () => travelTo(detailPerson.id) : undefined}
 				// Re-read from the server rather than patching locally: the write happened there, so
 				// there is what knows the new graph -- and fusion, kinship and layout all derive
@@ -1664,9 +1745,26 @@ function Canvas({
 			 */}
 			<QuickAddSheet
 				subject={quickAdd}
-				onDone={() => router.refresh()}
+				onDone={(personId) => {
+					setCreatedPersonId(personId ?? null);
+					router.refresh();
+				}}
 				onClose={() => setQuickAdd(null)}
 			/>
+			<AnimatePresence>
+				{savedName && (
+					<motion.p
+						role="status"
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: 0.2 }}
+						className="pointer-events-none absolute bottom-4 left-1/2 z-50 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl border border-hairline-strong bg-surface px-4 py-3 text-center text-sm text-ink"
+					>
+						{savedName} is now part of your family tree.
+					</motion.p>
+				)}
+			</AnimatePresence>
 
 			{/*
 			 * Why a `+` did nothing, when it did nothing.

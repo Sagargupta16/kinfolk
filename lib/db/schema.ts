@@ -639,6 +639,7 @@ export type NewPersonRelation = typeof personRelations.$inferInsert;
 export type RelationKind = (typeof relationKindEnum.enumValues)[number];
 export type LivingStatus = (typeof livingStatusEnum.enumValues)[number];
 export type Sex = (typeof sexEnum.enumValues)[number];
+export type ParentRole = (typeof parentRoleEnum.enumValues)[number];
 export type Verification = (typeof verificationEnum.enumValues)[number];
 export type ContactDetail = typeof contactDetails.$inferSelect;
 export type NewContactDetail = typeof contactDetails.$inferInsert;

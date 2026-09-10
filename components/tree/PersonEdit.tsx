@@ -20,8 +20,8 @@
 import { Check, Loader2, Pencil, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
-import { updatePerson } from "@/lib/tree/edit-actions";
-import { editInitialValues, editTarget, yearValue } from "@/lib/tree/editable";
+import { deletePerson, updatePerson } from "@/lib/tree/edit-actions";
+import { dateInputValue, editInitialValues, editTarget } from "@/lib/tree/editable";
 import { displayName, type FusedPerson } from "@/lib/tree/graph";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
@@ -56,6 +56,7 @@ export function PersonEdit({
 	const titleId = useId();
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [confirmDelete, setConfirmDelete] = useState(false);
 	const firstField = useRef<HTMLInputElement>(null);
 
 	// Escape closes the edit sheet only -- the panel underneath keeps its own stack
@@ -79,20 +80,26 @@ export function PersonEdit({
 	const values = editInitialValues(person, target.personId);
 
 	async function submit(formData: FormData) {
+		if (pending) return;
 		setPending(true);
 		setError(null);
 		// The SOURCE row, not the fused id. The server would refuse the latter, and the message
 		// would tell somebody they may not edit their own record.
 		formData.set("personId", target.editable ? target.personId : "");
 
-		const result = await updatePerson(formData);
-		setPending(false);
-		if (!result.ok) {
-			setError(result.error);
-			return;
+		try {
+			const result = await updatePerson(formData);
+			if (!result.ok) {
+				setError(result.error);
+				return;
+			}
+			onSaved();
+			onClose();
+		} catch {
+			setError("Could not save that. Try again.");
+		} finally {
+			setPending(false);
 		}
-		onSaved();
-		onClose();
 	}
 
 	return (
@@ -101,7 +108,14 @@ export function PersonEdit({
 			title={`Edit ${displayName(values ?? person.primary)}`}
 			onClose={onClose}
 		>
-			<form action={submit} className="space-y-2 px-3 pb-3">
+			<form
+				onSubmit={(event) => {
+					event.preventDefault();
+					void submit(new FormData(event.currentTarget));
+				}}
+				aria-busy={pending}
+				className="space-y-2 px-3 pb-3"
+			>
 				<div className="flex gap-2">
 					<Field label="First name">
 						{(id) => (
@@ -162,105 +176,112 @@ export function PersonEdit({
 				/>
 
 				<div className="flex gap-2">
-					{/*
-					 * A YEAR, because that is what people know. `updatePerson` routes it to the exact
-					 * or the fuzzy column, so "1952" and "about 1890" are both accepted without one
-					 * of them inventing a birthday.
-					 */}
-					<Field label="Born" hint="Year">
+					{/* Keep exact dates intact while also accepting years and approximate text. */}
+					<Field label="Born" hint="Date or year">
 						{(id) => (
 							<input
 								id={id}
 								name="birthYear"
-								inputMode="numeric"
 								placeholder="1952"
-								defaultValue={yearValue(values?.birthDate ?? null, values?.birthDateApprox ?? null)}
+								defaultValue={dateInputValue(
+									values?.birthDate ?? null,
+									values?.birthDateApprox ?? null,
+								)}
 								className={cn(inputClass, "tabular")}
 							/>
 						)}
 					</Field>
-					<Field label="Died" hint="Year">
+					<Field label="Died" hint="Date or year">
 						{(id) => (
 							<input
 								id={id}
 								name="deathYear"
-								inputMode="numeric"
-								defaultValue={yearValue(values?.deathDate ?? null, values?.deathDateApprox ?? null)}
+								defaultValue={dateInputValue(
+									values?.deathDate ?? null,
+									values?.deathDateApprox ?? null,
+								)}
 								className={cn(inputClass, "tabular")}
 							/>
 						)}
 					</Field>
 				</div>
 
-				<Field label="Birthplace">
-					{(id) => (
-						<input
-							id={id}
-							name="birthPlace"
-							defaultValue={values?.birthPlace ?? ""}
-							autoComplete="off"
-							className={inputClass}
-						/>
-					)}
-				</Field>
+				<details className="rounded-lg border border-hairline px-3">
+					<summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-ink-muted">
+						Places, work and notes
+					</summary>
+					<div className="space-y-3 pb-3">
+						<Field label="Birthplace">
+							{(id) => (
+								<input
+									id={id}
+									name="birthPlace"
+									defaultValue={values?.birthPlace ?? ""}
+									autoComplete="off"
+									className={inputClass}
+								/>
+							)}
+						</Field>
 
-				<Field label="Lives" hint="Now, or last known">
-					{(id) => (
-						<input
-							id={id}
-							name="currentPlace"
-							defaultValue={values?.currentPlace ?? ""}
-							autoComplete="off"
-							className={inputClass}
-						/>
-					)}
-				</Field>
+						<Field label="Lives" hint="Now, or last known">
+							{(id) => (
+								<input
+									id={id}
+									name="currentPlace"
+									defaultValue={values?.currentPlace ?? ""}
+									autoComplete="off"
+									className={inputClass}
+								/>
+							)}
+						</Field>
 
-				<Field label="Work">
-					{(id) => (
-						<input
-							id={id}
-							name="occupation"
-							defaultValue={values?.occupation ?? ""}
-							autoComplete="off"
-							className={inputClass}
-						/>
-					)}
-				</Field>
+						<Field label="Work">
+							{(id) => (
+								<input
+									id={id}
+									name="occupation"
+									defaultValue={values?.occupation ?? ""}
+									autoComplete="off"
+									className={inputClass}
+								/>
+							)}
+						</Field>
 
-				<Field label="Notes">
-					{(id) => (
-						<textarea
-							id={id}
-							name="bio"
-							rows={3}
-							defaultValue={values?.bio ?? ""}
-							className={cn(inputClass, "h-auto resize-y py-2 leading-relaxed")}
-						/>
-					)}
-				</Field>
+						<Field label="Notes">
+							{(id) => (
+								<textarea
+									id={id}
+									name="bio"
+									rows={3}
+									defaultValue={values?.bio ?? ""}
+									className={cn(inputClass, "h-auto resize-y py-2 leading-relaxed")}
+								/>
+							)}
+						</Field>
 
-				{/*
-				 * Where the record came from, in the owner's own words.
-				 *
-				 * `verification` is deliberately NOT here. It is a provenance claim the card renders
-				 * as a tick, and letting somebody mark their own row `documented` would turn the
-				 * strongest evidence level into a self-assessment -- which is exactly what the
-				 * separate `self_confirmed` level already means without overstating it.
-				 */}
-				<Field label="Source" hint="Certificate, who remembered it">
-					{(id) => (
-						<input
-							id={id}
-							name="sourceNote"
-							defaultValue={values?.sourceNote ?? ""}
-							autoComplete="off"
-							className={inputClass}
-						/>
-					)}
-				</Field>
+						{/*
+						 * Where the record came from, in the owner's own words.
+						 *
+						 * `verification` is deliberately NOT here. It is a provenance claim the card renders
+						 * as a tick, and letting somebody mark their own row `documented` would turn the
+						 * strongest evidence level into a self-assessment -- which is exactly what the
+						 * separate `self_confirmed` level already means without overstating it.
+						 */}
+						<Field label="Source" hint="Certificate, who remembered it">
+							{(id) => (
+								<input
+									id={id}
+									name="sourceNote"
+									defaultValue={values?.sourceNote ?? ""}
+									autoComplete="off"
+									className={inputClass}
+								/>
+							)}
+						</Field>
+					</div>
+				</details>
 
-				{error && (
+				{error && !confirmDelete && (
 					<p role="alert" className="text-[0.75rem] leading-snug text-danger">
 						{error}
 					</p>
@@ -268,9 +289,9 @@ export function PersonEdit({
 
 				<button
 					type="submit"
-					disabled={pending}
+					disabled={pending || confirmDelete}
 					className={cn(
-						"mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg",
+						"kf-primary-action mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg",
 						"border border-accent/40 bg-accent/10 text-[0.8125rem] font-medium text-accent-ink",
 						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 						"hover:bg-accent/20 disabled:cursor-wait disabled:opacity-60",
@@ -284,6 +305,78 @@ export function PersonEdit({
 					{pending ? "Saving" : "Save"}
 				</button>
 			</form>
+			<section className="border-t border-hairline px-3 py-3">
+				{values?.claimedByUserId ? (
+					<p className="text-xs leading-relaxed text-ink-faint">
+						This profile is linked to an account. You can edit its details, but the profile cannot
+						be deleted.
+					</p>
+				) : confirmDelete ? (
+					<div className="space-y-2">
+						<p className="text-xs leading-relaxed text-ink-muted">
+							Delete {displayName(values ?? person.primary)} from this family? Their contact details
+							and links will be removed. Other people's records and the surviving parent's family
+							connections are kept. This cannot be undone.
+						</p>
+						<div className="flex gap-2">
+							<button
+								type="button"
+								disabled={pending}
+								className="min-h-11 rounded-md border border-danger px-3 text-xs text-danger disabled:opacity-60"
+								onClick={async () => {
+									setPending(true);
+									setError(null);
+									const form = new FormData();
+									form.set("personId", target.personId);
+									try {
+										const result = await deletePerson(form);
+										if (!result.ok) {
+											setError(result.error);
+											return;
+										}
+										onSaved();
+										onClose();
+									} catch {
+										setError("Could not delete that record. Try again.");
+									} finally {
+										setPending(false);
+									}
+								}}
+							>
+								{pending ? "Deleting..." : "Delete record"}
+							</button>
+							<button
+								type="button"
+								disabled={pending}
+								className="min-h-11 rounded-md border border-hairline px-3 text-xs"
+								onClick={() => {
+									setConfirmDelete(false);
+									setError(null);
+								}}
+							>
+								Keep record
+							</button>
+						</div>
+						{error && (
+							<p role="alert" className="text-xs leading-relaxed text-danger">
+								{error}
+							</p>
+						)}
+					</div>
+				) : (
+					<button
+						type="button"
+						disabled={pending}
+						className="min-h-11 text-xs text-danger"
+						onClick={() => {
+							setConfirmDelete(true);
+							setError(null);
+						}}
+					>
+						Delete this person's record
+					</button>
+				)}
+			</section>
 		</Shell>
 	);
 }
@@ -324,7 +417,7 @@ function Shell({
 					type="button"
 					onClick={onClose}
 					aria-label="Close without saving"
-					className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
+					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 				>
 					<X className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
 				</button>
@@ -357,10 +450,10 @@ function Field({
 		<div className="flex-1">
 			<label
 				htmlFor={id}
-				className="mb-1 flex items-baseline gap-1.5 font-mono text-[0.5625rem] uppercase tracking-wider text-ink-faint"
+				className="mb-1 flex flex-wrap items-baseline gap-1.5 text-xs font-medium text-ink-muted"
 			>
 				{label}
-				{hint && <span className="normal-case tracking-normal opacity-70">{hint}</span>}
+				{hint && <span className="font-normal text-ink-faint">{hint}</span>}
 			</label>
 			{children(id)}
 		</div>
@@ -387,9 +480,7 @@ function Choice({
 }) {
 	return (
 		<fieldset>
-			<legend className="mb-1 font-mono text-[0.5625rem] uppercase tracking-wider text-ink-faint">
-				{legend}
-			</legend>
+			<legend className="mb-1 text-xs font-medium text-ink-muted">{legend}</legend>
 			<div className="flex overflow-hidden rounded-lg border border-hairline">
 				{options.map((option, index) => (
 					<label
@@ -398,6 +489,7 @@ function Choice({
 							"flex min-h-11 flex-1 cursor-pointer items-center justify-center px-1",
 							"text-center text-[0.75rem] text-ink-muted",
 							"has-checked:bg-surface-raised has-checked:text-accent-ink",
+							"has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent",
 							index > 0 && "border-l border-hairline",
 						)}
 					>
@@ -447,6 +539,7 @@ export function PersonEditSheet({
 	onSaved: () => void;
 	onClose: () => void;
 }) {
+	const target = person ? editTarget(person, editableTreeIds) : null;
 	return (
 		<AnimatePresence>
 			{person && (
@@ -457,14 +550,20 @@ export function PersonEditSheet({
 					// previous person's names.
 					key={person.id}
 					initial={{ opacity: 0, x: 24 }}
-					animate={{ opacity: 1, x: 0 }}
-					exit={{ opacity: 0, x: 24 }}
-					transition={{ type: "spring", stiffness: 380, damping: 32 }}
+					animate={{ opacity: 1, x: 0, pointerEvents: "auto" }}
+					exit={{ opacity: 0, x: 24, pointerEvents: "none" }}
+					transition={{
+						type: "spring",
+						stiffness: 380,
+						damping: 32,
+						pointerEvents: { duration: 0 },
+					}}
 					// Over the panel's own content rather than beside it: the form and the read view
 					// answer the same question, so showing both would be the same data twice.
 					className="absolute inset-0 z-10 flex flex-col bg-surface/95 backdrop-blur-sm"
 				>
 					<PersonEdit
+						key={target?.editable ? target.personId : person.id}
 						person={person}
 						editableTreeIds={editableTreeIds}
 						onSaved={onSaved}

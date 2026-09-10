@@ -42,13 +42,12 @@ export async function startSignIn(): Promise<void> {
 	}
 	const { url: authorize, state } = (await response.json()) as { url: string; state: string };
 
-	// Kept so the return leg can compare. The server verifies the state by signature
-	// regardless -- this is the cheaper check that catches a link opened in a
-	// different tab before a network round trip.
+	// Bind the callback to the tab that started sign-in. The server's signature
+	// proves issuance and expiry, but cannot establish that browser binding.
 	try {
 		sessionStorage.setItem(STATE_KEY, state);
 	} catch {
-		// Storage unavailable. The server-side check still applies, so the flow works.
+		throw new Error("Allow session storage in your browser to sign in, then try again.");
 	}
 
 	window.location.assign(authorize);
@@ -105,8 +104,8 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 	try {
 		expected = sessionStorage.getItem(STATE_KEY);
 	} catch {}
-	if (expected && expected !== state) {
-		throw new Error("That sign-in was started in a different tab. Try again.");
+	if (!expected || expected !== state) {
+		throw new Error("Start sign-in again in this tab. That sign-in link could not be verified.");
 	}
 
 	const response = await fetch(`${API_BASE}/api/oauth/callback`, {
@@ -130,7 +129,19 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 		throw new Error("Could not complete sign-in.");
 	}
 
-	setToken(body.token);
+	if (!setToken(body.token)) {
+		// Do not report success and open sample data when the real session could
+		// not be saved. Revoke the newly issued credential if the network permits.
+		try {
+			await fetch(`${API_BASE}/api/oauth/signout`, {
+				method: "POST",
+				headers: { Authorization: `Bearer ${body.token}` },
+			});
+		} catch {}
+		throw new Error(
+			"Your browser could not save the session. Allow session storage and sign in again.",
+		);
+	}
 	try {
 		sessionStorage.removeItem(STATE_KEY);
 	} catch {}

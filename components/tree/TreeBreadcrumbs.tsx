@@ -84,8 +84,9 @@ export function TreeBreadcrumbs({
 								// than offered. Still a button: disabling it would drop it from the tab
 								// order mid-trail, which reads as the trail having a hole in it.
 								aria-current={current ? "location" : undefined}
+								title={displayName(person.primary)}
 								className={cn(
-									"max-w-[9rem] truncate rounded px-1.5 py-1 text-[0.75rem]",
+									"min-h-11 min-w-0 max-w-[9rem] truncate rounded px-1.5 py-1 text-[0.75rem]",
 									"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 									current
 										? "font-medium text-ink"

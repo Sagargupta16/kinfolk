@@ -17,50 +17,20 @@ permissions:
 
 jobs:
   check:
-    name: public endpoints
+    name: API, database and Pages assets
     runs-on: ubuntu-latest
     timeout-minutes: 8
     # Required, not guessed. A fallback hostname here would probe whatever happens to
     # answer at it -- the deploy workflow's guessed default returned three green checks
     # from an unrelated site squatting `kinfolk.vercel.app`, which is a health check
     # reporting on somebody else's server. Set the PRODUCTION_URL repository variable.
-    if: vars.PRODUCTION_URL != ''
     steps:
-      - name: Probe production
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Probe both production surfaces
         env:
-          BASE: ${{ vars.PRODUCTION_URL }}
-        run: |
-          set -u
-          fail=0
-
-          probe() {
-            local path="$1" expected="$2" label="$3"
-            local code=""
-            for attempt in 1 2 3; do
-              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "${BASE}${path}" || echo "000")
-              [ "$code" = "$expected" ] && break
-              # Longer backoff than the deploy check: the likely cause here is a
-              # suspended Neon branch waking up, not a cold function.
-              sleep 15
-            done
-            if [ "$code" = "$expected" ]; then
-              echo "  ok    ${label}: ${code}"
-            else
-              echo "::error::${label} returned ${code}, expected ${expected} (${BASE}${path})"
-              fail=1
-            fi
-          }
-
-          # Verified against a real server before being asserted here.
-          probe "/" 200 "landing page"
-          probe "/signin" 200 "sign in"
-          # The canary: 200 only when AUTH_SECRET and the GitHub provider are both
-          # configured, so a rotated secret shows up here rather than as a user
-          # failing to sign in.
-          probe "/api/auth/providers" 200 "auth providers"
-          probe "/tree" 307 "tree redirects when signed out"
-          # Demo mode is the one path that reads no session and no database, so it
-          # separates "the app is broken" from "Neon is asleep".
-          probe "/demo" 307 "demo sets its cookie and forwards"
-
-          exit "$fail"
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+          SPA_URL: ${{ vars.PAGES_URL || 'https://sagargupta.online/kinfolk/' }}
+        run: node --experimental-strip-types scripts/check-production.mts
