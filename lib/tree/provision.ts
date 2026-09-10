@@ -15,9 +15,9 @@
  * partial first-sign-in writes without making a transient provisioning failure cost
  * the visitor their session.
  */
-import { and, eq, gt, ilike, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { people, treeInvites, treeMembers, trees } from "../db/schema";
+import { people, trees } from "../db/schema";
 import { normalizeGitHubLogin } from "./invite";
 
 /**
@@ -164,39 +164,26 @@ export async function claimInvites(
 		const login = normalizeGitHubLogin(githubLogin);
 		if (!address && !login) return 0;
 
-		const matchers = [
-			address ? eq(treeInvites.email, address) : undefined,
-			login ? ilike(treeInvites.githubLogin, login) : undefined,
-		].filter((clause) => clause !== undefined);
-
-		const pending = await db
-			.select({ id: treeInvites.id, treeId: treeInvites.treeId, role: treeInvites.role })
-			.from(treeInvites)
-			.where(
-				and(
-					eq(treeInvites.status, "pending"),
-					// Expiry is checked in SQL rather than in JS, so a stale invite cannot be
-					// claimed by a request that happened to be slow.
-					gt(treeInvites.expiresAt, new Date()),
-					isNotNull(treeInvites.treeId),
-					or(...matchers),
-				),
-			);
-
-		for (const row of pending) {
-			await db
-				.insert(treeMembers)
-				.values({ treeId: row.treeId, userId, role: row.role })
-				// Already a member: the invite is still consumed below, so a second invite to
-				// somebody who already has access is not left dangling as pending forever.
-				.onConflictDoNothing();
-			await db
-				.update(treeInvites)
-				.set({ status: "accepted", asPersonId: null })
-				.where(eq(treeInvites.id, row.id));
-		}
-
-		return pending.length;
+		// Claim and grant in one statement. The conditional UPDATE locks the invite,
+		// so a concurrent withdrawal cannot be overwritten by a stale pending read.
+		const result = await db.execute<{ count: number }>(sql`
+			WITH claimed AS (
+				UPDATE tree_invites SET status = 'accepted', as_person_id = NULL
+				WHERE status = 'pending' AND expires_at > now()
+					AND (
+						(${address}::text IS NOT NULL AND email = ${address})
+						OR (${login}::text IS NOT NULL AND lower(github_login) = ${login})
+					)
+				RETURNING tree_id, role
+			), granted AS (
+				INSERT INTO tree_members (tree_id, user_id, role)
+				SELECT tree_id, ${userId}::uuid, role FROM claimed
+				ON CONFLICT DO NOTHING
+				RETURNING tree_id
+			)
+			SELECT count(*)::integer AS count FROM claimed
+		`);
+		return Number(result.rows[0]?.count ?? 0);
 	} catch {
 		// Same reasoning as provisionGraph: this runs inside the sign-in flow, and a failed
 		// grant must not cost somebody their session. They can sign in again to retry.

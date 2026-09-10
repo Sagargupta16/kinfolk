@@ -20,7 +20,7 @@
  */
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { corsHeaders, preflightHeaders } from "@/lib/tree/cors";
+import { corsHeaders, isAllowedOrigin, preflightHeaders } from "@/lib/tree/cors";
 import {
 	addChild,
 	addContact,
@@ -33,8 +33,10 @@ import {
 	deleteRelation,
 	type Result,
 	removeChild,
+	updateContact,
 	updatePerson,
 } from "@/lib/tree/edit-actions";
+import { decideLink, proposeLink } from "@/lib/tree/link-actions";
 import { invite, removeMember, revokeInvite } from "@/lib/tree/share-actions";
 
 /**
@@ -65,11 +67,14 @@ const ACTIONS: Record<string, (form: FormData) => Promise<Result>> = {
 	addChild,
 	removeChild,
 	addContact,
+	updateContact,
 	deleteContact,
 	addRelative,
 	invite,
 	revokeInvite,
 	removeMember,
+	proposeLink,
+	decideLink,
 };
 
 export async function OPTIONS(request: NextRequest) {
@@ -80,7 +85,16 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ name: string }> }) {
-	const cors = corsHeaders(request.headers.get("origin"));
+	const origin = request.headers.get("origin");
+	const cors = { ...corsHeaders(origin), "Cache-Control": "private, no-store" };
+	// CORS controls response visibility, not whether a form POST executes. Server
+	// actions check Origin themselves; this route must do so before using a cookie.
+	if (origin && origin !== request.nextUrl.origin && !isAllowedOrigin(origin)) {
+		return NextResponse.json(
+			{ ok: false, error: "This origin cannot make changes." },
+			{ status: 403, headers: cors },
+		);
+	}
 	const { name } = await context.params;
 
 	// `Object.hasOwn`, not a truthiness check on the lookup: a bare object literal

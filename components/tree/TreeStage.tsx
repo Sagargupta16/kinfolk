@@ -14,17 +14,37 @@
  * button group displays it, so the two have to read one value. The canvas is handed the
  * value and a setter.
  */
-import { Activity, Rows3, Square, SquareDot } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	Activity,
+	GitBranch,
+	Link2,
+	Plus,
+	Rows3,
+	SlidersHorizontal,
+	Square,
+	SquareDot,
+	Users,
+	X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
+import { editTarget } from "@/lib/tree/editable";
 import { familyFeed } from "@/lib/tree/feed";
-import { displayName, type FlowEdge, type FlowNode, visibleEdges } from "@/lib/tree/graph";
+import {
+	displayName,
+	type FlowEdge,
+	type FlowNode,
+	type UnionWithChildren,
+	visibleEdges,
+} from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
-import { cn } from "@/lib/utils";
 import { EditorPanel, type PickablePerson } from "./EditorPanel";
+import { useEscapeClose } from "./escape";
 import { FeedPanel } from "./FeedPanel";
+import { PeopleDirectory } from "./PeopleDirectory";
 import { TreeCanvas } from "./TreeCanvas";
 import { TreeLegend } from "./TreeLegend";
 import { TreeSearch } from "./TreeSearch";
@@ -44,6 +64,7 @@ const LEVELS: { value: Lod; label: string; hint: string; Icon: typeof Square }[]
 ];
 
 const VIEWED_SOURCES_KEY = "kinfolk.viewed-sources";
+const EMPTY_UNIONS: UnionWithChildren[] = [];
 
 export function TreeStage({
 	nodes,
@@ -52,6 +73,9 @@ export function TreeStage({
 	kinship,
 	showRelations = true,
 	editableTreeId,
+	editableTreeIds: writableTreeIds,
+	editableUnions = EMPTY_UNIONS,
+	scopeControls,
 }: {
 	nodes: FlowNode[];
 	/** Every edge, including hidden relations: layout needs them. See TreeWorkspace. */
@@ -68,8 +92,25 @@ export function TreeStage({
 	 * what to draw.
 	 */
 	editableTreeId?: string | null;
+	editableTreeIds?: readonly string[];
+	editableUnions?: UnionWithChildren[];
+	scopeControls?: ReactNode;
 }) {
 	const [lod, setLod] = useState<Lod>("full");
+	const [screen, setScreen] = useState<"tree" | "people">("tree");
+	const [optionsOpen, setOptionsOpen] = useState(false);
+	const [editorOpen, setEditorOpen] = useState(false);
+	const optionsId = useId();
+	const optionsRef = useRef<HTMLDivElement>(null);
+	useEscapeClose(optionsOpen, () => setOptionsOpen(false));
+	useEffect(() => {
+		if (!optionsOpen) return;
+		const dismiss = (event: PointerEvent) => {
+			if (!optionsRef.current?.contains(event.target as Node)) setOptionsOpen(false);
+		};
+		document.addEventListener("pointerdown", dismiss);
+		return () => document.removeEventListener("pointerdown", dismiss);
+	}, [optionsOpen]);
 	/**
 	 * Arrangement and depth, client state for the same reason the detail level is: neither
 	 * changes WHICH DATA is fetched, so a URL round trip would make a purely visual switch
@@ -180,10 +221,15 @@ export function TreeStage({
 	 * identity per render, and every click or panel toggle re-ran ELK and re-framed the
 	 * viewport for a graph that had not changed.
 	 */
-	const editableTreeIds = useMemo<string[]>(
-		() => (editableTreeId ? [editableTreeId] : []),
-		[editableTreeId],
+	const editableTreeIds = useMemo<readonly string[]>(
+		() => writableTreeIds ?? (editableTreeId ? [editableTreeId] : []),
+		[editableTreeId, writableTreeIds],
 	);
+	const selectedTarget = useMemo(() => {
+		const node = nodes.find((node) => node.type === "person" && node.id === viewedId);
+		return node?.type === "person" ? editTarget(node.data, editableTreeIds) : null;
+	}, [nodes, viewedId, editableTreeIds]);
+	const editorTreeId = selectedTarget?.editable ? selectedTarget.treeId : editableTreeId;
 
 	/**
 	 * People the pickers can offer, derived from the nodes already on screen.
@@ -195,9 +241,12 @@ export function TreeStage({
 		() =>
 			nodes
 				.filter((node) => node.type === "person")
-				.map((node) => ({ id: node.id, name: displayName(node.data.primary) }))
+				.flatMap((node) => {
+					const source = node.data.sources.find((row) => row.treeId === editorTreeId);
+					return source ? [{ id: source.id, name: displayName(source) }] : [];
+				})
 				.sort((a, b) => a.name.localeCompare(b.name)),
-		[nodes],
+		[nodes, editorTreeId],
 	);
 
 	// A fresh object per request, so searching the same name twice still travels. The
@@ -231,7 +280,7 @@ export function TreeStage({
 	 * rather than stacking two sheets of glass on one edge.
 	 */
 	const [feedOpen, setFeedOpen] = useState(false);
-	const feedEvents = useMemo(() => familyFeed(nodes), [nodes]);
+	const feedEvents = useMemo(() => familyFeed(nodes, edges), [nodes, edges]);
 	const feedVisible = feedOpen && !detailOpen;
 
 	/**
@@ -275,173 +324,212 @@ export function TreeStage({
 	const census = useMemo(() => censusOf(nodes, drawn, degree), [nodes, drawn, degree]);
 
 	return (
-		<div className="kf-canvas-stage relative size-full">
-			<TreeCanvas
-				nodes={nodes}
-				edges={edges}
-				selfId={selfId}
-				viewedId={viewedId}
-				onViewedChange={changeViewed}
-				lod={lod}
-				onLodChange={setLod}
-				view={view}
-				depth={depth}
-				canEdit={Boolean(editableTreeId)}
-				editableTreeIds={editableTreeIds}
-				goTo={goTo}
-				onGoToHandled={() => setGoTo(null)}
-				degree={degree}
-				kinship={kinship}
-				showRelations={showRelations}
-				onFocusSearch={onFocusSearch}
-				onDetailOpenChange={setDetailOpen}
-				quickAddRequest={quickAddRequest}
-				onQuickAddHandled={() => setQuickAddRequest(null)}
-				closeDetailRequest={closeDetailRequest}
-				onCloseDetailHandled={() => setCloseDetailRequest(null)}
-			/>
-
-			{/* Top-left, opposite the detail control. Capped and NOT full width on a phone:
-			    the results drop over the canvas, and a list spanning the screen would hide
-			    the tree it is meant to help you read. */}
-			<div className="kf-search-dock absolute left-3 top-3 z-20 w-[min(18rem,calc(100%-10rem))]">
-				<TreeSearch
-					nodes={nodes}
-					selfId={selfId}
-					degree={degree}
-					onGoTo={onGoTo}
-					focusRef={focusSearch}
-				/>
-			</div>
-
-			{/* Top-right on desktop. On a phone it disappears while a reading sheet is
-			    open so the selected card can use the whole unobscured strip above it. */}
-			<div
-				className={cn(
-					"kf-command-dock absolute right-3 top-3 z-30 flex flex-col items-end gap-1.5 opacity-100",
-					"transition-[transform,opacity] duration-(--duration-base) ease-(--ease-out)",
-					(detailOpen || feedVisible) &&
-						"invisible pointer-events-none opacity-0 sm:visible sm:pointer-events-auto sm:-translate-x-[22.75rem] sm:opacity-100",
-				)}
-			>
-				<span className="kf-command-dock__label hidden sm:block">View desk</span>
-				{/* Arrangement first, because it changes what the detail control is describing:
-				    "cards / rows / dots" applies to either view, but the reader picks the shape
-				    before they pick how much of each person to draw.
-
-				    Orbit needs a centre. `selfId` is the fallback, so a signed-in viewer can
-				    always orbit; a demo visitor with no self node has to pick somebody first. */}
-				<ViewControls
-					mode={view}
-					onMode={setView}
-					depth={depth}
-					onDepth={setDepth}
-					canOrbit={Boolean(viewedId)}
-				/>
-
-				{/* A fieldset rather than role="group": same semantics, carried by the native
-				    element with no ARIA attribute to keep in sync. The label lives in
-				    aria-label because a visible <legend> would cost a line of canvas to say
-				    what the three icons already say. */}
-				<fieldset
-					aria-label="Level of detail"
-					className="kf-command-group kf-glass flex overflow-hidden rounded-lg"
-				>
-					{LEVELS.map(({ value, label, hint, Icon }) => (
+		<div className="kf-canvas-stage relative flex size-full flex-col">
+			<div className="kf-workspace-toolbar">
+				<fieldset aria-label="Browse your family" className="kf-workspace-tabs">
+					{(
+						[
+							{ value: "tree", label: "Tree", Icon: GitBranch },
+							{ value: "people", label: "People", Icon: Users },
+						] as const
+					).map(({ value, label, Icon }) => (
 						<button
 							key={value}
 							type="button"
-							onClick={() => setLod(value)}
-							aria-pressed={lod === value}
-							title={hint}
-							className={cn(
-								// 44px tall AND wide: this is a primary control on a touch screen, and
-								// below `sm` the label is hidden so the icon alone carried only 35px.
-								"flex min-h-11 min-w-11 items-center justify-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
-								"font-mono text-[0.625rem] uppercase tracking-wider",
-								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-								lod === value
-									? "bg-surface-raised text-accent-ink"
-									: "text-ink-faint hover:bg-surface-raised hover:text-ink",
-							)}
+							aria-pressed={screen === value}
+							onClick={() => {
+								setScreen(value);
+								setOptionsOpen(false);
+							}}
 						>
-							<Icon aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
-							{/* The icon carries it on a phone; the word is what makes it unambiguous
-							    once there is room. */}
-							<span className="hidden sm:inline">{label}</span>
+							<Icon className="size-4" aria-hidden="true" />
+							{label}
 						</button>
 					))}
 				</fieldset>
-
-				{/* UNDER the detail control, not beside it. A phone's top row already holds
-				    search and three detail buttons; a fourth on that line would take its width
-				    from the search box, which is the one thing up here that needs typing into.
-				    It also has to sit below the control it partly describes: the legend changes
-				    with the detail level, since a dot encodes living/dead in its fill where a
-				    card uses the rail. */}
-				<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} />
-
-				{/*
-				 * The feed toggle, at the bottom of the cluster: it opens a reading surface
-				 * rather than changing the canvas, so it sits below the controls that do.
-				 */}
-				<button
-					type="button"
-					onClick={toggleFeed}
-					aria-pressed={feedVisible}
-					title={
-						feedVisible ? "Close the family feed" : "What changed in this record, newest first"
-					}
-					className={cn(
-						"kf-command-button kf-glass flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
-						"font-mono text-[0.625rem] uppercase tracking-wider",
-						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-						// `accent-ink`, not the raw accent: this is 10px text on glass, and the
-						// hue that clears 3:1 as a graphic mark does not clear 4.5:1 as type.
-						feedVisible ? "text-accent-ink" : "text-ink-faint hover:text-ink",
+				<div className="kf-toolbar-search">
+					{screen === "tree" && (
+						<TreeSearch
+							nodes={nodes}
+							selfId={selfId}
+							degree={degree}
+							onGoTo={onGoTo}
+							focusRef={focusSearch}
+						/>
 					)}
-				>
-					<Activity aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
-					Feed
-				</button>
-			</div>
-
-			{/*
-			 * TOP-LEFT, under search, and only when there is something to write to.
-			 *
-			 * It started bottom-left and that was wrong: it sat beside React Flow's zoom stack,
-			 * below the fold of a short viewport, in the corner a reader scans last. Adding a
-			 * person is the primary action of an editor, so it belongs where the eye starts --
-			 * and it pairs with search, since both answer "which person".
-			 *
-			 * z-20 matches the search dropdown rather than beating it: results drop DOWN over
-			 * this button, and the list you are reading has to win.
-			 */}
-			{editableTreeId && (
-				<div className="kf-editor-dock pointer-events-none absolute left-3 top-16 z-20 flex flex-col items-start gap-1.5">
-					<EditorPanel
-						people={pickable}
-						selectedId={picked?.id}
-						selectedName={picked?.name}
-						onQuickAdd={
-							picked ? () => setQuickAddRequest({ id: picked.id, nonce: Date.now() }) : undefined
-						}
-					/>
 				</div>
-			)}
-
-			{/*
-			 * The feed rail. Travelling from a row opens that person's detail panel,
-			 * which takes over the rail; closing it returns to the feed, because
-			 * `feedOpen` survives underneath. Browse, peek, come back.
-			 */}
-			<FeedPanel
-				open={feedVisible}
-				events={feedEvents}
-				kinship={kinship}
-				onGoTo={onGoTo}
-				onClose={() => setFeedOpen(false)}
-			/>
+				{picked && selectedTarget?.editable && (
+					<button
+						type="button"
+						className="kf-add-button"
+						title={`Add a relative to ${picked.name}`}
+						onClick={() => {
+							setEditorOpen(false);
+							setQuickAddRequest({ id: picked.id, nonce: Date.now() });
+						}}
+					>
+						<Plus className="size-4" aria-hidden="true" />
+						Add relative
+					</button>
+				)}
+				<div ref={optionsRef} className="kf-view-options-anchor">
+					<button
+						type="button"
+						aria-label="View options"
+						aria-expanded={optionsOpen}
+						aria-controls={optionsId}
+						className="kf-options-trigger"
+						onClick={() => setOptionsOpen(!optionsOpen)}
+					>
+						<SlidersHorizontal className="size-4" aria-hidden="true" />
+						<span>Options</span>
+					</button>
+					<AnimatePresence>
+						{optionsOpen && (
+							<motion.div
+								id={optionsId}
+								initial={{ opacity: 0, y: -6 }}
+								animate={{ opacity: 1, y: 0 }}
+								exit={{ opacity: 0, y: -4 }}
+								transition={{ duration: 0.18 }}
+								className="kf-view-options"
+							>
+								<div className="flex items-center justify-between">
+									<h2>Make yourself at home</h2>
+									<button
+										type="button"
+										aria-label="Close view options"
+										className="flex size-11 items-center justify-center text-ink-faint"
+										onClick={() => setOptionsOpen(false)}
+									>
+										<X className="size-4" aria-hidden="true" />
+									</button>
+								</div>
+								{scopeControls && (
+									<section>
+										<h3>Which connections</h3>
+										{scopeControls}
+									</section>
+								)}
+								<section>
+									<h3>Arrange the tree</h3>
+									<ViewControls
+										mode={view}
+										onMode={(mode) => {
+											setView(mode);
+											setScreen("tree");
+										}}
+										depth={depth}
+										onDepth={setDepth}
+										canOrbit={Boolean(viewedId)}
+									/>
+								</section>
+								<section>
+									<h3>Show each person as</h3>
+									<fieldset aria-label="Level of detail" className="kf-options-levels">
+										{LEVELS.map(({ value, label, hint, Icon }) => (
+											<button
+												key={value}
+												type="button"
+												aria-pressed={lod === value}
+												title={hint}
+												onClick={() => {
+													setLod(value);
+													setScreen("tree");
+												}}
+											>
+												<Icon className="size-4" aria-hidden="true" />
+												{label}
+											</button>
+										))}
+									</fieldset>
+								</section>
+								<section className="kf-options-actions">
+									{editableTreeId && (
+										<button
+											type="button"
+											onClick={() => {
+												setOptionsOpen(false);
+												setEditorOpen(true);
+											}}
+										>
+											<Link2 className="size-4" aria-hidden="true" />
+											Connect existing people
+										</button>
+									)}
+									<button
+										type="button"
+										onClick={() => {
+											toggleFeed();
+											setOptionsOpen(false);
+										}}
+										aria-pressed={feedVisible}
+									>
+										<Activity className="size-4" aria-hidden="true" />
+										Recent activity
+									</button>
+									<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} inline />
+								</section>
+							</motion.div>
+						)}
+					</AnimatePresence>
+				</div>
+			</div>
+			<div className="relative min-h-0 flex-1">
+				<TreeCanvas
+					nodes={nodes}
+					edges={edges}
+					selfId={selfId}
+					viewedId={viewedId}
+					onViewedChange={changeViewed}
+					lod={lod}
+					onLodChange={setLod}
+					view={view}
+					depth={depth}
+					canEdit={Boolean(editableTreeId)}
+					editableTreeIds={editableTreeIds}
+					editableUnions={editableUnions}
+					goTo={goTo}
+					onGoToHandled={() => setGoTo(null)}
+					degree={degree}
+					kinship={kinship}
+					showRelations={showRelations}
+					onFocusSearch={onFocusSearch}
+					onDetailOpenChange={setDetailOpen}
+					quickAddRequest={quickAddRequest}
+					onQuickAddHandled={() => setQuickAddRequest(null)}
+					closeDetailRequest={closeDetailRequest}
+					onCloseDetailHandled={() => setCloseDetailRequest(null)}
+					directory={
+						screen === "people" ? (
+							<PeopleDirectory
+								nodes={nodes}
+								selfId={selfId}
+								kinship={kinship}
+								selectedId={viewedId}
+								detailOpen={detailOpen || feedVisible}
+								onSelect={onGoTo}
+							/>
+						) : undefined
+					}
+				/>
+				<EditorPanel
+					key={editorTreeId}
+					open={editorOpen}
+					onClose={() => setEditorOpen(false)}
+					people={pickable}
+					unions={editableUnions.filter((union) => union.treeId === editorTreeId)}
+					selectedId={selectedTarget?.editable ? selectedTarget.personId : null}
+					selectedName={picked?.name}
+				/>
+				<FeedPanel
+					open={feedVisible}
+					events={feedEvents}
+					kinship={kinship}
+					onGoTo={onGoTo}
+					onClose={() => setFeedOpen(false)}
+				/>
+			</div>
 		</div>
 	);
 }

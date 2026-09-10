@@ -37,8 +37,14 @@ import type { TreeView } from "./view";
  * serialiser and a parser that disagree fail invisibly, and so do a consumer
  * that copes with strings and one that does not.
  */
-export type SerialisedTreeView = Omit<TreeView, "kinship"> & {
+export type SerialisedTreeView = Omit<
+	TreeView,
+	"kinship" | "editableTreeIds" | "editableUnions"
+> & {
 	kinship: [string, Kinship][];
+	/** Optional during a rolling deployment where the API may still serve the previous version. */
+	editableTreeIds?: string[];
+	editableUnions?: UnionWithChildren[];
 };
 
 export function serialiseTreeView(view: TreeView): SerialisedTreeView {
@@ -52,6 +58,12 @@ export function parseTreeView(payload: SerialisedTreeView): TreeView {
 		// an empty kinship map degrades to unlabelled cards rather than a crash.
 		kinship: new Map(payload.kinship ?? []),
 		nodes: (payload.nodes ?? []).map(reviveNode),
+		edges: payload.edges.map((edge) =>
+			edge.union ? { ...edge, union: reviveUnion(edge.union) } : edge,
+		),
+		editableTreeIds:
+			payload.editableTreeIds ?? (payload.editableTreeId ? [payload.editableTreeId] : []),
+		editableUnions: (payload.editableUnions ?? []).map(reviveUnion),
 	};
 }
 

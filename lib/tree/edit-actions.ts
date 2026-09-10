@@ -19,7 +19,7 @@
  * Each action returns a `Result` rather than throwing at the boundary, so a form can
  * show why something was refused. Genuine programming errors still throw.
  */
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, exists, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sessionOrNull } from "@/auth";
 import { db } from "../db/client";
@@ -33,12 +33,12 @@ import {
 	type RelationKind,
 	type Sex,
 	sexEnum,
+	trees,
 	unionChildren,
 	unionStatusEnum,
 	unions,
 	visibilityEnum,
 } from "../db/schema";
-import { wouldCreateAncestryCycle } from "./acyclic";
 import { assertSameTree, NotAllowedError, treeIdForEditablePerson } from "./authz";
 import { userIdFromBearer } from "./bearer";
 import { DEMO_COOKIE } from "./demo";
@@ -67,11 +67,6 @@ export type Result =
  */
 async function editor(): Promise<{ userId: string } | { error: string }> {
 	const { cookies, headers } = await import("next/headers");
-	const store = await cookies();
-	if (store.get(DEMO_COOKIE)) {
-		return { error: "This is sample data. Sign in to build your own graph." };
-	}
-
 	const session = await sessionOrNull();
 	const userId = session?.user?.id;
 	if (userId) return { userId };
@@ -82,6 +77,11 @@ async function editor(): Promise<{ userId: string } | { error: string }> {
 	// FIRST so the server-rendered path is untouched.
 	const bearer = await userIdFromBearer((await headers()).get("authorization"));
 	if (bearer) return { userId: bearer };
+
+	const store = await cookies();
+	if (store.get(DEMO_COOKIE)) {
+		return { error: "This is sample data. Sign in to build your own graph." };
+	}
 
 	return { error: "Sign in to make changes." };
 }
@@ -215,9 +215,8 @@ export async function updatePerson(form: FormData): Promise<Result> {
 /**
  * Remove a person.
  *
- * Their unions, relations and contacts cascade (see the schema's foreign keys), so this
- * is one delete rather than a manual sweep -- and a manual sweep is what would drift
- * the day a new child table is added.
+ * Detach the person's partner slots before deletion so the surviving parent's
+ * partnership and child links remain. The whole operation is one HTTP transaction.
  */
 export async function deletePerson(form: FormData): Promise<Result> {
 	const auth = await editor();
@@ -227,8 +226,39 @@ export async function deletePerson(form: FormData): Promise<Result> {
 	if (!personId) return { ok: false, error: "Which person?" };
 
 	try {
-		await treeIdForEditablePerson(auth.userId, personId);
-		await db.delete(people).where(eq(people.id, personId));
+		const treeId = await treeIdForEditablePerson(auth.userId, personId);
+		const deletable = exists(
+			db
+				.select({ id: people.id })
+				.from(people)
+				.where(and(eq(people.id, personId), isNull(people.claimedByUserId))),
+		);
+		const [, , , , , deleted] = await db.batch([
+			db.select({ id: trees.id }).from(trees).where(eq(trees.id, treeId)).for("update"),
+			db.select({ id: people.id }).from(people).where(eq(people.id, personId)).for("update"),
+			db
+				.update(unions)
+				.set({ partnerAId: null })
+				.where(and(eq(unions.partnerAId, personId), deletable)),
+			db
+				.update(unions)
+				.set({ partnerBId: null })
+				.where(and(eq(unions.partnerBId, personId), deletable)),
+			db
+				.update(trees)
+				.set({ rootPersonId: null })
+				.where(and(eq(trees.rootPersonId, personId), deletable)),
+			db
+				.delete(people)
+				.where(and(eq(people.id, personId), isNull(people.claimedByUserId)))
+				.returning({ id: people.id }),
+		]);
+		if (deleted.length === 0) {
+			return {
+				ok: false,
+				error: "Profiles linked to an account cannot be deleted. You can edit their details.",
+			};
+		}
 		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
@@ -472,38 +502,49 @@ export async function addChild(form: FormData): Promise<Result> {
 			return { ok: false, error: "Somebody cannot be their own parent." };
 		}
 
-		const ancestryRows = await db
-			.select({
-				childId: unionChildren.childId,
-				partnerAId: unions.partnerAId,
-				partnerBId: unions.partnerBId,
-			})
-			.from(unionChildren)
-			.innerJoin(unions, eq(unionChildren.unionId, unions.id))
-			.where(eq(unions.treeId, unionTreeId));
-		const parentEdges = ancestryRows.flatMap((row) =>
-			[row.partnerAId, row.partnerBId]
-				.filter((parentId): parentId is string => parentId !== null)
-				.map((parentId) => ({ parentId, childId: row.childId })),
-		);
-		const proposedParents = [union?.a, union?.b].filter(
-			(parentId): parentId is string => parentId !== null && parentId !== undefined,
-		);
-		if (wouldCreateAncestryCycle(parentEdges, proposedParents, childId)) {
-			return { ok: false, error: "That would make somebody their own ancestor." };
-		}
-
 		const role = oneOf(form.get("role"), parentRoleEnum.enumValues, "biological");
 		if (!role.ok) return { ok: false, error: "Choose a valid parent role." };
 
-		await db
-			.insert(unionChildren)
-			.values({
-				unionId,
-				childId,
-				role: role.value,
-			})
-			.onConflictDoNothing();
+		// Serialize ancestry writes within this tree. The recursive check runs
+		// after the lock in the same transaction, so concurrent attachments cannot
+		// each validate an old graph and together create a cycle.
+		const [, inserted] = await db.batch([
+			db.select({ id: trees.id }).from(trees).where(eq(trees.id, unionTreeId)).for("update"),
+			db.execute(sql`
+				WITH RECURSIVE descendants(id) AS (
+					SELECT ${childId}::uuid
+					UNION
+					SELECT uc.child_id
+					FROM descendants d
+					JOIN unions u ON u.tree_id = ${unionTreeId}::uuid
+						AND (u.partner_a_id = d.id OR u.partner_b_id = d.id)
+					JOIN union_children uc ON uc.union_id = u.id
+				)
+				INSERT INTO union_children (union_id, child_id, role)
+				SELECT u.id, ${childId}::uuid, ${role.value}::parent_role
+				FROM unions u
+				WHERE u.id = ${unionId}::uuid AND u.tree_id = ${unionTreeId}::uuid
+					AND NOT EXISTS (
+						SELECT 1 FROM descendants d
+						WHERE d.id = u.partner_a_id OR d.id = u.partner_b_id
+					)
+				ON CONFLICT DO NOTHING
+				RETURNING child_id
+			`),
+		]);
+		if (inserted.rowCount === 0) {
+			const [existing] = await db
+				.select({ childId: unionChildren.childId })
+				.from(unionChildren)
+				.where(and(eq(unionChildren.unionId, unionId), eq(unionChildren.childId, childId)))
+				.limit(1);
+			if (!existing)
+				return {
+					ok: false,
+					error:
+						"That would make somebody their own ancestor, or the family changed. Refresh and try again.",
+				};
+		}
 
 		revalidatePath("/tree");
 		return { ok: true };
@@ -553,6 +594,9 @@ export async function addContact(form: FormData): Promise<Result> {
 	const personId = String(form.get("personId") ?? "");
 	const value = orNull(form.get("value"));
 	if (!personId || !value) return { ok: false, error: "A channel needs a value." };
+	if (value.length > 2000 || (orNull(form.get("label"))?.length ?? 0) > 100) {
+		return { ok: false, error: "Keep the value under 2,000 characters and the label under 100." };
+	}
 
 	const kind = oneOf(form.get("kind"), contactKindEnum.enumValues, null);
 	// Refused rather than defaulted: silently recording a phone number under "other"
@@ -576,6 +620,54 @@ export async function addContact(form: FormData): Promise<Result> {
 			.onConflictDoNothing();
 
 		revalidatePath("/tree");
+		return { ok: true };
+	} catch (error) {
+		return refuse(error);
+	}
+}
+
+export async function updateContact(form: FormData): Promise<Result> {
+	const auth = await editor();
+	if ("error" in auth) return { ok: false, error: auth.error };
+	const contactId = String(form.get("contactId") ?? "");
+	const value = orNull(form.get("value"));
+	const label = orNull(form.get("label"));
+	const kind = oneOf(form.get("kind"), contactKindEnum.enumValues, null);
+	const visibility = oneOf(form.get("visibility"), visibilityEnum.enumValues, null);
+	if (!contactId || !value || !kind.ok || !kind.value || !visibility.ok || !visibility.value) {
+		return { ok: false, error: "Choose a channel, a value, and who may see it." };
+	}
+	if (value.length > 2000 || (label?.length ?? 0) > 100) {
+		return { ok: false, error: "Keep the value under 2,000 characters and the label under 100." };
+	}
+	try {
+		const [row] = await db
+			.select({ personId: contactDetails.personId })
+			.from(contactDetails)
+			.where(eq(contactDetails.id, contactId))
+			.limit(1);
+		if (!row) return { ok: false, error: "That detail no longer exists." };
+		await treeIdForEditablePerson(auth.userId, row.personId);
+		const [duplicate] = await db
+			.select({ id: contactDetails.id })
+			.from(contactDetails)
+			.where(
+				and(
+					eq(contactDetails.personId, row.personId),
+					eq(contactDetails.kind, kind.value),
+					eq(contactDetails.value, value),
+				),
+			)
+			.limit(1);
+		if (duplicate && duplicate.id !== contactId) {
+			return { ok: false, error: "That channel and value are already recorded." };
+		}
+		await db
+			.update(contactDetails)
+			.set({ kind: kind.value, value, label, visibility: visibility.value, updatedAt: new Date() })
+			.where(eq(contactDetails.id, contactId));
+		revalidatePath("/tree");
+		revalidatePath(`/contacts/${row.personId}`);
 		return { ok: true };
 	} catch (error) {
 		return refuse(error);
@@ -620,9 +712,8 @@ export async function deleteContact(form: FormData): Promise<Result> {
  * decides the structure from the role (see lib/tree/kin-plan.ts, where it is tested) and
  * this executes the plan.
  *
- * The writes are deliberately sequenced rather than wrapped in a transaction; the Neon
- * HTTP driver does not support transactions. The safe order and its trade-off are
- * documented beside the writes below.
+ * Neon HTTP supports atomic batches, although its interactive `db.transaction()`
+ * API is unavailable. All dependent writes below commit or roll back together.
  */
 export async function addRelative(form: FormData): Promise<Result> {
 	const auth = await editor();
@@ -631,7 +722,7 @@ export async function addRelative(form: FormData): Promise<Result> {
 	const subjectId = String(form.get("subjectId") ?? "");
 	const role = String(form.get("role") ?? "") as KinRole;
 	if (!subjectId) return { ok: false, error: "Which person?" };
-	if (!ROLE_SEX[role]) return { ok: false, error: "Pick a relationship." };
+	if (!Object.hasOwn(ROLE_SEX, role)) return { ok: false, error: "Pick a relationship." };
 
 	const countRaw = Number(orNull(form.get("count")) ?? "1");
 	const count = Number.isFinite(countRaw) ? countRaw : 1;
@@ -642,7 +733,7 @@ export async function addRelative(form: FormData): Promise<Result> {
 		await assertCanEditTree(auth.userId, treeId);
 
 		const family = await familyShape(subjectId, treeId);
-		const plan = planKin(family, role, count);
+		const plan = planKin(family, role, count, orNull(form.get("unionId")));
 		if (plan.refusal) return { ok: false, error: plan.refusal };
 		if (plan.create.count === 0) return { ok: false, error: "Nothing to add." };
 
@@ -682,17 +773,6 @@ export async function addRelative(form: FormData): Promise<Result> {
 				: 0;
 
 		/*
-		 * Sequenced rather than transactional, because the Neon HTTP driver has no transactions.
-		 *
-		 * Found by running this live: `db.transaction()` throws "No transactions support in
-		 * neon-http driver" at runtime, so the first version of this action would have failed on
-		 * every single use while type-checking perfectly.
-		 *
-		 * The UNION comes first, then the people, then the links: an empty slot is an ordinary
-		 * single-parent shape. A person inserted before conditional partner-slot claims is
-		 * explicitly removed if both claims lose, so a concurrent refusal does not strand it.
-		 */
-		/*
 		 * How the couple is recorded, honoured only when this add CREATES the union.
 		 *
 		 * The field exists on the partner form because the canvas now draws the fact --
@@ -718,106 +798,139 @@ export async function addRelative(form: FormData): Promise<Result> {
 		const budget = await reservePeopleBudget(treeId, plan.create.count);
 		if (!budget.ok) return budget;
 
-		let unionId: string | null = null;
-		if (plan.union.kind === "existing") {
-			unionId = plan.union.unionId;
-		} else if (plan.union.kind === "create") {
-			const [row] = await db
-				.insert(unions)
-				.values({
-					treeId,
-					partnerAId: plan.union.partnerAId,
-					partnerBId: plan.union.partnerBId,
-					status: unionStatus,
-				})
-				.returning({ id: unions.id });
-			unionId = row?.id ?? null;
-		}
-		if (!unionId) return { ok: false, error: "Could not record that partnership." };
-
-		/*
-		 * Re-read the slots before filling one.
-		 *
-		 * The plan was made from a shape loaded before any of this ran, so a concurrent write
-		 * could have taken the slot in between. Checking here is what turns a lost update into a
-		 * refusal the user can act on.
-		 */
-		if (plan.attach === "partner") {
-			const [current] = await db
-				.select({ a: unions.partnerAId, b: unions.partnerBId })
-				.from(unions)
-				.where(eq(unions.id, unionId))
-				.limit(1);
-			if (current?.a && current?.b) {
-				return { ok: false, error: "Both parents are already recorded." };
-			}
-		}
-
-		const rows = await db
-			.insert(people)
-			.values(
-				Array.from({ length: plan.create.count }, (_, index) => ({
-					treeId,
-					// A typed name wins for a single add; a batch always numbers, because one name
-					// repeated N times is worse than a placeholder -- the rows are then
-					// indistinguishable from each other AND look deliberate.
-					givenName:
-						plan.create.count === 1 && givenName ? givenName : placeholderName(role, index, offset),
-					// The surname is shared across a batch on purpose: siblings usually have one, and
-					// it is the only field a batch can honestly prefill.
-					familyName,
-					// `sex` rather than `plan.create.sex`: the plan carries what the ROLE implies,
-					// and for the three neutral roles the form is allowed to say more.
-					sex,
-					living: living.value,
-					// Dates apply to one person only. Stamping a whole batch with one birth year
-					// would assert that five children were born in the same year.
-					birthDate: plan.create.count === 1 ? birth.birthDate : null,
-					birthDateApprox: plan.create.count === 1 ? birth.birthDateApprox : null,
-				})),
-			)
-			.returning({ id: people.id });
-
-		const newIds = rows.map((row) => row.id);
-		const first = newIds[0];
+		const newPeople = Array.from({ length: plan.create.count }, (_, index) => ({
+			id: crypto.randomUUID(),
+			treeId,
+			givenName:
+				plan.create.count === 1 && givenName ? givenName : placeholderName(role, index, offset),
+			familyName,
+			sex,
+			living: living.value,
+			// A batch must not turn one supplied date into several people's birthday.
+			birthDate: plan.create.count === 1 ? birth.birthDate : null,
+			birthDateApprox: plan.create.count === 1 ? birth.birthDateApprox : null,
+		}));
+		const first = newPeople[0]?.id;
 		if (!first) return { ok: false, error: "Could not add that person." };
+		const insertPeople = db.insert(people).values(newPeople);
 
-		if (plan.attach === "partner") {
-			/*
-			 * Claim a free slot in the UPDATE itself.
-			 *
-			 * A select followed by an unconditional update has a TOCTOU window: two requests
-			 * can both observe the same empty slot and the later write silently replaces the
-			 * earlier person. Each statement below succeeds only while its slot is still null;
-			 * an empty RETURNING result means somebody else won it, so try B and then refuse.
-			 */
-			let attached = await db
-				.update(unions)
-				.set({ partnerAId: first })
-				.where(and(eq(unions.id, unionId), isNull(unions.partnerAId)))
-				.returning({ id: unions.id });
-			if (attached.length === 0) {
-				attached = await db
-					.update(unions)
-					.set({ partnerBId: first })
-					.where(and(eq(unions.id, unionId), isNull(unions.partnerBId)))
-					.returning({ id: unions.id });
+		if (plan.union.kind === "create") {
+			const unionId = crypto.randomUUID();
+			const partnerAId = plan.union.partnerAId ?? (plan.attach === "partner" ? first : null);
+			const partnerBId =
+				plan.attach === "partner" && plan.union.partnerAId ? first : plan.union.partnerBId;
+			// A second request may have created the missing family after planning.
+			// Check again under the same tree lock used by child attachment/deletion.
+			const stillMissing = plan.attachSubjectAsChild
+				? notExists(
+						db
+							.select({ id: unionChildren.unionId })
+							.from(unionChildren)
+							.where(eq(unionChildren.childId, subjectId)),
+					)
+				: plan.attach === "child"
+					? notExists(
+							db
+								.select({ id: unions.id })
+								.from(unions)
+								.where(
+									and(
+										eq(unions.treeId, treeId),
+										or(eq(unions.partnerAId, subjectId), eq(unions.partnerBId, subjectId)),
+									),
+								),
+						)
+					: sql`true`;
+			const insertUnion = db.execute(sql`
+				INSERT INTO unions (id, tree_id, partner_a_id, partner_b_id, status)
+				SELECT ${unionId}::uuid, ${treeId}::uuid, ${partnerAId}::uuid,
+					${partnerBId}::uuid, ${unionStatus}::union_status
+				WHERE ${stillMissing}
+				RETURNING id
+			`);
+			const childIds = [
+				...(plan.attach === "child" ? newPeople.map((person) => person.id) : []),
+				...(plan.attachSubjectAsChild ? [subjectId] : []),
+			];
+			const unionCreated = exists(
+				db.select({ id: unions.id }).from(unions).where(eq(unions.id, unionId)),
+			);
+			const lockTree = db
+				.select({ id: trees.id })
+				.from(trees)
+				.where(eq(trees.id, treeId))
+				.for("update");
+			const removeUnattached = db.delete(people).where(
+				and(
+					inArray(
+						people.id,
+						newPeople.map(({ id }) => id),
+					),
+					sql`not ${unionCreated}`,
+				),
+			);
+			const [, , created] =
+				childIds.length > 0
+					? await db.batch([
+							lockTree,
+							insertPeople,
+							insertUnion,
+							db.execute(sql`
+							INSERT INTO union_children (union_id, child_id)
+							SELECT ${unionId}::uuid, child.id
+							FROM (VALUES ${sql.join(
+								childIds.map((id) => sql`(${id}::uuid)`),
+								sql`, `,
+							)}) AS child(id)
+							WHERE ${unionCreated}
+						`),
+							removeUnattached,
+						])
+					: await db.batch([lockTree, insertPeople, insertUnion, removeUnattached]);
+			if (created.rowCount === 0) {
+				return { ok: false, error: "That family changed. Refresh and try again." };
 			}
-			if (attached.length === 0) {
-				await db.delete(people).where(eq(people.id, first));
-				return { ok: false, error: "Both parents are already recorded." };
+		} else if (plan.union.kind === "existing") {
+			const unionId = plan.union.unionId;
+			if (plan.attach === "child") {
+				await db.batch([
+					insertPeople,
+					db.insert(unionChildren).values(newPeople.map(({ id }) => ({ unionId, childId: id }))),
+				]);
+			} else {
+				// Claim either free slot in one update. A competing write cannot be overwritten.
+				// If no slot remains, remove the unclaimed new row inside the same transaction.
+				const [, attached] = await db.batch([
+					insertPeople,
+					db
+						.update(unions)
+						.set({
+							partnerAId: sql`coalesce(${unions.partnerAId}, ${first}::uuid)`,
+							partnerBId: sql`case when ${unions.partnerAId} is not null then coalesce(${unions.partnerBId}, ${first}::uuid) else ${unions.partnerBId} end`,
+						})
+						.where(
+							and(
+								eq(unions.id, unionId),
+								eq(unions.treeId, treeId),
+								or(isNull(unions.partnerAId), isNull(unions.partnerBId)),
+							),
+						)
+						.returning({ id: unions.id }),
+					db.delete(people).where(
+						and(
+							eq(people.id, first),
+							notExists(
+								db
+									.select({ id: unions.id })
+									.from(unions)
+									.where(or(eq(unions.partnerAId, first), eq(unions.partnerBId, first))),
+							),
+						),
+					),
+				]);
+				if (attached.length === 0)
+					return { ok: false, error: "That family changed. Refresh and try again." };
 			}
-		} else {
-			await db
-				.insert(unionChildren)
-				.values(newIds.map((childId) => ({ unionId: unionId as string, childId })))
-				.onConflictDoNothing();
-		}
-
-		// A brand-new parent or sibling union needs the SUBJECT in it too, or the person just
-		// added is a partner in a union the subject has nothing to do with.
-		if (plan.attachSubjectAsChild) {
-			await db.insert(unionChildren).values({ unionId, childId: subjectId }).onConflictDoNothing();
 		}
 
 		revalidatePath("/tree");
@@ -858,7 +971,9 @@ async function familyShape(subjectId: string, treeId: string): Promise<FamilySha
 			: await db
 					.select({ id: unions.id, a: unions.partnerAId, b: unions.partnerBId })
 					.from(unions)
-					.where(or(...parentUnionIds.map((id) => eq(unions.id, id))));
+					.where(
+						and(eq(unions.treeId, treeId), or(...parentUnionIds.map((id) => eq(unions.id, id)))),
+					);
 
 	return {
 		subjectId,

@@ -1,5 +1,8 @@
 # Setting Kinfolk up locally
 
+This guide describes the prepared 0.4.0 working branch as of **2026-09-10**.
+It does not record a release or production setup verification.
+
 Four values go in `.env.local`. Nothing else is needed -- no Docker, no local
 Postgres, no accounts beyond Neon and GitHub.
 
@@ -37,17 +40,19 @@ show sample data until the database is reachable, and sign-in needs all four.
 
 Then create the tables:
 
+Use a separate development database or branch for this command, never production:
+
 ```bash
 pnpm db:push
 ```
 
-On Windows this prints `[✓] Changes applied` and then crashes with
+On Windows, an earlier run printed `Changes applied` and then crashed with
 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and exit code
-3221226505. **That is a libuv teardown bug, not a failed migration** -- the
-schema is already committed by the time it happens. Confirm in the Neon
-console, where the project should show 13 tables, or with a query against
-`information_schema.tables`. The live smoke script that used to assert this
-end to end was removed in the 0.2.0 rework.
+3221226505. That run had committed the schema before libuv teardown failed.
+If it recurs, confirm the development schema in the Neon console or through
+`information_schema.tables` before deciding whether to retry. The live smoke
+script used at the time was removed in 0.2.0; the current regression suite uses
+an isolated in-memory database.
 
 ## 2. `AUTH_SECRET` -- generated locally
 
@@ -96,8 +101,28 @@ pnpm dev --port 3007
 - <http://localhost:3007> -- landing page
 - <http://localhost:3007/tree> -- your graph. Signing in for the first time
   creates a graph containing one node, you.
-- The **See the sample graph** button needs none of the above and is the fastest
+- The **Explore the sample family** button needs none of the above and is the fastest
   way to check the canvas renders.
+
+## Verify changes without production data
+
+```bash
+pnpm test
+pnpm lint
+pnpm typecheck
+pnpm --dir frontend typecheck
+pnpm build
+pnpm --dir frontend build
+```
+
+The regression suite starts its own in-memory PGlite database, applies the committed
+migrations, and uses synthetic identities. It does not load `.env.local` or need a
+production database. Browser checks should use the sample family or an isolated local fixture.
+Both frontends share the Tree / People workspace, profile sections, contact editor,
+record-link consent, and Full/Reduced motion control.
+
+Photo uploads are not configured. The private provider and authentication flow need
+approval before integration work; verify server authentication before enabling uploads.
 
 ## Troubleshooting
 

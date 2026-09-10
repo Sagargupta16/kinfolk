@@ -74,7 +74,7 @@ export function ViewControls({
 							)}
 						>
 							<Icon aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
-							<span className="hidden sm:inline">{label}</span>
+							<span>{label}</span>
 						</button>
 					);
 				})}
@@ -100,7 +100,7 @@ export function ViewControls({
 				)}
 			>
 				<Boxes aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
-				<span className="hidden sm:inline">3D</span>
+				<span>3D</span>
 			</button>
 		</div>
 	);

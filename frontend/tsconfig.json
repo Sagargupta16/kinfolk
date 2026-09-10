@@ -28,7 +28,9 @@
 			"next/navigation": ["./src/shims/next-navigation.ts"],
 			"@/lib/tree/edit-actions": ["./src/shims/edit-actions.ts"],
 			"@/lib/tree/share-actions": ["./src/shims/edit-actions.ts"],
-			"@/lib/tree/demo-actions": ["./src/shims/edit-actions.ts"]
+			"@/lib/tree/demo-actions": ["./src/shims/edit-actions.ts"],
+			"@/lib/tree/link-actions": ["./src/shims/edit-actions.ts"],
+			"@/lib/tree/contact-state": ["./src/shims/edit-actions.ts"]
 		}
 	},
 	"include": ["src", "vite.config.ts", "../components", "../lib"]

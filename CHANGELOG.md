@@ -6,6 +6,60 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.4.0 -- 2026-09-10
+
+Prepared, unpublished work on `codex/production-corrections`. Local checks pass, including
+74 regression cases, both builds, and both dependency audits. See the
+[verification report](docs/verification-0.4.0.md) for evidence and remaining release steps.
+This entry does not record a release, deployment, or production migration run.
+
+### Added
+
+- Tree and People views, searchable family profiles with Family/About/Contact sections,
+  direct sharing, simpler view options, and a shared visual system adapted from portfolio-react.
+- Locally served Bricolage Grotesque, Inter, and JetBrains Mono fonts. The family illustration
+  assembles in relationship order; new relatives open after saving. Full/Reduced motion
+  is explicit and persistent, including canvas travel.
+- Record-link proposals, acceptance by the other owner, rejection, withdrawal, and unlinking.
+  Both source records remain intact. Only already readable records are offered for matching.
+- Private contact pages with add, edit, audience selection, and confirmed removal.
+  Existing children can be attached with biological, adoptive, step, foster, or guardian roles;
+  removing a parenting connection preserves the child's record.
+- A schema-aware readiness endpoint and release checks for the expected Vercel/Pages commit,
+  protected routes, sample data, Pages deep links, and emitted JavaScript, CSS, and font assets.
+- An isolated regression suite using the real committed schema through PGlite.
+
+### Fixed
+
+- Profile edits preserve exact birth and death dates. SPA OAuth rejects missing or mismatched
+  initiating state and handles blocked browser storage without leaving an active orphan session.
+- Authenticated API views include account identity, all writable tree IDs, and original union
+  metadata. The SPA refreshes after mutations and ignores superseded responses.
+- Advanced edits resolve original writable records, childless partners appear in profiles and
+  activity, and parent roles survive loading, fusion, and kinship derivation.
+- Adding relatives and attaching children use atomic HTTP database batches, with duplicate,
+  cycle, partner-slot, and race checks. Ambiguous parenting groups require an explicit choice.
+  Initial-family races are rechecked under the tree lock instead of leaving disconnected people.
+- Deleting an unclaimed record preserves the surviving parent's children and clears root pointers.
+  Account-linked profiles cannot be deleted. Invite claim/withdrawal and link decisions are atomic.
+- A real session takes precedence over a leftover sample cookie for writes.
+  Contact and family API responses disable caching.
+- Search results respond to keyboard activation. Read-only profiles do not offer editing.
+  Profile and contact state stays tied to the selected record; failed forms preserve drafts.
+- Mobile Options clear the toolbar, and visit history does not obscure the selected card.
+  Isolated people remain clear of couples after household alignment.
+
+### Security and deployment
+
+- Updated Next.js to 16.3.4 and the Sharp override to 0.35.4 or newer in the same minor series.
+  The existing Nano ID override remains in place.
+- CI runs regression checks and dependency auditing. Production verification fails for missing
+  configuration instead of reporting skipped checks as a healthy release.
+- The action API rejects untrusted request origins before dispatch. A renewed link proposal
+  requires fresh consent, and the Pages API origin and CSP share one validated setting.
+- No new migration is introduced. Photo uploads remain pending approval of a private
+  storage provider and its authentication flow.
+
 ## 0.3.3 -- 2026-09-02 (the nanoid advisory, and the couple-centering fix ships)
 
 ### Security

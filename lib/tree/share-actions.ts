@@ -47,10 +47,6 @@ export async function leave(): Promise<void> {
 
 async function sharer(): Promise<{ userId: string } | { error: string }> {
 	const { cookies, headers } = await import("next/headers");
-	const store = await cookies();
-	if (store.get(DEMO_COOKIE)) {
-		return { error: "This is sample data. Sign in to share a graph of your own." };
-	}
 	const session = await sessionOrNull();
 	const userId = session?.user?.id;
 	if (userId) return { userId };
@@ -60,6 +56,11 @@ async function sharer(): Promise<{ userId: string } | { error: string }> {
 	// server-rendered path is untouched.
 	const bearer = await userIdFromBearer((await headers()).get("authorization"));
 	if (bearer) return { userId: bearer };
+
+	const store = await cookies();
+	if (store.get(DEMO_COOKIE)) {
+		return { error: "This is sample data. Sign in to share a graph of your own." };
+	}
 
 	return { error: "Sign in to share." };
 }
@@ -157,7 +158,18 @@ export async function revokeInvite(form: FormData): Promise<Result> {
 		// Marked revoked rather than deleted, so a claim attempt can say "that invite was
 		// withdrawn" instead of "no such invite", and so the owner keeps a record of who
 		// they invited.
-		await db.update(treeInvites).set({ status: "revoked" }).where(eq(treeInvites.id, inviteId));
+		const [revoked] = await db
+			.update(treeInvites)
+			.set({ status: "revoked" })
+			.where(and(eq(treeInvites.id, inviteId), eq(treeInvites.status, "pending")))
+			.returning({ id: treeInvites.id });
+		if (!revoked) {
+			return {
+				ok: false,
+				error:
+					"That invite is no longer pending. If it was claimed, remove the person from Family access instead.",
+			};
+		}
 
 		revalidatePath("/tree");
 		return { ok: true };

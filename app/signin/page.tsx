@@ -26,15 +26,14 @@ export default async function SignInPage({
 	return (
 		<BrandFrame
 			compact
-			eyebrow="Secure entry / GitHub identity"
-			folio="Access record 001"
+			eyebrow="Your family, your account"
 			title={
 				<>
-					Open your family record.
-					<span className="kf-brand-accent">Your sources stay yours.</span>
+					Every story starts
+					<span className="kf-brand-accent">with someone.</span>
 				</>
 			}
-			lede="Authentication proves who may enter; it does not make a family public. Shared people appear only through invitations and mutual matches."
+			lede="Sign in with GitHub to start your tree or join a family who invited you. Your records stay private until you choose to share them."
 			actions={
 				<>
 					<a href="https://sagargupta.online/kinfolk/" className="kf-primary-action">

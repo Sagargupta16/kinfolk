@@ -22,7 +22,10 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-	const cors = corsHeaders(request.headers.get("origin"));
+	const cors = {
+		...corsHeaders(request.headers.get("origin")),
+		"Cache-Control": "private, no-store",
+	};
 
 	const treeId = request.nextUrl.searchParams.get("treeId");
 	if (!treeId) {

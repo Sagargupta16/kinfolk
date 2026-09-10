@@ -123,16 +123,51 @@ export type KinPlan = {
  * mother" produce one couple rather than two single parents. Everything else follows from
  * where a role sits relative to the subject.
  */
-export function planKin(family: FamilyShape, role: KinRole, count = 1): KinPlan {
+export function planKin(
+	family: FamilyShape,
+	role: KinRole,
+	count = 1,
+	unionId?: string | null,
+): KinPlan {
 	const direction = ROLE_DIRECTION[role];
 	const sex = ROLE_SEX[role];
 	// NaN slips through Math.max/Math.min unchanged, so a count parsed from an
 	// empty input would otherwise plan NaN people.
-	const people = Number.isFinite(count) ? Math.max(1, Math.min(count, MAX_BATCH)) : 1;
+	const people = Number.isFinite(count) ? Math.max(1, Math.min(Math.trunc(count), MAX_BATCH)) : 1;
+	const candidates =
+		direction === "child"
+			? family.ownUnions
+			: direction === "parent"
+				? family.parentUnions.filter((union) => !union.partnerAId || !union.partnerBId)
+				: direction === "sibling"
+					? family.parentUnions
+					: [];
+	const selected = unionId ? candidates.find((union) => union.id === unionId) : undefined;
+	const refusal =
+		unionId && !selected
+			? "That family is no longer available for this relationship. Refresh and choose again."
+			: candidates.length > 1 && !selected
+				? "Choose which family this relative belongs to."
+				: null;
+	if (refusal) {
+		return {
+			create: { count: 0, sex },
+			union: { kind: "none" },
+			attach: direction === "parent" || direction === "partner" ? "partner" : "child",
+			attachSubjectAsChild: false,
+			refusal,
+		};
+	}
+	const chosenFamily = selected
+		? {
+				...family,
+				...(direction === "child" ? { ownUnions: [selected] } : { parentUnions: [selected] }),
+			}
+		: family;
 
 	switch (direction) {
 		case "parent":
-			return planParent(family, sex);
+			return planParent(chosenFamily, sex);
 		case "partner":
 			return {
 				// One partner at a time. A batch of partners is not a thing anybody means, and
@@ -143,9 +178,9 @@ export function planKin(family: FamilyShape, role: KinRole, count = 1): KinPlan 
 				attachSubjectAsChild: false,
 			};
 		case "child":
-			return planChild(family, sex, people);
+			return planChild(chosenFamily, sex, people);
 		case "sibling":
-			return planSibling(family, sex, people);
+			return planSibling(chosenFamily, sex, people);
 	}
 }
 
@@ -172,8 +207,7 @@ export const MAX_BATCH = 12;
  *   3. No parent union at all: create one holding the new parent, and attach the subject to
  *      it as a child.
  *
- * Two parent unions (birth and adoptive) resolve to the FIRST with room. Choosing between
- * them is a question only the user can answer, and the panel names which union it used.
+ * `planKin` requires a choice when more than one parent union has room.
  */
 function planParent(family: FamilyShape, sex: Sex): KinPlan {
 	const withRoom = family.parentUnions.find((u) => !u.partnerAId || !u.partnerBId);
@@ -210,10 +244,7 @@ function planParent(family: FamilyShape, sex: Sex): KinPlan {
 /**
  * A child goes into the subject's own union, created if they have none.
  *
- * With several unions the FIRST is used, and that is a deliberate simplification rather
- * than a guess about which marriage a child came from: the panel says which partnership it
- * attached to, and moving a child between unions is a separate, explicit act. Guessing by
- * date would be worse, because it would look authoritative.
+ * `planKin` has already required a choice if several partnerships were available.
  *
  * A subject with no union gets a single-parent one. That is legal in the schema -- both
  * partner columns are nullable precisely so a single parent still forms a union -- and it

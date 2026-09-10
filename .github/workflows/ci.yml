@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: lint, typecheck and build
+    name: lint, tests, audit and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -41,6 +41,17 @@ jobs:
           pnpm typecheck
           pnpm --dir frontend typecheck
 
+      - name: Regression checks with an isolated database
+        run: pnpm test
+        env:
+          DATABASE_URL: ""
+          AUTH_SECRET: test-only-not-a-real-secret
+          AUTH_GITHUB_ID: ""
+          AUTH_GITHUB_SECRET: ""
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
       - name: Build
         run: pnpm build
         env:
@@ -55,6 +66,7 @@ jobs:
           # AUTH_SECRET is set to a throwaway because Auth.js logs `MissingSecret` at
           # import; the value is never used to sign anything here.
           AUTH_SECRET: build-only-not-a-real-secret
+          DATABASE_URL: ""
 
       - name: Build Pages app
         working-directory: frontend

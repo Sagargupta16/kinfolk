@@ -15,8 +15,8 @@
  *
  * Pure, no React and no database imports, like every other graph calculation.
  */
-import type { FlowNode } from "./graph";
-import { displayName } from "./graph";
+import type { FlowEdge, FlowNode } from "./graph";
+import { displayName, unionsInGraph } from "./graph";
 
 export type FeedEventKind = "arrived" | "updated" | "partnership";
 
@@ -47,7 +47,11 @@ const UPDATE_FLOOR_MS = 60_000;
 /** How many events the panel shows. Enough for a real scroll, not an archive. */
 const FEED_LIMIT = 80;
 
-export function familyFeed(nodes: FlowNode[], limit = FEED_LIMIT): FeedEvent[] {
+export function familyFeed(
+	nodes: FlowNode[],
+	edges: FlowEdge[] = [],
+	limit = FEED_LIMIT,
+): FeedEvent[] {
 	const events: FeedEvent[] = [];
 	const personById = new Map<string, { name: string }>();
 
@@ -92,9 +96,7 @@ export function familyFeed(nodes: FlowNode[], limit = FEED_LIMIT): FeedEvent[] {
 		}
 	}
 
-	for (const node of nodes) {
-		if (node.type !== "union") continue;
-		const union = node.data.union;
+	for (const union of unionsInGraph(nodes, edges)) {
 		const a = union.partnerAId ? personById.get(union.partnerAId) : null;
 		const b = union.partnerBId ? personById.get(union.partnerBId) : null;
 		// A partnership event needs somebody to name and somebody to travel to; a

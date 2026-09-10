@@ -34,7 +34,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { addRelative } from "@/lib/tree/edit-actions";
-import { type KinRole, MAX_BATCH, ROLE_SEX } from "@/lib/tree/kin-plan";
+import { type KinRole, MAX_BATCH, ROLE_DIRECTION, ROLE_SEX } from "@/lib/tree/kin-plan";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
 
@@ -51,7 +51,12 @@ export type FamilyCounts = {
 	partners: number;
 	children: number;
 	siblings: number;
+	canAddParent?: boolean;
+	parentUnions?: FamilyChoice[];
+	ownUnions?: FamilyChoice[];
 };
+
+type FamilyChoice = { id: string; label: string; hasRoom: boolean };
 
 /**
  * The roles offered, grouped by WHERE the person will appear on the canvas.
@@ -67,7 +72,7 @@ export type FamilyCounts = {
  * replacing them, for the cases where it genuinely is not known.
  */
 const GROUPS: {
-	key: keyof FamilyCounts;
+	key: "parents" | "partners" | "children" | "siblings";
 	label: string;
 	/** Where the new card lands, relative to the subject. */
 	place: string;
@@ -156,7 +161,7 @@ export function QuickAdd({
 	/** What the subject already has, so the picker never offers a refusal. */
 	family?: FamilyCounts;
 	/** Called after a successful write, so the canvas can refresh. */
-	onDone?: () => void;
+	onDone?: (personId?: string) => void;
 	onClose: () => void;
 }) {
 	const [role, setRole] = useState<KinRole | null>(null);
@@ -165,6 +170,7 @@ export function QuickAdd({
 	const [count, setCount] = useState(1);
 	const titleId = useId();
 	const nameRef = useRef<HTMLInputElement>(null);
+	const pickerRef = useRef<HTMLDivElement>(null);
 
 	// Escape closes from anywhere, including the canvas node that still holds focus.
 	// Through the shared stack (escape.ts): this sheet opens on top, so it closes first.
@@ -175,24 +181,30 @@ export function QuickAdd({
 	// this component removes.
 	useEffect(() => {
 		if (role) nameRef.current?.focus();
+		else pickerRef.current?.querySelector("button")?.focus();
 	}, [role]);
 
 	async function submit(formData: FormData) {
+		if (pending) return;
 		setPending(true);
 		setError(null);
 		formData.set("subjectId", subjectId);
 		formData.set("role", String(role));
 		formData.set("count", String(count));
 
-		const result = await addRelative(formData);
-		setPending(false);
-
-		if (!result.ok) {
-			setError(result.error);
-			return;
+		try {
+			const result = await addRelative(formData);
+			if (!result.ok) {
+				setError(result.error);
+				return;
+			}
+			onDone?.(result.id);
+			onClose();
+		} catch {
+			setError("Could not save that relative. Check your connection and try again.");
+		} finally {
+			setPending(false);
 		}
-		onDone?.();
-		onClose();
 	}
 
 	const batchable = role !== null && BATCHABLE.has(role);
@@ -205,6 +217,15 @@ export function QuickAdd({
 	 * appears to work and does not.
 	 */
 	const asksSex = role !== null && ROLE_SEX[role] === "unknown";
+	const direction = role ? ROLE_DIRECTION[role] : null;
+	const families =
+		direction === "child"
+			? (family?.ownUnions ?? [])
+			: direction === "parent"
+				? (family?.parentUnions ?? []).filter((union) => union.hasRoom)
+				: direction === "sibling"
+					? (family?.parentUnions ?? [])
+					: [];
 
 	return (
 		<motion.div
@@ -242,15 +263,18 @@ export function QuickAdd({
 			</div>
 
 			{role === null ? (
-				<div className="max-h-[min(70dvh,34rem)] overflow-y-auto overscroll-contain p-3">
+				<div
+					ref={pickerRef}
+					className="max-h-[min(70dvh,34rem)] overflow-y-auto overscroll-contain p-3"
+				>
 					<p className="mb-3 text-[0.75rem] leading-relaxed text-ink-muted">
-						Who are you adding? The direction is where they will appear on the tree.
+						Who would you like to add to {subjectName}'s family?
 					</p>
 					{GROUPS.map(({ key, label, place, roles, Icon, PlaceIcon }) => {
 						// Only parents ever run out: a union holds two. Everything else shows a
 						// count, because a remarriage or a sixth child is ordinary data.
 						const count = family?.[key] ?? 0;
-						const exhausted = key === "parents" && count >= 2;
+						const exhausted = key === "parents" && !(family?.canAddParent ?? count < 2);
 
 						return (
 							<section key={label} className="mb-3 last:mb-0">
@@ -269,7 +293,7 @@ export function QuickAdd({
 								</h3>
 								{exhausted ? (
 									<p className="rounded-lg border border-hairline bg-surface px-3 py-2.5 text-[0.6875rem] leading-snug text-ink-faint">
-										Both parents are already on the tree. Open a parent's card to add THEIR
+										Both parents are already on the tree. Open a parent's card to add their
 										relatives.
 									</p>
 								) : (
@@ -307,11 +331,16 @@ export function QuickAdd({
 				</div>
 			) : (
 				<form
-					action={submit}
+					onSubmit={(event) => {
+						event.preventDefault();
+						void submit(new FormData(event.currentTarget));
+					}}
+					aria-busy={pending}
 					className="max-h-[min(70dvh,36rem)] overflow-y-auto overscroll-contain p-3"
 				>
 					<button
 						type="button"
+						disabled={pending}
 						onClick={() => {
 							setRole(null);
 							setError(null);
@@ -333,6 +362,24 @@ export function QuickAdd({
 						<p className="min-w-0 truncate text-[0.6875rem] text-ink-muted">to {subjectName}</p>
 					</div>
 
+					{families.length > 1 ? (
+						<label className="mb-3 block">
+							<span className={fieldLabel}>Family for this relative</span>
+							<select key={role} name="unionId" required defaultValue="" className={field}>
+								<option value="" disabled>
+									Choose a family
+								</option>
+								{families.map((union) => (
+									<option key={union.id} value={union.id}>
+										{union.label}
+									</option>
+								))}
+							</select>
+						</label>
+					) : families.length === 1 ? (
+						<input type="hidden" name="unionId" value={families[0]?.id} />
+					) : null}
+
 					{batchable && (
 						<fieldset className="mb-3">
 							<legend className={fieldLabel}>People to add</legend>
@@ -341,7 +388,7 @@ export function QuickAdd({
 									<button
 										type="button"
 										onClick={() => setCount((current) => Math.max(1, current - 1))}
-										disabled={count === 1}
+										disabled={pending || count === 1}
 										aria-label="Add one fewer person"
 										className="flex size-11 items-center justify-center text-ink-muted hover:bg-surface-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
 									>
@@ -356,7 +403,7 @@ export function QuickAdd({
 									<button
 										type="button"
 										onClick={() => setCount((current) => Math.min(MAX_BATCH, current + 1))}
-										disabled={count === MAX_BATCH}
+										disabled={pending || count === MAX_BATCH}
 										aria-label="Add one more person"
 										className="flex size-11 items-center justify-center text-ink-muted hover:bg-surface-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
 									>
@@ -416,6 +463,7 @@ export function QuickAdd({
 											"flex min-h-11 flex-1 cursor-pointer items-center justify-center",
 											"text-[0.75rem] text-ink-muted has-checked:bg-surface-raised",
 											"has-checked:text-accent-ink",
+											"has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent",
 											index > 0 && "border-l border-hairline",
 										)}
 									>
@@ -497,6 +545,7 @@ export function QuickAdd({
 												"flex min-h-11 flex-1 cursor-pointer items-center justify-center px-1",
 												"text-center text-[0.6875rem] text-ink-muted",
 												"has-checked:bg-surface-raised has-checked:text-accent-ink",
+												"has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent",
 												index > 0 && "border-l border-hairline",
 											)}
 										>
@@ -532,6 +581,7 @@ export function QuickAdd({
 											"flex min-h-11 flex-1 cursor-pointer items-center justify-center",
 											"text-[0.75rem] text-ink-muted has-checked:bg-surface-raised",
 											"has-checked:text-accent-ink",
+											"has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent",
 											index > 0 && "border-l border-hairline",
 										)}
 									>
@@ -649,7 +699,7 @@ export function QuickAddSheet({
 	onClose,
 }: {
 	subject: { id: string; name: string; family?: FamilyCounts } | null;
-	onDone?: () => void;
+	onDone?: (personId?: string) => void;
 	onClose: () => void;
 }) {
 	return (

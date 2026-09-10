@@ -12,7 +12,7 @@
  * A menu rather than a bare button, because sign-out should not be one mis-tap away from
  * a 44px target next to the view toggles.
  */
-import { ChevronDown, LogOut, Share2 } from "lucide-react";
+import { ChevronDown, GitMerge, LogOut, Share2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { leave } from "@/lib/tree/share-actions";
@@ -24,10 +24,12 @@ export function AccountMenu({
 	email,
 	/** Opens the share panel. Absent when this viewer cannot share anything. */
 	onShare,
+	onLinks,
 }: {
 	name: string | null;
 	email: string | null;
 	onShare?: () => void;
+	onLinks?: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const wrapper = useRef<HTMLDivElement>(null);
@@ -130,6 +132,20 @@ export function AccountMenu({
 							>
 								<Share2 aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
 								Family access
+							</button>
+						)}
+
+						{onLinks && (
+							<button
+								type="button"
+								onClick={() => {
+									setOpen(false);
+									onLinks();
+								}}
+								className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink"
+							>
+								<GitMerge aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
+								Link family records
 							</button>
 						)}
 

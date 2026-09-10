@@ -41,11 +41,12 @@ export function getToken(): string | null {
 	}
 }
 
-export function setToken(token: string): void {
+export function setToken(token: string): boolean {
 	try {
 		sessionStorage.setItem(TOKEN_KEY, token);
+		return true;
 	} catch {
-		// Nothing to do: the session simply will not persist across a reload.
+		return false;
 	}
 }
 

@@ -17,7 +17,10 @@
  * Pure -- no React, no DB -- so the role assignments are unit-testable. A panel
  * that lists a stepson as a brother is the kind of error a reader believes.
  */
+import type { ParentRole } from "../db/schema";
 import type { FlowEdge, FlowNode, FusedPerson, UnionWithChildren } from "./graph";
+import { unionsInGraph } from "./graph";
+import { parentRoles } from "./parentage";
 import { RELATION_KINDS, relationLabel } from "./relations";
 
 /**
@@ -46,8 +49,10 @@ export type RelationLink = {
 export type Relatives = {
 	/** Everyone recorded as a parent, through any union. */
 	parents: FusedPerson[];
+	parentRoles: Record<string, ParentRole[]>;
 	partners: Partnership[];
 	children: FusedPerson[];
+	childRoles: Record<string, ParentRole[]>;
 	/**
 	 * Anyone sharing a union with the subject as a child.
 	 *
@@ -80,13 +85,12 @@ export type FamilyIndex = {
 
 export function indexRelatives(nodes: FlowNode[], edges: FlowEdge[]): FamilyIndex {
 	const people = new Map<string, FusedPerson>();
-	const unions: UnionWithChildren[] = [];
+	const unions = unionsInGraph(nodes, edges);
 	const asPartner = new Map<string, UnionWithChildren[]>();
 	const asChild = new Map<string, UnionWithChildren[]>();
 
 	for (const node of nodes) {
 		if (node.type === "person") people.set(node.id, node.data);
-		else unions.push(node.data.union);
 	}
 
 	for (const union of unions) {
@@ -124,10 +128,17 @@ export function relativesOf(index: FamilyIndex, personId: string): Relatives {
 	const children = new Dedupe(index);
 	const siblings = new Dedupe(index);
 	const partners = new Map<string, Partnership>();
+	const rolesByParent: Record<string, ParentRole[]> = {};
+	const rolesByChild: Record<string, ParentRole[]> = {};
 
 	for (const union of index.asChild.get(personId) ?? []) {
 		for (const parentId of [union.partnerAId, union.partnerBId]) {
-			if (parentId) parents.add(parentId);
+			if (parentId) {
+				parents.add(parentId);
+				rolesByParent[parentId] = [
+					...new Set([...(rolesByParent[parentId] ?? []), ...parentRoles(union, personId)]),
+				];
+			}
 		}
 		for (const siblingId of union.childIds) {
 			// The subject is a child of this union too, and is not their own sibling.
@@ -144,13 +155,20 @@ export function relativesOf(index: FamilyIndex, personId: string): Relatives {
 			// the order `unions` arrived in.
 			if (person && !partners.has(partnerId)) partners.set(partnerId, { person, union });
 		}
-		for (const childId of union.childIds) children.add(childId);
+		for (const childId of union.childIds) {
+			children.add(childId);
+			rolesByChild[childId] = [
+				...new Set([...(rolesByChild[childId] ?? []), ...parentRoles(union, childId)]),
+			];
+		}
 	}
 
 	return {
 		parents: parents.values,
+		parentRoles: rolesByParent,
 		partners: [...partners.values()],
 		children: children.values,
+		childRoles: rolesByChild,
 		siblings: siblings.values,
 		relations: relationsOf(index, personId),
 	};

@@ -12,12 +12,16 @@
  * opposite of what a development warning should do.
  */
 import { createRoot } from "react-dom/client";
-import "./frontend.css";
 import "@/app/globals.css";
 import "@xyflow/react/dist/style.css";
+import { MotionPreference } from "@/components/ui/MotionPreference";
 import { App } from "./App";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("No #root element to mount into.");
 
-createRoot(root).render(<App />);
+createRoot(root).render(
+	<MotionPreference>
+		<App />
+	</MotionPreference>,
+);

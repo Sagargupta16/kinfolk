@@ -106,7 +106,7 @@ export function buildPersonPatch(form: FormData): PersonPatchResult {
 	/*
 	 * A bare year is accepted and routed to the right column.
 	 *
-	 * The form asks for a YEAR because that is what people know. "1952" is not a value
+	 * The form accepts dates, years and approximate text. "1952" is not a value
 	 * `birthDate` can hold, and coercing it to 1952-01-01 invents a birthday -- so
 	 * `birthYearColumns` decides. BOTH columns are written so a value moving from fuzzy to
 	 * exact clears the other one, rather than leaving two disagreeing dates on one row.

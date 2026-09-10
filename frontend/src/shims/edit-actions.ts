@@ -15,7 +15,11 @@
  * check and goes on to `lib/tree/authz.ts`. A client that lied about its own
  * permissions would simply be refused by the server.
  */
+
+import type { ContactState } from "@/lib/tree/contacts";
+import type { LinkState } from "@/lib/tree/links";
 import { API_BASE, authHeaders, clearToken } from "../api";
+import { signOut } from "../auth";
 
 export type Result =
 	| { ok: true; id?: string }
@@ -74,11 +78,14 @@ export const addUnion = action("addUnion");
 export const addChild = action("addChild");
 export const removeChild = action("removeChild");
 export const addContact = action("addContact");
+export const updateContact = action("updateContact");
 export const deleteContact = action("deleteContact");
 export const addRelative = action("addRelative");
 export const invite = action("invite");
 export const revokeInvite = action("revokeInvite");
 export const removeMember = action("removeMember");
+export const proposeLink = action("proposeLink");
+export const decideLink = action("decideLink");
 
 /**
  * The three that are not `(FormData) => Result`, so they are not on the dispatcher.
@@ -106,7 +113,6 @@ export const removeMember = action("removeMember");
  * check that looks at this file.
  */
 export async function leave(_form: FormData): Promise<void> {
-	const { signOut } = await import("../auth");
 	try {
 		await signOut();
 	} catch {
@@ -115,6 +121,24 @@ export async function leave(_form: FormData): Promise<void> {
 		return;
 	}
 	window.location.assign(import.meta.env.BASE_URL);
+}
+
+async function readState<T>(path: string): Promise<T> {
+	const response = await fetch(`${API_BASE}${path}`, { headers: authHeaders(), cache: "no-store" });
+	if (!response.ok) {
+		if (response.status === 401) clearToken();
+		const body = (await response.json().catch(() => null)) as { error?: string } | null;
+		throw new Error(body?.error ?? "Could not load this page. Try again.");
+	}
+	return response.json() as Promise<T>;
+}
+
+export function contactState(personId: string): Promise<ContactState> {
+	return readState(`/api/contacts?personId=${encodeURIComponent(personId)}`);
+}
+
+export function linkState(): Promise<LinkState> {
+	return readState("/api/links");
 }
 
 /**

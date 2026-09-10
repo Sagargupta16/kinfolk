@@ -13,7 +13,7 @@
  * no `localStorage` and no `matchMedia` -- guessing during render makes the first
  * client paint disagree with the markup it hydrates.
  */
-import { Monitor, Moon, Sparkles, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	applyMotion,
@@ -38,10 +38,10 @@ export function ThemeControls({ className }: { className?: string }) {
 	const [motion, setMotion] = useState(true);
 
 	useEffect(() => {
+		setMotion(document.documentElement.getAttribute(MOTION_ATTR) !== "off");
 		try {
 			const stored = localStorage.getItem(THEME_KEY);
 			if (isThemeChoice(stored)) setChoice(stored);
-			setMotion(document.documentElement.getAttribute(MOTION_ATTR) !== "off");
 		} catch {
 			// A private window throws on `localStorage` access rather than returning null.
 			// The attribute the inline script wrote is still correct, so there is nothing to
@@ -75,17 +75,14 @@ export function ThemeControls({ className }: { className?: string }) {
 		}
 	}, []);
 
-	const toggleMotion = useCallback(() => {
-		setMotion((current) => {
-			const next = !current;
-			applyMotion(next);
-			try {
-				localStorage.setItem(MOTION_KEY, next ? "on" : "off");
-			} catch {
-				/* see above */
-			}
-			return next;
-		});
+	const pickMotion = useCallback((next: boolean) => {
+		setMotion(next);
+		applyMotion(next);
+		try {
+			localStorage.setItem(MOTION_KEY, next ? "on" : "off");
+		} catch {
+			/* see above */
+		}
 	}, []);
 
 	return (
@@ -125,32 +122,30 @@ export function ThemeControls({ className }: { className?: string }) {
 				))}
 			</fieldset>
 
-			{/*
-			 * The motion switch, and the reason there is no `prefers-reduced-motion` rule
-			 * anywhere in this app.
-			 *
-			 * The animations here carry information -- generations assembling oldest first,
-			 * the skeleton drawing downwards, the pulse showing which way parentage runs -- so
-			 * an OS flag set years ago to stop advertising banners jumping would silently
-			 * delete a data channel. This asks about THIS canvas, which is the only question
-			 * whose answer is knowable, and it is reversible in one click.
-			 */}
-			<button
-				type="button"
-				onClick={toggleMotion}
-				aria-pressed={motion}
-				title={motion ? "Motion on -- click to still the canvas" : "Motion off -- click to restore"}
-				className={cn(
-					"kf-header-control flex size-11 items-center justify-center rounded-lg border",
-					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-					motion
-						? "border-hairline bg-surface/80 text-accent-ink hover:bg-surface-raised"
-						: "border-hairline bg-surface/80 text-ink-faint hover:bg-surface-raised hover:text-ink",
-				)}
+			<fieldset
+				aria-label="Motion"
+				className="flex w-full overflow-hidden rounded-lg border border-hairline bg-surface/80"
 			>
-				<Sparkles aria-hidden="true" className="size-4" strokeWidth={1.5} />
-				<span className="sr-only">{motion ? "Turn motion off" : "Turn motion on"}</span>
-			</button>
+				{[
+					{ enabled: true, label: "Full motion" },
+					{ enabled: false, label: "Reduced motion" },
+				].map(({ enabled, label }) => (
+					<button
+						key={label}
+						type="button"
+						onClick={() => pickMotion(enabled)}
+						aria-pressed={motion === enabled}
+						className={cn(
+							"min-h-11 flex-1 px-2 text-xs transition-colors duration-(--duration-fast)",
+							motion === enabled
+								? "bg-surface-raised text-accent-ink"
+								: "text-ink-faint hover:bg-surface-raised hover:text-ink",
+						)}
+					>
+						{label}
+					</button>
+				))}
+			</fieldset>
 		</div>
 	);
 }

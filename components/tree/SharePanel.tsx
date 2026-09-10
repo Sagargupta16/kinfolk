@@ -21,7 +21,7 @@ import {
 	UserRound,
 	X,
 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { type SubmitEvent, useId, useState, useTransition } from "react";
 import type { Result } from "@/lib/tree/edit-actions";
 import { invite, removeMember, revokeInvite, type ShareState } from "@/lib/tree/share-actions";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,7 @@ export function SharePanel({
 	/** Re-read access after a successful mutation. */
 	onChanged: () => void;
 }) {
+	const titleId = useId();
 	const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 	const [method, setMethod] = useState<"email" | "github">("email");
 	const [pending, startTransition] = useTransition();
@@ -62,22 +63,34 @@ export function SharePanel({
 	useEscapeClose(true, onClose);
 
 	function run(action: (form: FormData) => Promise<Result>) {
-		return (form: FormData) => {
+		return (event: SubmitEvent<HTMLFormElement>) => {
+			event.preventDefault();
+			if (pending) return;
+			const element = event.currentTarget;
+			const form = new FormData(element);
 			setMessage(null);
 			startTransition(async () => {
-				const result = await action(form);
-				setMessage(
-					result.ok
-						? { ok: true, text: result.id ?? "Access updated." }
-						: { ok: false, text: result.error },
-				);
-				if (result.ok) onChanged();
+				try {
+					const result = await action(form);
+					setMessage(
+						result.ok
+							? { ok: true, text: result.id ?? "Access updated." }
+							: { ok: false, text: result.error },
+					);
+					if (result.ok) {
+						element.reset();
+						onChanged();
+					}
+				} catch {
+					setMessage({ ok: false, text: "Could not update family access. Try again." });
+				}
 			});
 		};
 	}
 
 	return (
-		<div
+		<section
+			aria-labelledby={titleId}
 			className={cn(
 				"kf-sheet kf-share-sheet flex w-[min(23rem,calc(100vw-1.5rem))] flex-col overflow-hidden",
 				"max-h-[min(82dvh,38rem)] rounded-lg border border-hairline-strong",
@@ -90,7 +103,9 @@ export function SharePanel({
 				</div>
 				<div className="min-w-0 flex-1">
 					<p className={heading}>Private sharing</p>
-					<h2 className="text-sm font-medium text-ink">Family access</h2>
+					<h2 id={titleId} className="text-sm font-medium text-ink">
+						Family access
+					</h2>
 				</div>
 				<button
 					type="button"
@@ -109,18 +124,19 @@ export function SharePanel({
 					aria-hidden="true"
 				/>
 				<p className="text-[0.6875rem] leading-relaxed text-ink-muted">
-					Only the people listed here can open this family tree.
+					Manage direct access here. Members of linked families can also have viewing access.
 				</p>
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
-				<form action={run(invite)} className="space-y-3">
+				<form onSubmit={run(invite)} aria-busy={pending} className="space-y-3">
 					<input type="hidden" name="treeId" value={treeId} />
 
 					<div>
 						<h3 className="text-[0.875rem] font-medium text-ink">Invite a relative</h3>
 						<p className="mt-0.5 text-[0.6875rem] leading-relaxed text-ink-faint">
-							Their access begins when they first sign in with the same identity.
+							After creating an invite, ask them to sign in with that email or GitHub account.
+							Kinfolk does not send an email.
 						</p>
 					</div>
 
@@ -129,6 +145,7 @@ export function SharePanel({
 						<div className="grid grid-cols-2 overflow-hidden rounded-lg border border-hairline">
 							<button
 								type="button"
+								disabled={pending}
 								onClick={() => setMethod("email")}
 								aria-pressed={method === "email"}
 								className={cn(
@@ -144,6 +161,7 @@ export function SharePanel({
 							</button>
 							<button
 								type="button"
+								disabled={pending}
 								onClick={() => setMethod("github")}
 								aria-pressed={method === "github"}
 								className={cn(
@@ -160,56 +178,60 @@ export function SharePanel({
 						</div>
 					</fieldset>
 
-					{method === "email" ? (
-						<label className="block">
-							<span className={fieldLabel}>Email address</span>
-							<div className="relative">
-								<Mail
-									className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
-									strokeWidth={1.5}
-									aria-hidden="true"
-								/>
-								<input
-									name="email"
-									type="email"
-									required
-									placeholder="relative@example.com"
-									className={cn(field, "pl-9")}
-									autoComplete="off"
-								/>
-							</div>
-						</label>
-					) : (
-						<label className="block">
-							<span className={fieldLabel}>GitHub username</span>
-							<div className="relative">
-								<AtSign
-									className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
-									strokeWidth={1.5}
-									aria-hidden="true"
-								/>
-								<input
-									name="githubLogin"
-									required
-									placeholder="@username"
-									className={cn(field, "pl-9")}
-									autoComplete="off"
-								/>
-							</div>
-						</label>
-					)}
+					<div key={method}>
+						{method === "email" ? (
+							<label className="block">
+								<span className={fieldLabel}>Email address</span>
+								<div className="relative">
+									<Mail
+										className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
+										strokeWidth={1.5}
+										aria-hidden="true"
+									/>
+									<input
+										name="email"
+										type="email"
+										required
+										placeholder="relative@example.com"
+										className={cn(field, "pl-9")}
+										autoComplete="off"
+									/>
+								</div>
+							</label>
+						) : (
+							<label className="block">
+								<span className={fieldLabel}>GitHub username</span>
+								<div className="relative">
+									<AtSign
+										className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
+										strokeWidth={1.5}
+										aria-hidden="true"
+									/>
+									<input
+										name="githubLogin"
+										required
+										placeholder="@username"
+										className={cn(field, "pl-9")}
+										autoComplete="off"
+										autoCapitalize="none"
+										spellCheck={false}
+									/>
+								</div>
+							</label>
+						)}
+					</div>
 
 					<fieldset>
 						<legend className={fieldLabel}>Access level</legend>
 						<div className="grid grid-cols-2 gap-1.5">
-							<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8">
+							<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
 								<input type="radio" name="role" value="viewer" defaultChecked className="sr-only" />
 								<span>
 									<span className="block text-[0.75rem] font-medium text-ink">Can view</span>
 									<span className="block text-[0.625rem] text-ink-faint">Read only</span>
 								</span>
 							</label>
-							<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8">
+							<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
 								<input type="radio" name="role" value="editor" className="sr-only" />
 								<span>
 									<span className="block text-[0.75rem] font-medium text-ink">Can edit</span>
@@ -281,7 +303,7 @@ export function SharePanel({
 									<p className="text-[0.625rem] text-ink-faint">{accessLabel(member.role)}</p>
 								</div>
 								{!member.isOwner && (
-									<form action={run(removeMember)} className="shrink-0">
+									<form onSubmit={run(removeMember)} className="shrink-0">
 										<input type="hidden" name="treeId" value={treeId} />
 										<input type="hidden" name="userId" value={member.userId} />
 										<button
@@ -318,7 +340,7 @@ export function SharePanel({
 											{accessLabel(row.role)}, expires {row.expiresAt}
 										</p>
 									</div>
-									<form action={run(revokeInvite)} className="shrink-0">
+									<form onSubmit={run(revokeInvite)} className="shrink-0">
 										<input type="hidden" name="inviteId" value={row.id} />
 										<button
 											type="submit"
@@ -336,6 +358,6 @@ export function SharePanel({
 					</section>
 				)}
 			</div>
-		</div>
+		</section>
 	);
 }
