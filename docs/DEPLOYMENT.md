@@ -22,6 +22,10 @@ Missing settings fail the relevant job. Pages also embeds its build commit and c
 the tree deep link and files listed in its asset manifest, including lazy JavaScript
 chunks, CSS, fonts, and `theme-init.js`, after publishing.
 
+GitHub can report an inherited custom-domain Pages URL with an `http:` scheme.
+The publishing job upgrades that metadata to `https:` before verification, retaining
+the reported host and path. The readiness script continues to reject public HTTP URLs.
+
 ```bash
 node --experimental-strip-types scripts/check-production.mts --api --wait
 node --experimental-strip-types scripts/check-production.mts --spa --wait
