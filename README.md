@@ -1,5 +1,9 @@
 # Kinfolk
 
+[![CI](https://github.com/Sagargupta16/kinfolk/actions/workflows/ci.yml/badge.svg)](https://github.com/Sagargupta16/kinfolk/actions/workflows/ci.yml)
+[![Production health](https://github.com/Sagargupta16/kinfolk/actions/workflows/health.yml/badge.svg)](https://github.com/Sagargupta16/kinfolk/actions/workflows/health.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Collaborative family graph. Keep your own record, invite relatives, and join matching
 people without overwriting either family's account.
 
@@ -7,12 +11,14 @@ people without overwriting either family's account.
 **[kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/demo)** -- the API and
 server-rendered fallback, with a sample tree you can explore without an account.
 
-Version **0.4.0 is unreleased**, prepared on **2026-09-10** on
-`codex/production-corrections`. This branch adds a simpler family workspace,
-consent-based record linking, private contact editing, and stronger safeguards for
-family changes and deployment verification. These changes have not been deployed.
-The [review and verification report](docs/verification-0.4.0.md) records the fixes,
-74 passing regression cases, browser checks, and remaining release steps.
+**Try it:** [open the sample tree](https://kinfolk-neon.vercel.app/demo). No sign-in needed; the
+sample data is read-only.
+
+Version **0.4.0** has been live since **2026-09-10**. It added a simpler family workspace,
+consent-based record linking, private contact editing, and stronger safeguards for family
+changes and deployment verification. **0.4.1** is a dependency and documentation refresh.
+The [review and verification report](docs/verification-0.4.0.md) records the 0.4.0 fixes,
+74 passing regression cases, and browser checks.
 
 ## Why this is not just a tree widget
 
@@ -65,13 +71,47 @@ explain the research and the adapted portfolio-react visual direction.
 | Motion | Motion 13, for chrome only |
 | Tooling | pnpm, Biome |
 
-Same shape as `prod/kalchar`, so the conventions carry over.
-
 The layout stack was measured against the alternatives rather than assumed: `family-chart`
 and `relatives-tree` both require a binary gender on every node, which would corrupt a
 record whose sex column defaults to `unknown`, and neither models non-family relations.
 `d3-flextree` and `react-tree-graph` are strict trees, one parent per node. See CLAUDE.md
 before swapping any of it out.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    browser([Browser])
+    pages["GitHub Pages<br/>Vite SPA"]
+    vercel["Vercel<br/>Next.js API + server-rendered fallback"]
+    github["GitHub OAuth"]
+    neon[("Neon Postgres")]
+
+    browser -- "static app" --> pages
+    browser -- "JSON API, bearer token<br/>CORS allow list" --> vercel
+    browser -. "fallback UI, httpOnly cookie" .-> vercel
+    vercel -- "code exchange" --> github
+    vercel -- "Drizzle over HTTP" --> neon
+```
+
+Key decisions:
+
+- **A graph, not a tree.** Parentage hangs off `unions`, so a child can have two parents
+  and a person several partners. ELK's layered layout handles that; friendships and other
+  non-family relations never enter the layout graph.
+- **Consent links instead of merges.** `person_links` records that two trees describe the
+  same human. The other owner must accept, both source records stay intact, and unlinking
+  restores the separate views.
+- **Bearer token on Pages, cookie on Vercel.** Pages cannot run Auth.js, so the SPA posts
+  the OAuth code to the API and keeps the returned token in `sessionStorage`. CORS is an
+  exact allow list with no credentials header, which lets the fallback's session cookie stay
+  `SameSite=Lax`.
+- **Atomic writes without interactive transactions.** The Neon HTTP driver has no
+  `db.transaction()`, so related writes go through `db.batch()` with duplicate, cycle and
+  race checks.
+- **Migrate, then verify.** The deploy workflow runs the committed SQL migrations (never
+  `db:push`), then waits until Vercel serves the exact commit and `/api/health` reports the
+  schema ready.
 
 ## Local dev
 
@@ -148,8 +188,8 @@ Vercel serves the API, OAuth exchange, database writes, and the server-rendered 
 in `sessionStorage`; the Vercel app keeps the stronger httpOnly-cookie flow available. This
 split is necessary because Pages cannot run Auth.js, query Neon, or execute server actions.
 
-The unreleased branch adds `/api/health` to check database connectivity and required
-schema columns, plus authentication configuration. Release probes require the expected
+`/api/health` checks database connectivity and required schema columns, plus
+authentication configuration. Release probes require the expected
 serving commit and verify protected routes, the sample API, and Pages assets.
 An authentication-provider response alone does
 not prove database readiness. `DATABASE_URL` is a manually configured encrypted
@@ -171,8 +211,7 @@ Kinfolk is available under the [MIT License](LICENSE).
 
 ## Status
 
-Implemented and locally verified in the working branch, pending release:
-fusion across trees, the layered pedigree with
+Live in production since 0.4.0 (2026-09-10): fusion across trees, the layered pedigree with
 sibling bars and generation bands, an orbit arrangement, kinship terms on every card,
 reveal-on-focus relations, light and dark themes, person cards,
 expand and collapse, the detail panel and family feed as responsive reading sheets,

@@ -6,12 +6,41 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.4.1 -- 2026-10-18
+
+A dependency and documentation refresh. No schema, API or UI behavior change.
+
+### Security and dependencies
+
+- Next.js 16.3.4 to 16.3.8 (#45), the patch release Renovate's security branch was
+  targeting.
+- Renovate adopted through the shared preset (#44). Major updates wait for its scheduled
+  monthly group.
+- In-range bumps in both workspace packages, kept in lockstep: Next 16.4.2, React and
+  React DOM 19.3.1, React Flow 12.12.0, lucide-react 1.59.0, Vite 8.3.4,
+  `@vitejs/plugin-react` 6.1.2, Biome 2.5.15, Vitest 5.0.5, drizzle-orm 0.45.4,
+  `@neondatabase/serverless` 1.2.0, tailwind-merge 3.7.0, PGlite 0.5.10, drizzle-kit
+  0.31.11, tsx 4.23.15 and the React and Node type packages. The PostCSS override floor
+  moves to 8.5.30 so the direct and nested copies resolve to the same release.
+  Motion 14 and dotenv 18 are majors and stay with Renovate's group.
+- Measured after the bumps: Biome over 136 files, both strict typechecks, 74 of 74
+  regression cases, `pnpm audit --audit-level high` with no known vulnerabilities, and
+  both production builds.
+
+### Documentation
+
+- README, CLAUDE.md, SECURITY.md and the docs/ headers now say 0.4.0 is released and
+  deployed. They had still described it as an unpublished branch. On 2026-10-18
+  `/api/health` returned `ready`, version 0.4.0, commit `8eb9b35`.
+- README gains CI, health and license badges, a link to the sample tree, an architecture
+  diagram and a short list of the key design decisions.
+
 ## 0.4.0 -- 2026-09-10
 
-Prepared, unpublished work on `codex/production-corrections`. Local checks pass, including
-74 regression cases, both builds, and both dependency audits. See the
-[verification report](docs/verification-0.4.0.md) for evidence and remaining release steps.
-This entry does not record a release, deployment, or production migration run.
+Released and deployed on 2026-09-10. The Deploy workflow applied migrations and passed its
+serving-commit and readiness checks; Pages published with the HTTPS verification fix (#43).
+Local checks before release passed 74 regression cases, both builds, and both dependency
+audits. See the [verification report](docs/verification-0.4.0.md) for that evidence.
 
 ### Added
 

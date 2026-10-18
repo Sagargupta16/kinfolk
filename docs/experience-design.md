@@ -1,6 +1,6 @@
 # Family atlas experience
 
-Prepared 2026-09-10 for the unpublished 0.4.0 work on `codex/production-corrections`.
+Prepared 2026-09-10 for 0.4.0, released and deployed the same day.
 This direction applies to both the Next application and the Vite client.
 
 ## Main tasks

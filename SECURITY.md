@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are applied to the latest release on `main`, currently 0.3.x. Older releases are not supported.
+Security fixes are applied to the latest release on `main`, currently 0.4.x. Older releases are not supported.
 
 ## Reporting a vulnerability
 
