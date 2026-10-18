@@ -4,11 +4,12 @@ Local setup is [SETUP.md](SETUP.md). This is the production path.
 
 ## Release verification in 0.4.0
 
-Prepared on **2026-09-10** on `codex/production-corrections`. These changes are unpublished;
-the checks below describe the working branch, not a completed production verification.
-Completed local checks and their limits are in the [verification report](verification-0.4.0.md).
+Released and deployed on **2026-09-10**: the Deploy workflow applied migrations and passed
+its serving-commit and readiness checks. On 2026-10-18 `GET /api/health` returned `ready`,
+version 0.4.0, commit `8eb9b35`, database ready, auth configured.
+Local checks and their limits are in the [verification report](verification-0.4.0.md).
 
-The branch adds `GET /api/health`: it returns 200 only when the database query can resolve
+`GET /api/health` returns 200 only when the database query can resolve
 the required tables and columns and authentication variables are present. Failures return 503
 without SQL, credentials, or family data. Responses are not cached.
 
@@ -298,8 +299,9 @@ pnpm db:check-migrations --complete
 
 ### What the checks assert
 
-The working branch's [`check-production.mts`](../scripts/check-production.mts) checks
-these responses. This table describes the code, not a newly completed production run:
+[`check-production.mts`](../scripts/check-production.mts) checks these responses. The
+Deploy workflow runs it after applying migrations, and the daily health workflow runs it on a
+schedule:
 
 | Path | Expect | Why this one |
 | --- | --- | --- |

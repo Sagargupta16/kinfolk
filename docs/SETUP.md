@@ -1,7 +1,7 @@
 # Setting Kinfolk up locally
 
-This guide describes the prepared 0.4.0 working branch as of **2026-09-10**.
-It does not record a release or production setup verification.
+This guide describes local setup for 0.4.x. 0.4.0 was released on **2026-09-10**;
+production setup is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Four values go in `.env.local`. Nothing else is needed -- no Docker, no local
 Postgres, no accounts beyond Neon and GitHub.

@@ -20,9 +20,9 @@ It is also a contact graph, not only a pedigree. Anyone can be a node -- a frien
 - **Package manager**: pnpm
 - **Deploy target**: Vite SPA on GitHub Pages, with the API and server-rendered fallback on Vercel + Neon. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Deploy state, as of 2026-08-08
+## Deploy state, as of 2026-10-18
 
-The following deployment state was recorded on 2026-08-08. It is historical evidence, not verification of the unreleased 0.4.0 branch:
+0.4.0 was released and deployed on 2026-09-10: the Deploy workflow applied migrations and verified the serving commit, and Pages published on the follow-up HTTPS verification fix (#43). On 2026-10-18 `GET https://kinfolk-neon.vercel.app/api/health` returned `ready`, version 0.4.0, commit `8eb9b35`, database ready, auth configured. The layout below was first recorded on 2026-08-08 and still holds:
 
 - The Vite SPA is served from <https://sagargupta.online/kinfolk/> by GitHub Pages.
   Pages uploads only `frontend/dist`; source maps remain disabled.
@@ -284,11 +284,11 @@ Sample data is reachable before auth exists, following the ledger-sync pattern: 
 
 ## Status
 
-Prepared version: **0.4.0, unreleased**, as of **2026-09-10** on `codex/production-corrections`. Both workspace packages record 0.4.0; this working branch has not been released or deployed. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **0.4.1**, dated **2026-10-18**, a dependency and documentation refresh on top of 0.4.0. Both workspace packages record 0.4.1, and `/api/health` reports the root package version after deploy. 0.4.0 was released and deployed on **2026-09-10**. See [CHANGELOG.md](CHANGELOG.md).
 
-The branch adds Tree / People navigation, profile sections, private contact editing, owner-consent record linking, confirmed deletion of unclaimed people, and attachment/detachment of existing children with explicit parent roles. Account-linked profiles cannot be deleted. Photo uploads still need an approved private-storage provider and verified authentication; avatars remain initials.
+0.4.0 added Tree / People navigation, profile sections, private contact editing, owner-consent record linking, confirmed deletion of unclaimed people, and attachment/detachment of existing children with explicit parent roles. Account-linked profiles cannot be deleted. Photo uploads still need an approved private-storage provider and verified authentication; avatars remain initials.
 
-Local 0.4.0 validation passed Biome, 74 isolated Vitest/PGlite cases, both strict TypeScript projects, both production builds, dependency audits, privacy checks, browser verification in both frontends, and `git diff --check`. The [review and verification report](docs/verification-0.4.0.md) records the scope and limits. Production release checks and a real OAuth flow remain to be run after deployment.
+Local 0.4.0 validation passed Biome, 74 isolated Vitest/PGlite cases, both strict TypeScript projects, both production builds, dependency audits, privacy checks, browser verification in both frontends, and `git diff --check`. The [review and verification report](docs/verification-0.4.0.md) records the scope and limits. The Deploy workflow ran the production release checks on 2026-09-10 and the daily health workflow repeats them; a real OAuth sign-in is not recorded here.
 
 ### Historical observations
 
