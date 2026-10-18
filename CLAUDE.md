@@ -70,6 +70,13 @@ needs no production credentials. The old live smoke scripts remain removed.
 For canvas changes, also verify the documented node/edge counts, geometry, mobile layout,
 and a clean browser console in both frontends. Compilation alone does not verify behavior.
 
+`pnpm bench:layout` times the full layout on the sample and on seeded generated families
+(50, 200, 1000 people by default); rerun it after a layout change and update the README
+table from its output. `pnpm screenshots` recaptures the README images in
+`docs/screenshots/` and both Open Graph cards (`app/opengraph-image.png`,
+`frontend/public/og-image.png`) from the live Pages app, or from `--base <url>`; rerun it
+after a visible UI change.
+
 ## Database
 
 Production was recorded as Postgres 17 on 2026-08-08. Schema changes are committed as ordered Drizzle migrations and applied by the deployment workflow. The repository contains five migrations, `0000` through `0004`; 0.4.0 adds no migration.

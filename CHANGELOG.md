@@ -6,6 +6,44 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.5.0 -- 2026-10-18
+
+Showcase, link previews, a self-hosting path and the first measured layout numbers. No
+schema, API or canvas behavior change.
+
+### Added
+
+- README screenshots of the live sample tree: the Tree view in dark and light, a person
+  profile, the People directory, and the phone bottom sheet. `pnpm screenshots`
+  (`scripts/capture-screenshots.mts`, Playwright plus sharp) recaptures all of them from the
+  Pages app or any `--base` URL, always on the read-only `?demo=1` sample. The five WebP
+  files total 207 KiB.
+- Open Graph and Twitter card metadata on both frontends, so a shared link unfurls with a
+  title, description and image instead of a bare URL. The 1200x630 card is composed by the
+  same script from the canvas strip and the app's own fonts and tokens. Next serves it
+  through the `app/opengraph-image.png` file convention with `metadataBase` taken from
+  `VERCEL_PROJECT_PRODUCTION_URL`; the Pages `index.html` points at
+  `https://sagargupta.online/kinfolk/og-image.png`. Checked on a local production build:
+  `/` emits `og:image` and `twitter:image` at 1200x630 and `/opengraph-image.png` returns
+  200 `image/png`.
+- A Deploy with Vercel button that clones the repository, provisions a Neon database through
+  the Marketplace integration and prompts for `AUTH_SECRET`, `AUTH_GITHUB_ID` and
+  `AUTH_GITHUB_SECRET`. [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) covers the OAuth app,
+  the one-time `pnpm db:migrate`, the `/api/health` check, and which workflows a copy should
+  configure or disable.
+- `pnpm bench:layout` (`scripts/bench-layout.mts`) times the full layout on the sample and on
+  seeded generated families. On an i9-14900HX laptop under Node 26.10: 281 ms for the
+  117-person sample, 452 ms for 200 people and 23,440 ms for 1,000 people (medians of 7).
+  A temporary timer showed ELK's own layout call is nearly all of it, which makes moving
+  ELK into a Web Worker the next performance fix.
+- [A family tree is not a tree](docs/a-family-tree-is-not-a-tree.md), a write-up of the union
+  data model, consent links fused by union-find at read time, and the layout library choice.
+
+### Dependencies
+
+- `playwright` and `sharp` as root dev dependencies, for the capture script only. Neither
+  reaches either production bundle.
+
 ## 0.4.1 -- 2026-10-18
 
 A dependency and documentation refresh. No schema, API or UI behavior change.

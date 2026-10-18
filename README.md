@@ -14,11 +14,25 @@ server-rendered fallback, with a sample tree you can explore without an account.
 **Try it:** [open the sample tree](https://kinfolk-neon.vercel.app/demo). No sign-in needed; the
 sample data is read-only.
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FSagargupta16%2Fkinfolk&project-name=kinfolk&repository-name=kinfolk&env=AUTH_SECRET%2CAUTH_GITHUB_ID%2CAUTH_GITHUB_SECRET&envDescription=A%20random%20AUTH_SECRET%20and%20a%20GitHub%20OAuth%20app.%20The%20Neon%20integration%20supplies%20DATABASE_URL.&envLink=https%3A%2F%2Fgithub.com%2FSagargupta16%2Fkinfolk%2Fblob%2Fmain%2Fdocs%2FSELF-HOSTING.md&demo-title=Kinfolk&demo-description=Collaborative%20family%20graph%3A%20each%20relative%20keeps%20their%20own%20tree%2C%20consent%20links%20join%20them.&demo-url=https%3A%2F%2Fkinfolk-neon.vercel.app%2Fdemo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
+Run your own copy with a private Neon database: [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
+
+![The sample family on the Tree view: three generations of cards with kinship labels, joined at union dots](docs/screenshots/tree-desktop-dark.webp)
+
+| Person profile | People directory | Phone |
+| --- | --- | --- |
+| ![April Fortin's profile panel open beside the tree, listing her parents and marriages](docs/screenshots/person-desktop-dark.webp) | ![The People directory: a searchable list with kinship and birth years](docs/screenshots/people-desktop-dark.webp) | ![The tree on a phone, with Sophie Fortin's profile as a bottom sheet](docs/screenshots/person-phone-dark.webp) |
+
+Screenshots are the live sample tree, captured by `pnpm screenshots` (Playwright). A light
+theme [is available too](docs/screenshots/tree-desktop-light.webp).
+
 Version **0.4.0** has been live since **2026-09-10**. It added a simpler family workspace,
 consent-based record linking, private contact editing, and stronger safeguards for family
 changes and deployment verification. **0.4.1** is a dependency and documentation refresh.
 The [review and verification report](docs/verification-0.4.0.md) records the 0.4.0 fixes,
 74 passing regression cases, and browser checks.
+**0.5.0** adds screenshots, link previews, a Deploy button with a self-hosting guide, and a
+layout benchmark; see the [changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -38,6 +52,9 @@ social rather than visual:
 It is also a contact graph, not only a pedigree. Anyone can be a node -- a friend, a
 colleague, a neighbour -- and a friendship carries no generation, so it must never reach
 the layout engine.
+
+The long version, with the schema, the union-find that fuses trees, and why the layout
+libraries were ruled out: [A family tree is not a tree](docs/a-family-tree-is-not-a-tree.md).
 
 ## Interface
 
@@ -113,6 +130,25 @@ Key decisions:
   `db:push`), then waits until Vercel serves the exact commit and `/api/health` reports the
   schema ready.
 
+## Layout performance
+
+`pnpm bench:layout` times the full layout (ELK plus Kinfolk's pedigree passes) on the
+sample tree and on seeded generated families, in Node, on the same code path the browser
+runs. One run on an Intel i9-14900HX laptop, Node 26.10, median of 7 timed runs after 2
+warm-ups:
+
+| Graph | Nodes (people + unions) | Layout edges | Median | Fastest |
+| --- | ---: | ---: | ---: | ---: |
+| sample tree, 117 people | 151 | 150 | 281 ms | 271 ms |
+| generated, 50 people | 60 | 59 | 62 ms | 49 ms |
+| generated, 200 people | 243 | 242 | 452 ms | 436 ms |
+| generated, 1000 people | 1232 | 1231 | 23440 ms | 17261 ms |
+
+Family-sized trees lay out in well under a second. At 1,000 people the cost is almost all
+ELK's own layered layout, and because it runs on the main thread the canvas freezes until
+it returns; moving ELK into a Web Worker is the planned fix. Timings vary between runs on
+a busy machine, so compare sizes within one run rather than across runs.
+
 ## Local dev
 
 ```bash
@@ -154,6 +190,10 @@ The regression suite uses synthetic records and an in-memory PGlite database run
 the committed migrations. It covers OAuth state, exact dates, family roles, authorization,
 atomic writes, record-link consent, contacts, and deployment probes. It needs no Neon
 credentials and makes no production writes.
+
+`pnpm screenshots` recaptures the README images and the Open Graph cards with Playwright
+(run `pnpm exec playwright install chromium` once first), and `pnpm bench:layout` reruns
+the layout benchmark above.
 
 ## Data model
 
