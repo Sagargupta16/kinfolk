@@ -114,11 +114,13 @@ After ELK runs, Kinfolk's own passes keep each couple adjacent, group siblings u
 parents' union, and centre the union dot over its children.
 
 ELK is also where the cost is. With [scripts/bench-layout.mts](../scripts/bench-layout.mts)
-(`pnpm bench:layout`), a generated 200-person family lays out in 452 ms, but 1,000 people
-take 23.4 seconds: the median of 7 runs, on an Intel i9-14900HX laptop under Node 26. A
-temporary timer around `elk.layout()` showed Kinfolk's own passes take under 0.6 s of
-that; the rest is ELK. The layout runs on the main thread today, so a tree that size
-freezes the page until ELK returns. Moving it into a Web Worker is the next step.
+(`pnpm bench:layout`), a generated 200-person family lays out in about a quarter of a
+second, but 1,000 people take 8.8 to 9.8 seconds: the range of the median of 7 runs over
+three back-to-back runs, on an Intel i9-14900HX laptop under Node 26. The same script
+times `elk.layout()` on its own, and Kinfolk's own passes are about 30 ms of that; the
+rest, 97% or more at every size, is ELK. The layout runs on the main thread today, so a
+tree that size freezes the page until ELK returns. Moving it into a Web Worker is the
+next step.
 
 ## Fuzzy data is data
 

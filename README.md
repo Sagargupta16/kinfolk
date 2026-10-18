@@ -134,20 +134,23 @@ Key decisions:
 
 `pnpm bench:layout` times the full layout (ELK plus Kinfolk's pedigree passes) on the
 sample tree and on seeded generated families, in Node, on the same code path the browser
-runs. One run on an Intel i9-14900HX laptop, Node 26.10, median of 7 timed runs after 2
-warm-ups:
+runs. It also times `elk.layout()` on its own, so the last two columns split the total
+between ELK and Kinfolk's passes. One run on an Intel i9-14900HX laptop, Node 26.10,
+median of 7 timed runs after 2 warm-ups:
 
-| Graph | Nodes (people + unions) | Layout edges | Median | Fastest |
-| --- | ---: | ---: | ---: | ---: |
-| sample tree, 117 people | 151 | 150 | 281 ms | 271 ms |
-| generated, 50 people | 60 | 59 | 62 ms | 49 ms |
-| generated, 200 people | 243 | 242 | 452 ms | 436 ms |
-| generated, 1000 people | 1232 | 1231 | 23440 ms | 17261 ms |
+| Graph | Nodes (people + unions) | Layout edges | Median | Fastest | ELK share | Kinfolk passes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sample tree, 117 people | 151 | 150 | 140 ms | 122 ms | 99% | 2 ms |
+| generated, 50 people | 60 | 59 | 38 ms | 37 ms | 98% | 1 ms |
+| generated, 200 people | 243 | 242 | 232 ms | 201 ms | 99% | 3 ms |
+| generated, 1000 people | 1232 | 1231 | 8781 ms | 7556 ms | 100% | 32 ms |
 
-Family-sized trees lay out in well under a second. At 1,000 people the cost is almost all
-ELK's own layered layout, and because it runs on the main thread the canvas freezes until
-it returns; moving ELK into a Web Worker is the planned fix. Timings vary between runs on
-a busy machine, so compare sizes within one run rather than across runs.
+Three back-to-back runs on that machine gave 1,000-person medians of 8781, 9500 and
+9752 ms, and the absolute numbers move with whatever else the machine is doing, so read
+them as an order of magnitude and compare sizes within one run. Family-sized trees lay
+out in well under a second. At every size ELK's layered layout is 97% or more of the
+time, and because it runs on the main thread the canvas freezes until it returns; moving
+ELK into a Web Worker is the planned fix.
 
 ## Local dev
 

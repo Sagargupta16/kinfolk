@@ -32,10 +32,12 @@ schema, API or canvas behavior change.
   the one-time `pnpm db:migrate`, the `/api/health` check, and which workflows a copy should
   configure or disable.
 - `pnpm bench:layout` (`scripts/bench-layout.mts`) times the full layout on the sample and on
-  seeded generated families. On an i9-14900HX laptop under Node 26.10: 281 ms for the
-  117-person sample, 452 ms for 200 people and 23,440 ms for 1,000 people (medians of 7).
-  A temporary timer showed ELK's own layout call is nearly all of it, which makes moving
-  ELK into a Web Worker the next performance fix.
+  seeded generated families, and times `elk.layout()` on its own to split the total. On an
+  i9-14900HX laptop under Node 26.10, three back-to-back runs gave medians of 138 to 188 ms
+  for the 117-person sample, 232 to 291 ms for 200 people and 8,781 to 9,752 ms for 1,000
+  people (7 timed runs each). ELK is 97% or more of the time at every size; Kinfolk's own
+  passes take 26 to 32 ms at 1,000 people. That makes moving ELK into a Web Worker the next
+  performance fix.
 - [A family tree is not a tree](docs/a-family-tree-is-not-a-tree.md), a write-up of the union
   data model, consent links fused by union-find at read time, and the layout library choice.
 
