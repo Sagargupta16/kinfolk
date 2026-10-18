@@ -1,6 +1,6 @@
 {
 	"name": "kinfolk-frontend",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"private": true,
 	"license": "MIT",
 	"type": "module",
@@ -20,20 +20,20 @@
 	},
 	"//": "Versions are pinned to the root package.json on purpose. The components are shared by alias, so two copies of React or React Flow at different versions would be resolved differently by the two builds -- and a hook mismatch surfaces as an inscrutable runtime error rather than an install failure.",
 	"dependencies": {
-		"@xyflow/react": "^12.11.2",
+		"@xyflow/react": "^12.12.0",
 		"elkjs": "^0.12.0",
-		"lucide-react": "^1.29.0",
+		"lucide-react": "^1.59.0",
 		"motion": "^13.0.0",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8"
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "^4.3.3",
-		"@types/react": "^19.2.18",
-		"@types/react-dom": "^19.2.4",
-		"@vitejs/plugin-react": "^6.0.5",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^6.1.2",
 		"tailwindcss": "^4.3.3",
 		"typescript": "^7.0.2",
-		"vite": "^8.2.1"
+		"vite": "^8.3.4"
 	}
 }
