@@ -77,6 +77,11 @@ table from its output. `pnpm screenshots` recaptures the README images in
 `frontend/public/og-image.png`) from the live Pages app, or from `--base <url>`; rerun it
 after a visible UI change.
 
+The README's architecture and release diagrams are orrery specs in `docs/diagrams/*.yaml`,
+with `evidence:` pointing at the files they come from. After a hosting, auth or workflow
+change, update the spec, run `orrery verify` and `orrery validate --strict` on it, and
+re-render both SVGs with the command in its header.
+
 ## Database
 
 Production was recorded as Postgres 17 on 2026-08-08. Schema changes are committed as ordered Drizzle migrations and applied by the deployment workflow. The repository contains five migrations, `0000` through `0004`; 0.4.0 adds no migration.

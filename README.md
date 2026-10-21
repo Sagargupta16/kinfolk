@@ -96,20 +96,13 @@ before swapping any of it out.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    browser([Browser])
-    pages["GitHub Pages<br/>Vite SPA"]
-    vercel["Vercel<br/>Next.js API + server-rendered fallback"]
-    github["GitHub OAuth"]
-    neon[("Neon Postgres")]
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/architecture-light.svg">
+  <img width="880" src="docs/diagrams/architecture-light.svg" alt="Kinfolk architecture. A browser loads the Vite SPA from GitHub Pages and calls the Next.js JSON API on Vercel in region sin1 with a bearer token, or uses the server-rendered Next.js fallback (pages, server actions and Auth.js) with an httpOnly cookie. The browser goes to GitHub OAuth to authorize; the Vercel app exchanges the code with GitHub and reads and writes Neon Postgres through Drizzle over HTTP.">
+</picture>
 
-    browser -- "static app" --> pages
-    browser -- "JSON API, bearer token<br/>CORS allow list" --> vercel
-    browser -. "fallback UI, httpOnly cookie" .-> vercel
-    vercel -- "code exchange" --> github
-    vercel -- "Drizzle over HTTP" --> neon
-```
+The spec behind the picture is [`docs/diagrams/architecture.yaml`](docs/diagrams/architecture.yaml), rendered with [orrery](https://github.com/Sagargupta16/orrery).
 
 Key decisions:
 
@@ -230,6 +223,14 @@ Vercel serves the API, OAuth exchange, database writes, and the server-rendered 
 [kinfolk-neon.vercel.app](https://kinfolk-neon.vercel.app/). The SPA keeps its bearer token
 in `sessionStorage`; the Vercel app keeps the stronger httpOnly-cookie flow available. This
 split is necessary because Pages cannot run Auth.js, query Neon, or execute server actions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/release-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/release-light.svg">
+  <img width="684" src="docs/diagrams/release-light.svg" alt="Kinfolk release. A push to main starts up to three independent paths. Vercel's Git integration builds every push and promotes it to Vercel production. deploy.yml runs when server paths change: it applies the committed SQL migrations to Neon, then waits until Vercel production reports /api/health ready on the same commit. pages.yml runs when UI paths change: it builds the SPA with the /kinfolk/ base and a 404.html shell, publishes it to the Pages site, and verifies the commit, a deep link and the assets. A nightly health workflow at 02:31 UTC probes both Vercel production and the Pages site.">
+</picture>
+
+The spec behind the picture is [`docs/diagrams/release.yaml`](docs/diagrams/release.yaml), rendered with [orrery](https://github.com/Sagargupta16/orrery).
 
 `/api/health` checks database connectivity and required schema columns, plus
 authentication configuration. Release probes require the expected

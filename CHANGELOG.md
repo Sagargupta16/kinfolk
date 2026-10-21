@@ -6,6 +6,26 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.5.1 -- 2026-10-21
+
+Architecture and release diagrams in the README. Documentation only; no schema, API or UI
+behavior change.
+
+### Documentation
+
+- The README's Architecture section shows an [orrery](https://github.com/Sagargupta16/orrery)
+  diagram in place of the Mermaid sketch: the browser, the Vite SPA on GitHub Pages, the
+  Next.js JSON API and server-rendered fallback on Vercel (sin1), GitHub OAuth and Neon, with
+  the bearer token and httpOnly cookie paths drawn separately. It covers everything the
+  Mermaid version showed.
+- The Deployment section gains a release diagram: a push to main starts the Vercel build,
+  `deploy.yml` (migrate Neon, then wait for the serving commit) and `pages.yml` (build,
+  publish and verify the SPA) independently, and `health.yml` probes both surfaces nightly.
+- Both specs live in `docs/diagrams/*.yaml` with `evidence:` on every node and edge;
+  `orrery verify` finds all 26 entries, `orrery validate --strict` reports 0 errors and 0
+  warnings, and `orrery review --width 880` scores 99.6 and 99.4 in both themes. Each
+  renders to a light and a dark SVG for the README's `<picture>` blocks.
+
 ## 0.5.0 -- 2026-10-18
 
 Showcase, link previews, a self-hosting path and the first measured layout numbers. No

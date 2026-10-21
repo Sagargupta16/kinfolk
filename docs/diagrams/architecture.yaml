@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Sagargupta16/orrery/main/skills/orrery/references/diagram.schema.json
+# Rendered with orrery (github.com/Sagargupta16/orrery):
+#   orrery render docs/diagrams/architecture.yaml -o docs/diagrams/architecture -f svg --theme both
+# Reviewed at README width: orrery review docs/diagrams/architecture.yaml --width 880
+title: Kinfolk architecture
+subtitle: A static SPA on GitHub Pages and a Next.js app on Vercel share one API and one Neon database
+direction: right
+layout: { aspect: "4:3" }
+legend:
+  dashed: Server-rendered fallback, no SPA
+
+groups:
+  pages: { type: box, label: GitHub Pages, evidence: .github/workflows/pages.yml:106 }
+  vercel: { type: box, label: "Vercel, sin1", evidence: vercel.json:6 }
+
+nodes:
+  browser: { icon: tabler:browser, label: Browser }
+  spa:
+    icon: logos:vite-icon
+    label: Vite SPA
+    note: "React 19, frontend/"
+    in: pages
+    evidence: frontend/src/api.ts:30#API_BASE
+  github:
+    icon: logos:github-icon
+    label: GitHub OAuth
+    note: the only sign-in provider
+    evidence: [auth.ts:41#GitHub, lib/tree/oauth-github.ts:70#TOKEN]
+  api:
+    icon: logos:nextjs-icon
+    label: Next.js JSON API
+    note: "app/api, CORS allow list"
+    in: vercel
+    evidence: app/api/tree/route.ts:62#viewerFromBearer
+  ssr:
+    icon: logos:nextjs-icon
+    label: Next.js fallback
+    note: "pages, server actions, Auth.js"
+    in: vercel
+    evidence: app/tree/page.tsx:32#sessionOrNull
+  neon:
+    icon: logos:neon-icon
+    label: Neon Postgres
+    note: trees, people, sessions
+    evidence: lib/db/client.ts:57#drizzle
+
+edges:
+  - browser -> spa: static bundle
+  - browser -> api: { label: "JSON, bearer token", evidence: frontend/src/api.ts:66#authHeaders }
+  - browser --> ssr: { label: httpOnly cookie, evidence: auth.ts:50#httpOnly }
+  - browser -> github: { label: authorize, evidence: frontend/src/auth.ts:53#authorize }
+  - vercel -> github: { label: code exchange, evidence: lib/tree/oauth-github.ts:70#TOKEN }
+  - vercel -> neon: { label: Drizzle over HTTP, evidence: lib/db/client.ts:42#neon }
