@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Sagargupta16/orrery/main/skills/orrery/references/diagram.schema.json
+# Rendered with orrery (github.com/Sagargupta16/orrery):
+#   orrery render docs/diagrams/release.yaml -o docs/diagrams/release -f svg --theme both
+# Reviewed at README width: orrery review docs/diagrams/release.yaml --width 880
+title: Kinfolk release
+subtitle: A push to main starts up to three independent paths; Vercel can promote before the migration finishes
+direction: down
+legend:
+  dashed: Probe, read-only
+
+groups:
+  vercelgit: { type: box, label: Vercel Git, evidence: vercel.json:4#buildCommand }
+  deploy: { type: box, label: deploy.yml, evidence: .github/workflows/deploy.yml:21#paths }
+  pages: { type: box, label: pages.yml, evidence: .github/workflows/pages.yml:22#paths }
+
+nodes:
+  push: { icon: github:git-commit, label: Push to main }
+  vbuild:
+    icon: logos:vercel-icon
+    label: Build and promote
+    note: pnpm build
+    in: vercelgit
+    evidence: scripts/vercel-ignore-build.sh:23#production
+  migrate:
+    icon: logos:drizzle-icon
+    label: Apply migrations
+    note: check, migrate, recheck
+    in: deploy
+    evidence: .github/workflows/deploy.yml:88#db:migrate
+  verify:
+    icon: tabler:list-check
+    label: Wait for the commit
+    note: /api/health ready
+    in: deploy
+    evidence: .github/workflows/deploy.yml:120#--api
+  build:
+    icon: logos:vite-icon
+    label: Build the SPA
+    note: "base /kinfolk/, 404.html shell"
+    in: pages
+    evidence: .github/workflows/pages.yml:91#GITHUB_PAGES
+  publish:
+    icon: github:rocket
+    label: Publish and verify
+    note: "commit, deep link, assets"
+    in: pages
+    evidence: [.github/workflows/pages.yml:106#frontend/dist, scripts/check-production.mts:87#checkSpa]
+  prod:
+    icon: logos:nextjs-icon
+    label: Vercel production
+    note: API and fallback
+    evidence: vercel.json:3#nextjs
+  neon:
+    icon: logos:neon-icon
+    label: Neon Postgres
+    evidence: .github/workflows/deploy.yml:94#DATABASE_URL
+  site:
+    icon: logos:vite-icon
+    label: Pages site
+    note: /kinfolk/ on sagargupta.online
+    evidence: package.json:11#homepage
+  health:
+    icon: tabler:clock
+    label: Nightly health
+    note: "health.yml, 02:31 UTC"
+    evidence: .github/workflows/health.yml:12#cron
+
+edges:
+  - push -> vbuild: every push
+  - push -> migrate: server paths
+  - push -> build: UI paths
+  - vbuild -> prod: promote
+  - migrate -> neon: committed SQL
+  - migrate -> verify
+  - verify --> prod: same sha
+  - build -> publish
+  - publish -> site: deploy-pages
+  # Written in layout order with the arrow flipped, so the nightly probe sits under what it checks.
+  - { from: [prod, site], to: health, arrow: start, line: dashed }
