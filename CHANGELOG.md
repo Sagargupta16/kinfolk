@@ -6,6 +6,21 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.5.2 -- 2026-10-23
+
+The README diagrams redrawn with orrery 0.12.0's 64 px icons. Documentation only; no schema,
+API or UI behavior change.
+
+### Documentation
+
+- `docs/diagrams/architecture-*.svg` and `docs/diagrams/release-*.svg` are re-rendered with
+  orrery 0.12.0, which draws icon tiles at 64 px instead of 48. The architecture spec is
+  unchanged (909 x 789, `orrery review --width 880` scores 99.6).
+- The release spec gains `layout: { spacing: compact }`: with the bigger tiles it had grown to
+  652 x 1279, and the compact gaps bring it back to 628 x 1165 (score 99.3, up from 99.2 with
+  normal gaps). Nodes, edges and labels are unchanged; `orrery verify` still finds all 13
+  evidence entries. The README's release `<img>` width follows the new canvas (684 to 628).
+
 ## 0.5.1 -- 2026-10-21
 
 Architecture and release diagrams in the README. Documentation only; no schema, API or UI

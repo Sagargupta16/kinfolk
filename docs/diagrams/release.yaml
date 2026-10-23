@@ -5,6 +5,7 @@
 title: Kinfolk release
 subtitle: A push to main starts up to three independent paths; Vercel can promote before the migration finishes
 direction: down
+layout: { spacing: compact }
 legend:
   dashed: Probe, read-only
 

@@ -227,7 +227,7 @@ split is necessary because Pages cannot run Auth.js, query Neon, or execute serv
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/release-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/release-light.svg">
-  <img width="684" src="docs/diagrams/release-light.svg" alt="Kinfolk release. A push to main starts up to three independent paths. Vercel's Git integration builds every push and promotes it to Vercel production. deploy.yml runs when server paths change: it applies the committed SQL migrations to Neon, then waits until Vercel production reports /api/health ready on the same commit. pages.yml runs when UI paths change: it builds the SPA with the /kinfolk/ base and a 404.html shell, publishes it to the Pages site, and verifies the commit, a deep link and the assets. A nightly health workflow at 02:31 UTC probes both Vercel production and the Pages site.">
+  <img width="628" src="docs/diagrams/release-light.svg" alt="Kinfolk release. A push to main starts up to three independent paths. Vercel's Git integration builds every push and promotes it to Vercel production. deploy.yml runs when server paths change: it applies the committed SQL migrations to Neon, then waits until Vercel production reports /api/health ready on the same commit. pages.yml runs when UI paths change: it builds the SPA with the /kinfolk/ base and a 404.html shell, publishes it to the Pages site, and verifies the commit, a deep link and the assets. A nightly health workflow at 02:31 UTC probes both Vercel production and the Pages site.">
 </picture>
 
 The spec behind the picture is [`docs/diagrams/release.yaml`](docs/diagrams/release.yaml), rendered with [orrery](https://github.com/Sagargupta16/orrery).
