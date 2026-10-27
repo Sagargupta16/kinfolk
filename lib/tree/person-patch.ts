@@ -15,7 +15,7 @@
  * able to damage the other's fields.
  */
 import { livingStatusEnum, sexEnum } from "../db/schema";
-import { birthYearColumns } from "./kin-plan";
+import { birthYearColumns, splitName } from "./kin-plan";
 
 /** Free-text columns a form may edit. Order is documentation, not behaviour. */
 const TEXT_FIELDS = [
@@ -88,6 +88,21 @@ export function buildPersonPatch(form: FormData): PersonPatchResult {
 
 	for (const key of TEXT_FIELDS) {
 		if (form.has(key)) patch[key] = orNull(form.get(key));
+	}
+
+	/*
+	 * The canvas's single name field, split into the two columns.
+	 *
+	 * Posted only when the person actually retyped it, so an untouched name keeps whatever
+	 * split it was stored with ("Jan" / "van der Berg" would not survive a round trip through
+	 * the last-word rule). Unlike the free-text columns a blank here is refused rather than
+	 * written: erasing a name would leave a row the canvas can only call "Unknown".
+	 */
+	if (form.has("name")) {
+		const { givenName, familyName } = splitName(String(form.get("name") ?? ""));
+		if (!givenName && !familyName) return { ok: false, error: "A person needs a name." };
+		patch.givenName = givenName;
+		patch.familyName = familyName;
 	}
 
 	// Enums have a NOT NULL default, so a submitted blank resets to `unknown`. Invalid

@@ -9,30 +9,24 @@
  * geometry now lives in lib/tree/paths.ts, where it is unit-testable -- a corner that
  * inverts or a bracket that overshoots is arithmetic, not an appearance.
  *
- * Three routes, and the choice is the interesting part:
+ * Two routes in the pedigree, and that there are only two is the point:
  *
- *   1. A rounded elbow through the family's shared bar. The default, and what a pedigree
- *      is conventionally drawn as.
- *   2. A vertical-tangent curve, when the family is too wide for a bracket to read. The
- *      sample tree had one bar running 6013px against a 200px median: a horizontal line
- *      crossing the whole canvas is a rule, not a bracket, and no amount of corner
- *      rounding fixes that.
- *   3. A rounded elbow with no bar at all, for partner edges and single children.
+ *   1. A rounded elbow through the family's shared bar, for every family with two or more
+ *      children, however wide. What a pedigree is conventionally drawn as.
+ *   2. A rounded elbow with no bar, for partner edges and single children.
+ *
+ * There used to be a third: families wider than a span limit were drawn as fanning
+ * curves instead of a bracket. That made one canvas speak two dialects -- straight brackets
+ * here, curves there -- and the curves all left the same junction, so a wide family's
+ * children read as one merged bundle rather than as siblings. Every family now gets the
+ * same bracket, which is also the only shape that says WHICH children belong to whom.
  *
  * `pathLength={1}` on every path is load-bearing. It normalises each path's length so ONE
  * dasharray in globals.css drives the draw-on for every edge in the tree; without it a
  * short partner edge finishes drawing while a long cross-generation one is a third done.
  */
 import { BaseEdge, type EdgeProps, getSmoothStepPath, type Position } from "@xyflow/react";
-import {
-	bracketPath,
-	CORNER,
-	curvePath,
-	elbowPath,
-	MAX_BAR_SPAN,
-	orbitPath,
-	partnerPath,
-} from "@/lib/tree/paths";
+import { bracketPath, CORNER, elbowPath, orbitPath, partnerPath } from "@/lib/tree/paths";
 
 /** Set on child edges whose union has a sibling bar. See lib/tree/siblings.ts. */
 export type FamilyEdgeData = {
@@ -175,27 +169,6 @@ export function FamilyEdge({
 	 * couple's line vanished entirely. Check the FIELD that the branch actually needs.
 	 */
 	if (bar && typeof bar.barY === "number") {
-		const span = bar.barRight - bar.barLeft;
-
-		/*
-		 * A family too wide to bracket is drawn as curves instead.
-		 *
-		 * Each child gets its own line from the union dot, so the shape still says "these
-		 * came from here" -- but by convergence at the parent rather than by a shared
-		 * horizontal, which at this width the eye cannot take in as one mark. The curve keeps
-		 * vertical tangents so it still leaves the parent downward and arrives at the child
-		 * from above, which is the direction cue the orthogonal route gets from its geometry.
-		 */
-		if (span > MAX_BAR_SPAN) {
-			const path = curvePath(sx, sy, tx, ty);
-			return (
-				<>
-					<BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} pathLength={1} />
-					<Pulse path={path} />
-				</>
-			);
-		}
-
 		/*
 		 * The bracket is drawn by exactly ONE elected edge per family, and the drop lines by
 		 * all of them.

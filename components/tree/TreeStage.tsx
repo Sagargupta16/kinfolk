@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The canvas plus its chrome: detail level, search, legend, editor.
+ * The canvas plus its chrome: detail level, search, legend, feed.
  *
  * LOD is client state, deliberately unlike the combined and social-links toggles which
  * live in `searchParams`. Those change WHICH DATA is fetched, so a URL round trip is the
@@ -17,8 +17,6 @@
 import {
 	Activity,
 	GitBranch,
-	Link2,
-	Plus,
 	Rows3,
 	SlidersHorizontal,
 	Square,
@@ -30,10 +28,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
-import { editTarget } from "@/lib/tree/editable";
 import { familyFeed } from "@/lib/tree/feed";
 import {
-	displayName,
 	type FlowEdge,
 	type FlowNode,
 	type UnionWithChildren,
@@ -41,7 +37,6 @@ import {
 } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
-import { EditorPanel, type PickablePerson } from "./EditorPanel";
 import { useEscapeClose } from "./escape";
 import { FeedPanel } from "./FeedPanel";
 import { PeopleDirectory } from "./PeopleDirectory";
@@ -87,7 +82,7 @@ export function TreeStage({
 	/**
 	 * The graph this viewer may write to, or absent for a read-only canvas.
 	 *
-	 * Its absence hides the editor entirely -- a disabled Add button would advertise an
+	 * Its absence hides the `+` handles entirely -- a disabled control would advertise an
 	 * action that can never work here. The server re-checks anyway; this only decides
 	 * what to draw.
 	 */
@@ -99,7 +94,6 @@ export function TreeStage({
 	const [lod, setLod] = useState<Lod>("full");
 	const [screen, setScreen] = useState<"tree" | "people">("tree");
 	const [optionsOpen, setOptionsOpen] = useState(false);
-	const [editorOpen, setEditorOpen] = useState(false);
 	const optionsId = useId();
 	const optionsRef = useRef<HTMLDivElement>(null);
 	useEscapeClose(optionsOpen, () => setOptionsOpen(false));
@@ -128,7 +122,7 @@ export function TreeStage({
 	 *
 	 * This lives above TreeCanvas because changing detail level or arrangement remounts the
 	 * React Flow provider. A viewed person is navigation state, not a transient selection,
-	 * so cards, search, feed, breadcrumbs, editor and orbit all read this one id.
+	 * so cards, search, feed, breadcrumbs, the `+` handles and orbit all read this one id.
 	 */
 	const defaultViewedNode = useMemo(
 		() =>
@@ -200,53 +194,18 @@ export function TreeStage({
 		rememberViewed(next);
 		setViewedId(next?.id ?? null);
 	}, [defaultViewedNode, nodes, rememberViewed, viewedId]);
-	const picked = useMemo(() => {
-		const node = nodes.find(
-			(candidate) => candidate.type === "person" && candidate.id === viewedId,
-		);
-		return node?.type === "person" ? { id: node.id, name: displayName(node.data.primary) } : null;
-	}, [nodes, viewedId]);
-	const [quickAddRequest, setQuickAddRequest] = useState<{
-		id: string;
-		nonce: number;
-	} | null>(null);
-
 	/**
 	 * A list, because a merged person can carry a row in more than one graph the viewer
 	 * may write to. Today the view names one; the shape is right for when it names
 	 * several, and `editTarget` cannot then be the thing that gets it wrong.
 	 *
-	 * Memoised because the canvas's `openQuickAdd` closes over it and the LAYOUT effect
-	 * closes over that: a fresh array literal per render gave `openQuickAdd` a fresh
-	 * identity per render, and every click or panel toggle re-ran ELK and re-framed the
-	 * viewport for a graph that had not changed.
+	 * Memoised because the canvas derives its `+` handles from it: a fresh array literal per
+	 * render would recompute them on every click or panel toggle for a graph that had not
+	 * changed.
 	 */
 	const editableTreeIds = useMemo<readonly string[]>(
 		() => writableTreeIds ?? (editableTreeId ? [editableTreeId] : []),
 		[editableTreeId, writableTreeIds],
-	);
-	const selectedTarget = useMemo(() => {
-		const node = nodes.find((node) => node.type === "person" && node.id === viewedId);
-		return node?.type === "person" ? editTarget(node.data, editableTreeIds) : null;
-	}, [nodes, viewedId, editableTreeIds]);
-	const editorTreeId = selectedTarget?.editable ? selectedTarget.treeId : editableTreeId;
-
-	/**
-	 * People the pickers can offer, derived from the nodes already on screen.
-	 *
-	 * Not a server round trip: these nodes are in memory, carry their names, and are
-	 * exactly the set a viewer can see. Only names are needed, never contact values.
-	 */
-	const pickable = useMemo<PickablePerson[]>(
-		() =>
-			nodes
-				.filter((node) => node.type === "person")
-				.flatMap((node) => {
-					const source = node.data.sources.find((row) => row.treeId === editorTreeId);
-					return source ? [{ id: source.id, name: displayName(source) }] : [];
-				})
-				.sort((a, b) => a.name.localeCompare(b.name)),
-		[nodes, editorTreeId],
 	);
 
 	// A fresh object per request, so searching the same name twice still travels. The
@@ -284,7 +243,7 @@ export function TreeStage({
 	const feedVisible = feedOpen && !detailOpen;
 
 	/**
-	 * Ask the canvas to close the person panel, same nonce contract as `quickAddRequest`.
+	 * Ask the canvas to close the person panel, through a nonce the canvas acknowledges.
 	 *
 	 * The detail panel and the feed share one rail, and `detailId` lives inside the
 	 * canvas -- so without this, pressing FEED while a person was open toggled state the
@@ -358,20 +317,6 @@ export function TreeStage({
 						/>
 					)}
 				</div>
-				{picked && selectedTarget?.editable && (
-					<button
-						type="button"
-						className="kf-add-button"
-						title={`Add a relative to ${picked.name}`}
-						onClick={() => {
-							setEditorOpen(false);
-							setQuickAddRequest({ id: picked.id, nonce: Date.now() });
-						}}
-					>
-						<Plus className="size-4" aria-hidden="true" />
-						Add relative
-					</button>
-				)}
 				<div ref={optionsRef} className="kf-view-options-anchor">
 					<button
 						type="button"
@@ -445,18 +390,6 @@ export function TreeStage({
 									</fieldset>
 								</section>
 								<section className="kf-options-actions">
-									{editableTreeId && (
-										<button
-											type="button"
-											onClick={() => {
-												setOptionsOpen(false);
-												setEditorOpen(true);
-											}}
-										>
-											<Link2 className="size-4" aria-hidden="true" />
-											Connect existing people
-										</button>
-									)}
 									<button
 										type="button"
 										onClick={() => {
@@ -496,8 +429,6 @@ export function TreeStage({
 					showRelations={showRelations}
 					onFocusSearch={onFocusSearch}
 					onDetailOpenChange={setDetailOpen}
-					quickAddRequest={quickAddRequest}
-					onQuickAddHandled={() => setQuickAddRequest(null)}
 					closeDetailRequest={closeDetailRequest}
 					onCloseDetailHandled={() => setCloseDetailRequest(null)}
 					directory={
@@ -512,15 +443,6 @@ export function TreeStage({
 							/>
 						) : undefined
 					}
-				/>
-				<EditorPanel
-					key={editorTreeId}
-					open={editorOpen}
-					onClose={() => setEditorOpen(false)}
-					people={pickable}
-					unions={editableUnions.filter((union) => union.treeId === editorTreeId)}
-					selectedId={selectedTarget?.editable ? selectedTarget.personId : null}
-					selectedName={picked?.name}
 				/>
 				<FeedPanel
 					open={feedVisible}

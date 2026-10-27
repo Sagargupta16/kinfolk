@@ -32,7 +32,8 @@ changes and deployment verification. **0.4.1** is a dependency and documentation
 The [review and verification report](docs/verification-0.4.0.md) records the 0.4.0 fixes,
 74 passing regression cases, and browser checks.
 **0.5.0** adds screenshots, link previews, a Deploy button with a self-hosting guide, and a
-layout benchmark; see the [changelog](CHANGELOG.md).
+layout benchmark. **0.6.0** adds relatives from `+` handles on the viewed card through one
+small sheet, and removes the add and connect forms; see the [changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -63,11 +64,13 @@ actions, and purposeful motion. Choose **Tree** for the family structure or **Pe
 for a searchable directory. Profiles separate **Family**, **About**, and **Contact**.
 Appearance includes a persistent Full/Reduced motion choice, with Full as the default.
 
-Select a person, then use **Add relative** to add a parent,
-partner, sibling, or child in context. **Options -> Connect existing people** adds
-connections between recorded people and attaches or detaches existing children with
-explicit parent roles. If two people are already immediate family or share another connection,
-Kinfolk requires a second confirmation. A connection can be removed from the person's
+The family grows from the cards themselves. The person you are viewing carries a **+**
+above their card for a parent, beside it for a partner, and below it for a child; a couple
+shares one **+** under the pair. Each opens the same small sheet: a name, an optional
+birth year, and two answers (Father or Mother, Husband or Wife, Son or Daughter), so the
+button you press records the relationship and the sex at once. Siblings are added as
+children of their parents, and a birth year orders siblings eldest first, so each
+generation reads as a timeline. A connection can be removed from the person's
 **Connections** section without deleting either person or changing structural family links.
 
 Contact values stay on a separate authorized page. **Share** manages invitations;
@@ -133,13 +136,13 @@ median of 7 timed runs after 2 warm-ups:
 
 | Graph | Nodes (people + unions) | Layout edges | Median | Fastest | ELK share | Kinfolk passes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample tree, 117 people | 151 | 150 | 140 ms | 122 ms | 99% | 2 ms |
-| generated, 50 people | 60 | 59 | 38 ms | 37 ms | 98% | 1 ms |
-| generated, 200 people | 243 | 242 | 232 ms | 201 ms | 99% | 3 ms |
-| generated, 1000 people | 1232 | 1231 | 8781 ms | 7556 ms | 100% | 32 ms |
+| sample tree, 117 people | 151 | 150 | 124 ms | 108 ms | 99% | 2 ms |
+| generated, 50 people | 60 | 59 | 32 ms | 30 ms | 98% | 1 ms |
+| generated, 200 people | 243 | 242 | 161 ms | 149 ms | 99% | 2 ms |
+| generated, 1000 people | 1232 | 1231 | 5706 ms | 5647 ms | 100% | 18 ms |
 
-Three back-to-back runs on that machine gave 1,000-person medians of 8781, 9500 and
-9752 ms, and the absolute numbers move with whatever else the machine is doing, so read
+Three back-to-back runs on that machine gave 1,000-person medians of 5706, 5732 and
+6290 ms, and the absolute numbers move with whatever else the machine is doing, so read
 them as an order of magnitude and compare sizes within one run. Family-sized trees lay
 out in well under a second. At every size ELK's layered layout is 97% or more of the
 time, and because it runs on the main thread the canvas freezes until it returns; moving
@@ -255,15 +258,15 @@ Kinfolk is available under the [MIT License](LICENSE).
 
 ## Status
 
-Live in production since 0.4.0 (2026-09-10): fusion across trees, the layered pedigree with
-sibling bars and generation bands, an orbit arrangement, kinship terms on every card,
-reveal-on-focus relations, light and dark themes, person cards,
-expand and collapse, the detail panel and family feed as responsive reading sheets,
-search, a People directory, view options, a census-driven legend, quick add by
-relationship, precise removal of non-structural connections, person editing, sign-in,
-sharing by invite, record-link proposals and consent, private contact editing, deletion
-of unclaimed records, attaching and detaching existing children with explicit parent roles,
-and demo mode.
+Live in production: fusion across trees, the layered pedigree with sibling bars and
+generation bands, an orbit arrangement, kinship terms on every card, reveal-on-focus
+relations, light and dark themes, person cards, expand and collapse, the detail panel and
+family feed as responsive reading sheets, search, a People directory, view options, a
+census-driven legend, adding relatives by relationship, precise removal of non-structural
+connections, person editing, sign-in, sharing by invite, record-link proposals and consent,
+private contact editing, deletion of unclaimed records, and demo mode. Most of this has
+been live since 0.4.0 (2026-09-10). 0.6.0 moves adding relatives onto `+` handles on the
+viewed card and removes the panel for connecting existing people; its server actions remain.
 
 Photo uploads still need an approved private-storage provider and authentication flow.
 Avatars use initials. Profiles linked to an account cannot be deleted; other deletion

@@ -46,9 +46,10 @@ import {
 	birthYearColumns,
 	type FamilyShape,
 	type KinRole,
-	placeholderName,
 	planKin,
+	ROLE_DIRECTION,
 	ROLE_SEX,
+	splitName,
 } from "./kin-plan";
 import { buildPersonPatch, oneOf } from "./person-patch";
 import { reservePeopleBudget } from "./rate-limit";
@@ -102,6 +103,18 @@ function orNull(value: FormDataEntryValue | null): string | null {
 	return text.length > 0 ? text : null;
 }
 
+/**
+ * The two name columns a form posted.
+ *
+ * The canvas posts ONE `name` field ("Paras Gupta"), split by `splitName` into given and
+ * family name. A caller that still posts the two columns separately is read as before, so
+ * the API keeps its older shape while the UI moves to the single field.
+ */
+function nameColumns(form: FormData): { givenName: string | null; familyName: string | null } {
+	if (form.has("name")) return splitName(String(form.get("name") ?? ""));
+	return { givenName: orNull(form.get("givenName")), familyName: orNull(form.get("familyName")) };
+}
+
 /* -------------------------------------------------------------------------- */
 /* People                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -120,8 +133,7 @@ export async function addPerson(form: FormData): Promise<Result> {
 	const treeId = String(form.get("treeId") ?? "");
 	if (!treeId) return { ok: false, error: "Which graph?" };
 
-	const givenName = orNull(form.get("givenName"));
-	const familyName = orNull(form.get("familyName"));
+	const { givenName, familyName } = nameColumns(form);
 	if (!givenName && !familyName) {
 		return { ok: false, error: "A person needs at least one name." };
 	}
@@ -703,7 +715,7 @@ export async function deleteContact(form: FormData): Promise<Result> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Add a relative by ROLE: "X's father", "three of X's children".
+ * Add a relative by ROLE: "X's father", "X and Y's daughter".
  *
  * One action instead of the three-step journey the primitives above require, and the
  * difference is not only convenience. Recording a father and then a mother through
@@ -711,6 +723,10 @@ export async function deleteContact(form: FormData): Promise<Result> {
  * the couple never appears -- a wrong shape that looks like a rendering bug. `planKin`
  * decides the structure from the role (see lib/tree/kin-plan.ts, where it is tested) and
  * this executes the plan.
+ *
+ * One named person per call. The name is REQUIRED, like `addPerson`: the canvas asks for a
+ * name and a role and nothing else, and a nameless row renders as "Unknown",
+ * indistinguishable from every other one on the canvas.
  *
  * Neon HTTP supports atomic batches, although its interactive `db.transaction()`
  * API is unavailable. All dependent writes below commit or roll back together.
@@ -724,8 +740,14 @@ export async function addRelative(form: FormData): Promise<Result> {
 	if (!subjectId) return { ok: false, error: "Which person?" };
 	if (!Object.hasOwn(ROLE_SEX, role)) return { ok: false, error: "Pick a relationship." };
 
-	const countRaw = Number(orNull(form.get("count")) ?? "1");
-	const count = Number.isFinite(countRaw) ? countRaw : 1;
+	const { givenName, familyName } = nameColumns(form);
+	if (!givenName && !familyName) return { ok: false, error: "Type their name first." };
+	// A tab still open on the previous version can post a batch. Refused out loud, because
+	// quietly adding one of the three people it asked for would report success for a lie.
+	const count = orNull(form.get("count"));
+	if (count !== null && Number(count) !== 1) {
+		return { ok: false, error: "Add one person at a time." };
+	}
 
 	try {
 		const treeId = await treeIdForEditablePerson(auth.userId, subjectId);
@@ -733,14 +755,9 @@ export async function addRelative(form: FormData): Promise<Result> {
 		await assertCanEditTree(auth.userId, treeId);
 
 		const family = await familyShape(subjectId, treeId);
-		const plan = planKin(family, role, count, orNull(form.get("unionId")));
+		const plan = planKin(family, role, orNull(form.get("unionId")));
 		if (plan.refusal) return { ok: false, error: plan.refusal };
-		if (plan.create.count === 0) return { ok: false, error: "Nothing to add." };
 
-		// A name is optional here, unlike `addPerson`: a batch is created precisely because
-		// nobody knows the names yet, so a numbered placeholder stands in until they do.
-		const givenName = orNull(form.get("givenName"));
-		const familyName = orNull(form.get("familyName"));
 		const living = oneOf(form.get("living"), livingStatusEnum.enumValues, "unknown");
 		if (!living.ok) return { ok: false, error: "Choose a valid living status." };
 		const birth = birthYearColumns(String(orNull(form.get("birthYear")) ?? ""));
@@ -765,51 +782,48 @@ export async function addRelative(form: FormData): Promise<Result> {
 			sex = postedSex.value;
 		}
 
-		// How many children the target union already holds, so a second batch numbers on from
-		// the first rather than producing two people called "Child 1".
-		const offset =
-			plan.attach === "child" && plan.union.kind === "existing"
-				? await childCount(plan.union.unionId)
-				: 0;
-
 		/*
 		 * How the couple is recorded, honoured only when this add CREATES the union.
 		 *
-		 * The field exists on the partner form because the canvas now draws the fact --
-		 * a solid bead for an intact partnership, the genogram double-slash for a
-		 * divorce. An EXISTING union's status is that union's record and not this
-		 * form's to overwrite, so `plan.union.kind === "existing"` ignores it. Parsed
-		 * from an allow-list for the same reason invite roles are: a form value is a
-		 * client value.
+		 * "Husband" and "wife" ARE the answer: the words say married, so the canvas asks
+		 * nothing more and the bead on the marriage line draws as an intact partnership. The
+		 * neutral `partner` role still reads a posted status for API callers. An EXISTING
+		 * union's status is that union's record and not this form's to overwrite, so
+		 * `plan.union.kind === "existing"` ignores it. Parsed from an allow-list for the
+		 * same reason invite roles are: a form value is a client value.
 		 */
 		let unionStatus: "married" | "partnered" | "unknown" = "unknown";
 		if (plan.union.kind === "create") {
-			const postedStatus = oneOf(
-				form.get("unionStatus"),
-				["married", "partnered", "unknown"] as const,
-				"unknown",
-			);
-			if (!postedStatus.ok) {
-				return { ok: false, error: "Choose a valid partnership status." };
+			if (role === "husband" || role === "wife") {
+				unionStatus = "married";
+			} else if (ROLE_DIRECTION[role] === "partner") {
+				const postedStatus = oneOf(
+					form.get("unionStatus"),
+					["married", "partnered", "unknown"] as const,
+					"unknown",
+				);
+				if (!postedStatus.ok) {
+					return { ok: false, error: "Choose a valid partnership status." };
+				}
+				unionStatus = postedStatus.value;
 			}
-			unionStatus = postedStatus.value;
 		}
 
-		const budget = await reservePeopleBudget(treeId, plan.create.count);
+		const budget = await reservePeopleBudget(treeId, 1);
 		if (!budget.ok) return budget;
 
-		const newPeople = Array.from({ length: plan.create.count }, (_, index) => ({
-			id: crypto.randomUUID(),
-			treeId,
-			givenName:
-				plan.create.count === 1 && givenName ? givenName : placeholderName(role, index, offset),
-			familyName,
-			sex,
-			living: living.value,
-			// A batch must not turn one supplied date into several people's birthday.
-			birthDate: plan.create.count === 1 ? birth.birthDate : null,
-			birthDateApprox: plan.create.count === 1 ? birth.birthDateApprox : null,
-		}));
+		const newPeople = [
+			{
+				id: crypto.randomUUID(),
+				treeId,
+				givenName,
+				familyName,
+				sex,
+				living: living.value,
+				birthDate: birth.birthDate,
+				birthDateApprox: birth.birthDateApprox,
+			},
+		];
 		const first = newPeople[0]?.id;
 		if (!first) return { ok: false, error: "Could not add that person." };
 		const insertPeople = db.insert(people).values(newPeople);
@@ -990,21 +1004,6 @@ async function familyShape(subjectId: string, treeId: string): Promise<FamilySha
 			childIds: [],
 		})),
 	};
-}
-
-/**
- * How many children a union already holds, for placeholder numbering.
- *
- * Counted in the database rather than read off the loaded `FamilyShape`: that shape carries
- * the unions the SUBJECT belongs to and does not enumerate their children, so trusting it
- * would silently return 0 and restart every batch at 1.
- */
-async function childCount(unionId: string): Promise<number> {
-	const rows = await db
-		.select({ childId: unionChildren.childId })
-		.from(unionChildren)
-		.where(eq(unionChildren.unionId, unionId));
-	return rows.length;
 }
 
 /**

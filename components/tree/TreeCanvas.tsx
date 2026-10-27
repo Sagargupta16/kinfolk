@@ -80,6 +80,7 @@ import {
 	type PositionedNode,
 } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
+import { type AddTarget, addSlots, nodeAffordances } from "@/lib/tree/node-add";
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
 import { collapseUnionEdges, radialLayout } from "@/lib/tree/radial";
 import { indexRelatives } from "@/lib/tree/relatives";
@@ -87,9 +88,9 @@ import { type SiblingBar, siblingBars } from "@/lib/tree/siblings";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
+import { NodeAddControls, NodeAddSheet } from "./NodeAdd";
 import { PersonDetail } from "./PersonDetail";
 import { PersonNode, UnionNode } from "./PersonNode";
-import { type FamilyCounts, QuickAddSheet } from "./QuickAdd";
 import { pushTrail, TreeBreadcrumbs } from "./TreeBreadcrumbs";
 import { TreeMinimap } from "./TreeMinimap";
 import { type ShortcutAction, ShortcutSheet, useShortcuts } from "./TreeShortcuts";
@@ -237,7 +238,7 @@ type Props = {
 	/** Tilts the CARDS into depth. Never the pane -- see the `.kf-depth` rules. */
 	depth?: boolean;
 	/**
-	 * Whether this viewer may write, which decides if the per-card `+` is drawn at all.
+	 * Whether this viewer may write, which decides if the `+` handles are drawn at all.
 	 *
 	 * A rendering hint only: `addRelative` re-checks permission server-side, because a value
 	 * that reached the client is a value the client can change.
@@ -266,7 +267,7 @@ type Props = {
 	 * effect -- `useNodesInitialized` flickering during a className rewrite is
 	 * enough -- replays the last navigation: close a panel after arriving from
 	 * search or the feed, and it reopens by itself. Same contract as
-	 * `onQuickAddHandled`.
+	 * `onCloseDetailHandled`.
 	 */
 	onGoToHandled?: () => void;
 	/** How connected each person is. Passed in because search ranks by it too. */
@@ -277,17 +278,12 @@ type Props = {
 	onFocusSearch?: () => void;
 	/** Called with whether the detail panel is open, so the stage can move its chrome. */
 	onDetailOpenChange?: (open: boolean) => void;
-	/** Opens relationship-first add for a selected fused person. */
-	quickAddRequest?: { id: string; nonce: number } | null;
-	/** Clears the request after the canvas has resolved its editable source row. */
-	onQuickAddHandled?: () => void;
 	/**
 	 * Ask for the person panel to close, from chrome that lives outside the canvas.
 	 *
-	 * The stage's feed shares the detail panel's rail but cannot see `detailId`; this is
-	 * the same request/acknowledge contract as `quickAddRequest`, and for the same
-	 * reason -- the canvas remounts when the detail level changes, and an
-	 * unacknowledged request would replay there.
+	 * The stage's feed shares the detail panel's rail but cannot see `detailId`; this is a
+	 * request/acknowledge contract because the canvas remounts when the detail level
+	 * changes, and an unacknowledged request would replay there.
 	 */
 	closeDetailRequest?: { nonce: number } | null;
 	/** Acknowledge a handled close, so the request cannot replay. */
@@ -316,8 +312,6 @@ function Canvas({
 	kinship,
 	onFocusSearch,
 	onDetailOpenChange,
-	quickAddRequest,
-	onQuickAddHandled,
 	closeDetailRequest,
 	onCloseDetailHandled,
 	directory,
@@ -372,7 +366,28 @@ function Canvas({
 	const framedEpoch = useRef(0);
 	// `getNodesBounds` from the hook, not the standalone export: the bare function has no
 	// node lookup, cannot handle sub-flows, and warns on every call.
-	const { fitView, getNodesBounds, getNodes, setCenter, getZoom, zoomIn, zoomOut } = useReactFlow();
+	const {
+		fitView,
+		getNodesBounds,
+		getNodes,
+		getViewport,
+		setCenter,
+		setViewport,
+		getZoom,
+		zoomIn,
+		zoomOut,
+	} = useReactFlow();
+	/**
+	 * Where the viewed card sat before an in-canvas write, so the layouts that follow keep it
+	 * still on screen instead of re-framing the tree.
+	 *
+	 * Every write ends in a relayout, and every layout used to be framed: a tree that fits ran
+	 * `fitView` and slid the `+` out from under the pointer, a larger one re-centred and threw
+	 * the viewer's pan away -- twice when the add also opened a fold. The next relative of a
+	 * family is added from the same card, so the card is what must not move. `until` bounds
+	 * the hold, so a write whose layout never lands cannot suppress framing for good.
+	 */
+	const writeAnchor = useRef<{ id: string; x: number; y: number; until: number } | null>(null);
 
 	// True only once React Flow has measured every node, which it cannot do while the
 	// container is 0x0 (hidden tab, pane not yet laid out). Framing on rAF instead would
@@ -483,22 +498,17 @@ function Canvas({
 	const [trail, setTrail] = useState<string[]>(() => (viewedId ? [viewedId] : []));
 	const [helpOpen, setHelpOpen] = useState(false);
 	/**
-	 * Whose quick-add sheet is open.
+	 * Which `+` was pressed: what it adds, for whom, and into which family.
 	 *
-	 * Holds the NAME as well as the id so the sheet can say whose relative it is adding
-	 * without looking the person back up -- a form headed "Add father" with no name attached
-	 * is how a father gets recorded against the wrong person. `family` carries what the
-	 * subject already has, so the picker can say "both parents recorded" instead of
-	 * offering a button that ends in a refusal.
+	 * The target carries the subject's NAME so the sheet can say whose relative it is adding
+	 * without looking the person back up -- a sheet headed "Add a parent" with no name attached
+	 * is how a father gets recorded against the wrong person.
 	 */
-	const [quickAdd, setQuickAdd] = useState<{
-		id: string;
-		name: string;
-		family: FamilyCounts;
-	} | null>(null);
-	/** Set when a `+` is pressed on a person no source row of which the viewer may edit. */
-	const [quickAddRefusal, setQuickAddRefusal] = useState<string | null>(null);
+	const [addTarget, setAddTarget] = useState<AddTarget | null>(null);
+	/** The source row just written, until the relayout that contains it can light it up. */
 	const [createdPersonId, setCreatedPersonId] = useState<string | null>(null);
+	/** The fused id of the card currently wearing the "just added" flash. */
+	const [newId, setNewId] = useState<string | null>(null);
 	const [savedName, setSavedName] = useState<string | null>(null);
 	useEffect(() => {
 		if (!savedName) return;
@@ -636,80 +646,49 @@ function Canvas({
 	}, []);
 
 	/**
-	 * Open quick-add against the SOURCE row this viewer may write to.
+	 * Every source row's name, sex and fused card, for the `+` handles.
 	 *
-	 * The `+` used to pass the fused id, which is the same defect the edit form had: the fused
-	 * id is the smallest member id, so on a person recorded by two families it belongs to the
-	 * other family about half the time -- and `addRelative` would refuse with "you do not have
-	 * permission to change this graph" about somebody's own grandmother. `editTarget` resolves
-	 * it; a genuine refusal is surfaced instead of a sheet that cannot save.
+	 * Keyed by SOURCE id because writes target source rows: a card shows a fused person whose
+	 * id is the smallest member id, which on a merged person is the far family's row about
+	 * half the time, so a `+` posting that id would be refused about somebody's own
+	 * grandmother. The fused id is kept alongside, to find the partner's card on screen.
 	 */
-	const openQuickAdd = useCallback(
-		(person: FusedPerson) => {
-			const target = editTarget(person, editableTreeIds);
-			if (!target.editable) {
-				setQuickAddRefusal(target.reason);
-				return;
+	const sourceIndex = useMemo(() => {
+		const index = new Map<
+			string,
+			{ name: string; sex: FusedPerson["primary"]["sex"]; fusedId: string }
+		>();
+		for (const node of sourceNodes) {
+			if (node.type !== "person") continue;
+			for (const source of node.data.sources) {
+				index.set(source.id, { name: displayName(source), sex: source.sex, fusedId: node.id });
 			}
+		}
+		return index;
+	}, [sourceNodes]);
 
-			// Choices must name writable SOURCE unions, not a fused union from another family.
-			const unions = (editableUnions ?? []).filter((union) => union.treeId === target.treeId);
-			const parentUnions = unions.filter((union) => union.childIds.includes(target.personId));
-			const own = unions.filter(
-				(union) => union.partnerAId === target.personId || union.partnerBId === target.personId,
-			);
-			const names = new Map(
-				sourceNodes.flatMap((node) =>
-					node.type === "person"
-						? node.data.sources.map((source) => [source.id, displayName(source)] as const)
-						: [],
-				),
-			);
-			const choice = (union: UnionWithChildren) => ({
-				id: union.id,
-				label: [
-					[union.partnerAId, union.partnerBId]
-						.flatMap((id) => (id && names.has(id) ? [names.get(id)] : []))
-						.join(" and ") || "Parents not yet recorded",
-					union.startDate?.slice(0, 4),
-					union.status !== "unknown" ? union.status : null,
-				]
-					.filter(Boolean)
-					.join(", "),
-				hasRoom: !union.partnerAId || !union.partnerBId,
-			});
-			const family: FamilyCounts = {
-				parents: new Set(
-					parentUnions.flatMap((union) => [union.partnerAId, union.partnerBId].filter(Boolean)),
-				).size,
-				partners: new Set(
-					own.flatMap((union) =>
-						[union.partnerAId, union.partnerBId].filter((id) => id && id !== target.personId),
-					),
-				).size,
-				children: new Set(own.flatMap((union) => union.childIds)).size,
-				siblings: new Set(
-					parentUnions.flatMap((union) => union.childIds.filter((id) => id !== target.personId)),
-				).size,
-				canAddParent:
-					parentUnions.length === 0 ||
-					parentUnions.some((union) => !union.partnerAId || !union.partnerBId),
-				parentUnions: parentUnions.map(choice),
-				ownUnions: own.map(choice),
-			};
-
-			setQuickAddRefusal(null);
-			setQuickAdd({ id: target.personId, name: displayName(person.primary), family });
-		},
-		[editableTreeIds, editableUnions, sourceNodes],
-	);
-
-	useEffect(() => {
-		if (!quickAddRequest) return;
-		const person = people.get(quickAddRequest.id);
-		if (person) openQuickAdd(person);
-		onQuickAddHandled?.();
-	}, [quickAddRequest, people, openQuickAdd, onQuickAddHandled]);
+	/**
+	 * What the viewed person can grow, or null when no `+` belongs on the canvas.
+	 *
+	 * Null on a read-only canvas, in the orbit (where "above" is not where a parent goes), at
+	 * the dot level (a `+` larger than the dot it belongs to), and for a person whose every
+	 * row belongs to another family -- a linked relative's record is theirs to edit.
+	 */
+	const affordances = useMemo(() => {
+		if (!canEdit || view === "orbit" || lod === "dot" || !viewedId) return null;
+		const person = people.get(viewedId);
+		if (!person) return null;
+		const target = editTarget(person, editableTreeIds);
+		if (!target.editable) return null;
+		const source = person.sources.find((row) => row.id === target.personId);
+		return nodeAffordances({
+			subjectId: target.personId,
+			subjectName: displayName(source ?? person.primary),
+			subjectSex: (source ?? person.primary).sex,
+			unions: (editableUnions ?? []).filter((union) => union.treeId === target.treeId),
+			people: sourceIndex,
+		});
+	}, [canEdit, view, lod, viewedId, people, editableTreeIds, editableUnions, sourceIndex]);
 
 	useEffect(() => {
 		if (!closeDetailRequest) return;
@@ -876,12 +855,6 @@ function Canvas({
 										},
 										hidden: hidden.get(node.id),
 										onFold: fold,
-										// Absent on a read-only canvas, which is what hides the `+` entirely
-										// rather than drawing one that cannot do anything.
-										onQuickAdd:
-											canEdit && editTarget(node.data, editableTreeIds).editable
-												? openQuickAdd
-												: undefined,
 									}
 								: node.data,
 						// Name, relationship and dates, which is what the card shows. Never a
@@ -1092,9 +1065,6 @@ function Canvas({
 		hidden,
 		collapsed,
 		fold,
-		canEdit,
-		editableTreeIds,
-		openQuickAdd,
 		attempt,
 		setNodes,
 		setFamilyEdges,
@@ -1159,6 +1129,48 @@ function Canvas({
 		void fitView({ padding: 1.6, duration: travelDuration(), nodes: [anchor], maxZoom: 1 });
 	}, [homeIds, lod, viewportWidth, viewportHeight, fitView, getNodes, getNodesBounds, setCenter]);
 
+	/**
+	 * The `+` handles, placed against the laid-out boxes.
+	 *
+	 * From `positionedRef` keyed on `layoutEpoch`, not from the React Flow node array: that
+	 * array takes a new identity on every hover (focus rewrites className), and these
+	 * positions only change when a layout lands. Empty while a layout is pending, so a handle
+	 * is never drawn against the previous layout's coordinates.
+	 */
+	const slots = useMemo(() => {
+		void layoutEpoch;
+		if (!affordances || !viewedId || phase !== "ready") return [];
+		const boxes = new Map(positionedRef.current.map((node) => [node.id, node]));
+		const toBox = (node: PositionedNode | undefined): Box | undefined =>
+			node
+				? { x: node.position.x, y: node.position.y, width: node.width, height: node.height }
+				: undefined;
+		const box = toBox(boxes.get(viewedId));
+		if (!box) return [];
+		// Free space beside the card, from EVERY laid-out person on its row -- including a
+		// spouse recorded only by a linked family, whom this tree's unions cannot see.
+		const free = { left: Number.POSITIVE_INFINITY, right: Number.POSITIVE_INFINITY };
+		for (const node of positionedRef.current) {
+			if (node.type !== "person" || node.id === viewedId) continue;
+			if (Math.abs(node.position.y - box.y) > 1) continue;
+			if (node.position.x + node.width <= box.x) {
+				free.left = Math.min(free.left, box.x - (node.position.x + node.width));
+			} else if (node.position.x >= box.x + box.width) {
+				free.right = Math.min(free.right, node.position.x - (box.x + box.width));
+			}
+		}
+		return addSlots(affordances, box, {
+			boxOf: (sourceId) => {
+				const fused = sourceIndex.get(sourceId)?.fusedId;
+				return fused ? toBox(boxes.get(fused)) : undefined;
+			},
+			junctionOf: (unionId) => toBox(boxes.get(`union:${unionId}`)),
+			free,
+			reach: Math.round(NODE_METRICS[lod].gap * 1.75) - 6,
+			rowGap: NODE_METRICS[lod].rowGap,
+		});
+	}, [affordances, viewedId, phase, layoutEpoch, sourceIndex, lod]);
+
 	const frameViewed = useCallback(() => {
 		const anchor = getNodes().find((node) => node.id === viewedId);
 		if (!anchor) {
@@ -1182,6 +1194,23 @@ function Canvas({
 		// viewer asks to be re-framed; nothing else should decide for them.
 		if (framedEpoch.current === layoutEpoch) return;
 		framedEpoch.current = layoutEpoch;
+
+		// After a write from the canvas: hold the viewed card where it was rather than framing.
+		const anchor = writeAnchor.current;
+		if (anchor && Date.now() < anchor.until) {
+			const moved = positionedRef.current.find((node) => node.id === anchor.id);
+			if (moved) {
+				const viewport = getViewport();
+				const dx = (moved.position.x - anchor.x) * viewport.zoom;
+				const dy = (moved.position.y - anchor.y) * viewport.zoom;
+				if (dx !== 0 || dy !== 0) {
+					void setViewport({ x: viewport.x - dx, y: viewport.y - dy, zoom: viewport.zoom });
+				}
+				writeAnchor.current = { ...anchor, x: moved.position.x, y: moved.position.y };
+			}
+			return;
+		}
+		writeAnchor.current = null;
 
 		const current = getNodes();
 		if (current.length === 0) return;
@@ -1227,6 +1256,8 @@ function Canvas({
 		fitView,
 		getNodesBounds,
 		getNodes,
+		getViewport,
+		setViewport,
 	]);
 
 	/**
@@ -1282,17 +1313,84 @@ function Canvas({
 		if (travelTo(goTo.id, { openDetail: true })) onGoToHandled?.();
 	}, [goTo, measured, layoutEpoch, travelTo, onGoToHandled]);
 
+	/*
+	 * Light up a person just added, once a layout that contains them has landed.
+	 *
+	 * The canvas deliberately does NOT travel to them. The `+` handles belong to the viewed
+	 * person, and a family is entered in runs -- "Narendra's children are Paras and Princi"
+	 * -- so staying on the subject keeps the next `+` exactly where the last one was. The
+	 * flash says where the new card went instead.
+	 *
+	 * Keyed on the laid-out set rather than on `people`: the refreshed data arrives before
+	 * ELK has placed it, and a flash applied to a card that is not on the canvas yet would
+	 * be wiped by the relayout that puts it there.
+	 */
 	useEffect(() => {
-		if (!createdPersonId || !measured || phase !== "ready") return;
+		if (!createdPersonId || phase !== "ready") return;
 		void layoutEpoch;
 		const added = [...people.values()].find((person) =>
 			person.sources.some((source) => source.id === createdPersonId),
 		);
-		if (added && travelTo(added.id, { openDetail: true })) {
-			setSavedName(displayName(added.primary));
-			setCreatedPersonId(null);
-		}
-	}, [createdPersonId, measured, phase, layoutEpoch, people, travelTo]);
+		if (!added || !positionedRef.current.some((node) => node.id === added.id)) return;
+		setCreatedPersonId(null);
+		setNewId(added.id);
+		// The framing effect, declared earlier, has already held the card for this layout.
+		writeAnchor.current = null;
+	}, [createdPersonId, phase, layoutEpoch, people]);
+
+	useEffect(() => {
+		if (!newId) return;
+		const timer = window.setTimeout(() => setNewId(null), 2400);
+		return () => window.clearTimeout(timer);
+	}, [newId]);
+
+	/*
+	 * A sheet belongs to the person whose `+` opened it, so selecting somebody else closes it.
+	 *
+	 * Left open it would still say whose relative it adds -- the heading names them -- but the
+	 * handles have moved to another card, and a sheet for one person beside the handles of
+	 * another is two subjects on screen at once. The id is read in the body because identity
+	 * change IS the trigger, the same pattern the detail panel uses.
+	 */
+	useEffect(() => {
+		void viewedId;
+		setAddTarget(null);
+	}, [viewedId]);
+
+	/**
+	 * Unfold whatever would hide the person just added.
+	 *
+	 * Adding a parent to somebody whose ancestors are folded, or a child or partner to somebody
+	 * whose descendants are, writes a real row and then draws nothing: the fold hides it, the
+	 * toast says it was added, and the canvas says it was not. Measured in the browser, that
+	 * read exactly as a failed save. Folding descendants blocks the unions a person partners
+	 * in, so a couple's child needs the PARTNER's fold opened too.
+	 */
+	const revealAdded = useCallback(
+		(target: AddTarget) => {
+			if (!viewedId) return;
+			if (target.direction === "parent") {
+				setCollapsed((current) =>
+					current.ancestors.has(viewedId)
+						? toggleCollapse(current, viewedId, "ancestors")
+						: current,
+				);
+				return;
+			}
+			const partnerSource = affordances?.couples.find(
+				(couple) => couple.unionId === target.unionId,
+			)?.partnerSourceId;
+			const partner = partnerSource ? sourceIndex.get(partnerSource)?.fusedId : undefined;
+			const owners = partner ? [viewedId, partner] : [viewedId];
+			setCollapsed((current) =>
+				owners.reduce(
+					(next, id) => (next.descendants.has(id) ? toggleCollapse(next, id, "descendants") : next),
+					current,
+				),
+			);
+		},
+		[viewedId, affordances, sourceIndex],
+	);
 
 	/**
 	 * Who lights up when somebody is focused. Traverses through union dots, so hovering a
@@ -1339,10 +1437,11 @@ function Canvas({
 				// marks the SUBJECT -- its relatives are already identified by the lines to it.
 				next = withFlag("kf-dim", next, Boolean(lit) && !lit?.nodeIds.has(node.id));
 				next = withFlag("kf-lit", next, node.id === revealedId);
+				next = withFlag("kf-new", next, node.id === newId);
 				return next === node.className ? node : { ...node, className: next };
 			}),
 		);
-	}, [lit, revealedId, depth, layoutEpoch, setNodes]);
+	}, [lit, revealedId, depth, newId, layoutEpoch, setNodes]);
 
 	/** Keep the durable viewed state explicit in card data, selection and the overview. */
 	useEffect(() => {
@@ -1487,6 +1586,12 @@ function Canvas({
 					// cards whose branches are off screen.
 					setCollapsed(NOTHING_COLLAPSED);
 					break;
+				case "add":
+					// The handles render in the viewport portal, AFTER every card in the DOM, so
+					// Tab alone reaches them only after all 117 people. This is the keyboard's way
+					// in; from the first handle, Tab walks the rest.
+					document.querySelector<HTMLButtonElement>(".kf-node-add")?.focus();
+					break;
 				case "theme": {
 					// Reads the LIVE attribute rather than component state, because the theme is
 					// owned by <html> and the header's own control writes it too. Anything else
@@ -1629,6 +1734,19 @@ function Canvas({
 				    Geometry stays here, since it is not a design token. */}
 					<Background variant={BackgroundVariant.Dots} gap={24} size={1} />
 					<GenerationRails bands={bands} />
+					<NodeAddControls
+						slots={slots}
+						card={{
+							...NODE_METRICS[lod],
+							pill: lod === "compact" ? 18 : 22,
+							// The household gap alignPedigreeRows packs with is 1.75x the level's gap;
+							// a few pixels short of it keeps a side target off the next card. Each slot
+							// narrows this further to the free space actually beside the card.
+							reach: Math.round(NODE_METRICS[lod].gap * 1.75) - 6,
+						}}
+						zoom={zoom}
+						onOpen={setAddTarget}
+					/>
 
 					{/*
 					 * Zoom buttons on a pointer device only.
@@ -1716,11 +1834,6 @@ function Canvas({
 				index={relativeIndex}
 				kinship={kinship}
 				editableTreeIds={editableTreeIds}
-				onAddRelative={
-					detailPerson && canEdit && editTarget(detailPerson, editableTreeIds).editable
-						? () => openQuickAdd(detailPerson)
-						: undefined
-				}
 				onCenter={detailPerson ? () => travelTo(detailPerson.id) : undefined}
 				// Re-read from the server rather than patching locally: the write happened there, so
 				// there is what knows the new graph -- and fusion, kinship and layout all derive
@@ -1733,23 +1846,31 @@ function Canvas({
 			/>
 
 			{/*
-			 * The quick-add sheet, mounted ONCE here rather than per card.
-			 *
-			 * 117 cards each holding their own form would be 117 forms in the DOM for one that
-			 * can be open, and every one of them would re-render on hover.
+			 * The add sheet, mounted ONCE here rather than per card.
 			 *
 			 * `router.refresh()` on success rather than a local mutation: the write happened on
 			 * the server, so the server is what knows the new graph -- and re-deriving fusion,
 			 * kinship and layout from a client-side guess is how the canvas and the database
 			 * start disagreeing.
 			 */}
-			<QuickAddSheet
-				subject={quickAdd}
-				onDone={(personId) => {
-					setCreatedPersonId(personId ?? null);
+			<NodeAddSheet
+				target={addTarget}
+				onDone={({ id, name }) => {
+					const held = positionedRef.current.find((node) => node.id === viewedId);
+					if (held && viewedId) {
+						writeAnchor.current = {
+							id: viewedId,
+							x: held.position.x,
+							y: held.position.y,
+							until: Date.now() + 8000,
+						};
+					}
+					if (addTarget) revealAdded(addTarget);
+					setSavedName(name);
+					setCreatedPersonId(id ?? null);
 					router.refresh();
 				}}
-				onClose={() => setQuickAdd(null)}
+				onClose={() => setAddTarget(null)}
 			/>
 			<AnimatePresence>
 				{savedName && (
@@ -1763,34 +1884,6 @@ function Canvas({
 					>
 						{savedName} is now part of your family tree.
 					</motion.p>
-				)}
-			</AnimatePresence>
-
-			{/*
-			 * Why a `+` did nothing, when it did nothing.
-			 *
-			 * `openQuickAdd` refuses a person no source row of which this viewer may write to --
-			 * a relative's own record, reached through an accepted link. Without this the button
-			 * would swallow the press silently, which reads as a broken control rather than as a
-			 * permission boundary. Dismissed by tapping it, since it is a notice and not a
-			 * decision.
-			 */}
-			<AnimatePresence>
-				{quickAddRefusal && (
-					<motion.button
-						type="button"
-						onClick={() => setQuickAddRefusal(null)}
-						initial={{ opacity: 0, y: 8 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: 8 }}
-						className={cn(
-							"kf-glass absolute bottom-4 left-1/2 z-50 max-w-[min(22rem,calc(100%-2rem))]",
-							"-translate-x-1/2 rounded-lg px-3 py-2 text-left text-[0.75rem] leading-snug",
-							"text-ink-muted",
-						)}
-					>
-						{quickAddRefusal}
-					</motion.button>
 				)}
 			</AnimatePresence>
 

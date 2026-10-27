@@ -104,6 +104,13 @@ export type GenerationBand = {
 	right: number;
 	/** How many people sit in this band. */
 	count: number;
+	/**
+	 * The recorded birth years in this generation, earliest to latest.
+	 *
+	 * What turns a stack of rows into a timeline: a birth year is optional, so this spans
+	 * only the people who have one, and is absent when nobody in the row does.
+	 */
+	years?: { from: number; to: number };
 };
 
 export type LayoutResult = {
@@ -393,7 +400,7 @@ function alignPedigreeRows(
 		 * 4 people and its midpoint landed on a man who is not their parents' child. A
 		 * sibling bracket is the mark that says "these are one family", so a stranger inside
 		 * its span makes it say something false -- and the inflated span is what pushed the
-		 * family past MAX_BAR_SPAN and lost the bracket entirely.
+		 * family past the bracket's old span limit, which drew it as curves instead.
 		 *
 		 * Grouping by parent union preserves ELK's relative order at both levels: sibling
 		 * blocks sort by their mean ELK x, and households within a block do too. So this is
@@ -433,11 +440,6 @@ function alignPedigreeRows(
 					})),
 			);
 
-		const originalLeft = Math.min(...ids.map((id) => preferredX.get(id) ?? 0));
-		const originalRight = Math.max(
-			...ids.map((id) => (preferredX.get(id) ?? 0) + (positions.get(id)?.width ?? metrics.width)),
-		);
-
 		const width = (group: { ids: string[] }): number =>
 			group.ids.reduce((sum, id) => sum + (positions.get(id)?.width ?? metrics.width), 0) +
 			Math.max(0, group.ids.length - 1) * partnerGap;
@@ -454,8 +456,9 @@ function alignPedigreeRows(
 		 * FLOOR, not a target, and the extra width belongs in the gaps between families where it
 		 * reinforces the grouping rather than fighting it.
 		 *
-		 * Households with no children keep their ELK offset relative to the row, so a childless
-		 * couple stays where the crossing-minimised order put them instead of collapsing left.
+		 * Households with no children keep their ELK offset from the nearest sibling who has
+		 * children (below), so a childless couple stays on the side the crossing-minimised order
+		 * put them instead of collapsing left.
 		 */
 		const desired = ordered.map((group) => {
 			const kids = [...(childrenOf.get(group.household) ?? [])]
@@ -469,30 +472,80 @@ function alignPedigreeRows(
 			return centre - width(group) / 2;
 		});
 
-		// Anchor for the childless: ELK's own x, shifted so the row as a whole sits under the
-		// families that do have children.
-		const anchoredIndices = desired.flatMap((x, index) => (x === null ? [] : [index]));
-		let drift = 0;
-		if (anchoredIndices.length > 0) {
-			let total = 0;
-			for (const index of anchoredIndices) {
-				const group = ordered[index];
-				const target = desired[index];
-				if (!group || target === null || target === undefined) continue;
-				total += target - (preferredX.get(group.ids[0] ?? "") ?? 0);
+		/*
+		 * A childless household keeps ELK's offset from its NEAREST anchored sibling.
+		 *
+		 * It used to take one row-wide average shift instead, while its married siblings were
+		 * moved to sit over their own children -- so a bachelor uncle and his married brother
+		 * could trade places, because the brother travelled further than the average. Measured
+		 * after siblings were ordered eldest first: every one of the sample tree's remaining
+		 * out-of-order pairs was a childless sibling beside a sibling with a family (Gabriel,
+		 * 1927, drawn right of Caleb, 1928). Measuring from the nearest sibling who moved keeps
+		 * the side ELK chose, and with it the birth order. A row with no anchored household at
+		 * all keeps ELK's x unchanged.
+		 */
+		const elkLeft = (group: { ids: string[] }) => preferredX.get(group.ids[0] ?? "") ?? 0;
+		const blockOf = (household: string) => parentUnionOf.get(household) ?? `solo:${household}`;
+		const anchored = ordered.flatMap((group, index) => {
+			const target = desired[index];
+			return target === null || target === undefined ? [] : [{ group, target }];
+		});
+
+		/*
+		 * A household with neither children nor recorded parents is UNATTACHED: nothing in
+		 * this row's pedigree places it. It goes to the end of the row, in ELK's order, rather
+		 * than being measured from whichever family happens to be nearest.
+		 *
+		 * Measured in the browser: a childless couple from a second, unlinked family wanted
+		 * x=214 against x=216 for the parents of the viewer's wife, took the slot between the
+		 * two sets of grandparents by two pixels, and pushed her parents out past it -- a long
+		 * elbow from the row's far end down to their daughter. An unattached household has no
+		 * line to keep short, so it costs nothing at the end and everything in the middle.
+		 */
+		const unattached = (group: { household: string }) =>
+			!childrenOf.has(group.household) && !parentUnionOf.has(group.household);
+
+		const wantedFor = new Map<string, number>();
+		for (const [index, group] of ordered.entries()) {
+			const target = desired[index];
+			if (target !== null && target !== undefined) {
+				wantedFor.set(group.household, target);
+				continue;
 			}
-			drift = total / anchoredIndices.length;
-		} else {
-			drift = (originalLeft + originalRight) / 2 - (originalLeft + originalRight) / 2;
+			if (unattached(group) && anchored.length > 0) continue;
+			const own = elkLeft(group);
+			const siblings = anchored.filter(
+				(candidate) => blockOf(candidate.group.household) === blockOf(group.household),
+			);
+			let nearest: (typeof anchored)[number] | undefined;
+			for (const candidate of siblings.length > 0 ? siblings : anchored) {
+				if (
+					!nearest ||
+					Math.abs(elkLeft(candidate.group) - own) < Math.abs(elkLeft(nearest.group) - own)
+				) {
+					nearest = candidate;
+				}
+			}
+			wantedFor.set(
+				group.household,
+				nearest ? nearest.target + (own - elkLeft(nearest.group)) : own,
+			);
 		}
 
-		const wantedFor = new Map(
-			ordered.map((group, index) => {
-				const target = desired[index];
-				if (target !== null && target !== undefined) return [group.household, target] as const;
-				return [group.household, (preferredX.get(group.ids[0] ?? "") ?? 0) + drift] as const;
+		// Second pass: the unattached, after every placed household, in ELK's own order.
+		let tail = Math.max(
+			-Infinity,
+			...ordered.flatMap((group) => {
+				const wanted = wantedFor.get(group.household);
+				return wanted === undefined ? [] : [wanted + width(group)];
 			}),
 		);
+		for (const group of [...ordered].sort((a, b) => elkLeft(a) - elkLeft(b))) {
+			if (wantedFor.has(group.household)) continue;
+			tail += siblingGroupGap;
+			wantedFor.set(group.household, tail);
+			tail += width(group);
+		}
 
 		/*
 		 * The row is RE-ORDERED to follow its children before any gap is enforced.
@@ -580,6 +633,135 @@ function alignPedigreeRows(
 	}
 }
 
+/** A person's birth year, from the exact date or the fuzzy text ("about 1890"). */
+export function birthYearOf(node: FlowNode): number | null {
+	if (node.type !== "person") return null;
+	const person = node.data.primary;
+	const match = /\d{4}/.exec(person.birthDate ?? person.birthDateApprox ?? "");
+	return match ? Number(match[0]) : null;
+}
+
+/**
+ * The order ELK reads nodes in: the family walked from its oldest households down, every
+ * set of siblings ELDEST FIRST.
+ *
+ * ELK keeps the model order wherever it does not cost a crossing (`considerModelOrder`), so
+ * the order it is handed IS the left-to-right reading of a generation. Handing it the raw
+ * row order meant siblings stood in the order somebody happened to type them -- measured,
+ * 28 of the sample tree's 48 adjacent sibling pairs were eldest-first, a coin toss. A birth
+ * year is optional, so it orders only where it exists: siblings with a year come first, by
+ * year, and the rest keep the order they were entered in.
+ *
+ * Depth-first rather than one global sort, because a generation is read FAMILY by family:
+ * sorting the whole row by birth year would interleave cousins from different households and
+ * hand ELK an order that every couple's own children contradict. Each household is emitted
+ * with its partners beside it, then its children in birth order, then theirs. A married-in
+ * spouse is never a root of their own -- their partner's parents are where they hang -- and
+ * anybody the walk cannot reach (a union with no recorded partners, a cycle) follows in their
+ * original order, so the result is always a permutation of the input.
+ */
+export function pedigreeOrder(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] {
+	const byId = new Map(nodes.map((node) => [node.id, node]));
+	const original = new Map(nodes.map((node, index) => [node.id, index]));
+	const byInput = (a: string, b: string) => (original.get(a) ?? 0) - (original.get(b) ?? 0);
+
+	const push = (map: Map<string, string[]>, key: string, value: string) => {
+		const list = map.get(key);
+		if (list) list.push(value);
+		else map.set(key, [value]);
+	};
+	const partnersOf = new Map<string, string[]>();
+	const childrenOf = new Map<string, string[]>();
+	const unionsOf = new Map<string, string[]>();
+	const direct = new Map<string, string[]>();
+	const hasParents = new Set<string>();
+	for (const edge of edges) {
+		if (!edge.layout) continue;
+		if (edge.kind === "partner") {
+			if (byId.get(edge.target)?.type === "union") {
+				push(partnersOf, edge.target, edge.source);
+				push(unionsOf, edge.source, edge.target);
+			} else {
+				push(direct, edge.source, edge.target);
+				push(direct, edge.target, edge.source);
+			}
+		} else if (edge.kind === "child") {
+			push(childrenOf, edge.source, edge.target);
+			hasParents.add(edge.target);
+		}
+	}
+
+	const yearOf = (id: string) => {
+		const node = byId.get(id);
+		return node ? birthYearOf(node) : null;
+	};
+	const eldestFirst = (ids: string[]) =>
+		[...ids].sort((a, b) => {
+			const ay = yearOf(a);
+			const by = yearOf(b);
+			if (ay !== null && by !== null && ay !== by) return ay - by;
+			if (ay !== null && by === null) return -1;
+			if (ay === null && by !== null) return 1;
+			return byInput(a, b);
+		});
+
+	const out: FlowNode[] = [];
+	const seen = new Set<string>();
+	const emit = (id: string) => {
+		if (seen.has(id)) return;
+		const node = byId.get(id);
+		if (!node) return;
+		seen.add(id);
+		out.push(node);
+	};
+	const partnersOfPerson = (id: string) => [
+		...(unionsOf.get(id) ?? []).flatMap((unionId) => partnersOf.get(unionId) ?? []),
+		...(direct.get(id) ?? []),
+	];
+
+	const visit = (id: string) => {
+		if (seen.has(id)) return;
+		const household = [
+			id,
+			...partnersOfPerson(id)
+				.filter((p) => p !== id)
+				.sort(byInput),
+		];
+		for (const member of household) emit(member);
+		for (const member of household) {
+			for (const unionId of [...(unionsOf.get(member) ?? [])].sort(byInput)) {
+				// A remarriage's other partner is emitted with the union they share.
+				for (const partner of partnersOf.get(unionId) ?? []) emit(partner);
+				emit(unionId);
+				for (const child of eldestFirst(childrenOf.get(unionId) ?? [])) visit(child);
+			}
+		}
+	};
+
+	// Entry points in input order: households nobody in which has recorded parents, and
+	// unions with no recorded partners (a bare sibling junction), whose children hang from
+	// nothing a person walk could reach.
+	const entries = nodes.filter((node) => {
+		if (node.type === "union") return (partnersOf.get(node.id) ?? []).length === 0;
+		if (hasParents.has(node.id)) return false;
+		return !partnersOfPerson(node.id).some((partner) => hasParents.has(partner));
+	});
+	for (const entry of entries) {
+		if (entry.type === "union") {
+			emit(entry.id);
+			for (const child of eldestFirst(childrenOf.get(entry.id) ?? [])) visit(child);
+		} else {
+			visit(entry.id);
+		}
+	}
+	for (const node of nodes) {
+		if (node.type === "person") visit(node.id);
+		else emit(node.id);
+	}
+
+	return out;
+}
+
 export async function layoutGraph(
 	nodes: FlowNode[],
 	edges: FlowEdge[],
@@ -591,6 +773,11 @@ export async function layoutGraph(
 	const elk = await loadElk();
 	const metrics = NODE_METRICS[lod];
 
+	// Model order for ELK only; positions are mapped back by id, so the caller's order is kept.
+	const ordered = pedigreeOrder(nodes, edges);
+	const rank = new Map(ordered.map((node, index) => [node.id, index]));
+	const at = (id: string) => rank.get(id) ?? Number.MAX_SAFE_INTEGER;
+
 	const graph = {
 		id: "root",
 		layoutOptions: {
@@ -599,8 +786,8 @@ export async function layoutGraph(
 			"elk.direction": "DOWN",
 			"elk.layered.spacing.nodeNodeBetweenLayers": String(metrics.rowGap),
 			"elk.spacing.nodeNode": String(metrics.gap),
-			// Keeps siblings in the order they were entered rather than reshuffling
-			// them on every reload.
+			// Keeps the model order -- `pedigreeOrder`, siblings eldest first -- wherever it
+			// costs no crossing, rather than reshuffling them on every reload.
 			"elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
 			"elk.layered.crossingMinimization.semiInteractive": "true",
 			"elk.edgeRouting": "ORTHOGONAL",
@@ -624,7 +811,7 @@ export async function layoutGraph(
 			// 420px of height in crossings and reads as a stack of unrelated rows.
 			"elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 		},
-		children: nodes.map((node) => ({
+		children: ordered.map((node) => ({
 			id: node.id,
 			width: node.type === "union" ? UNION_SIZE : metrics.width,
 			height: node.type === "union" ? UNION_SIZE : metrics.height,
@@ -633,8 +820,12 @@ export async function layoutGraph(
 		// generation, so including it here would pull that person into a lower
 		// layer and misrepresent the family. Those edges are drawn as an overlay
 		// on top of the family layout instead.
+		//
+		// Sorted into the same model order as the nodes: ELK reads edge order too, and a
+		// union's child edges in ENTRY order would argue against the birth order above.
 		edges: edges
 			.filter((edge) => edge.layout)
+			.sort((a, b) => at(a.source) - at(b.source) || at(a.target) - at(b.target))
 			.map((edge) => ({
 				id: edge.id,
 				sources: [edge.source],
@@ -690,14 +881,22 @@ function generationBands(nodes: PositionedNode[], personHeight: number): Generat
 
 	return [...rows.entries()]
 		.sort(([a], [b]) => a - b)
-		.map(([y, members]) => ({
-			y: y + personHeight / 2,
-			top: y,
-			bottom: y + Math.max(...members.map((m) => m.height)),
-			left: Math.min(...members.map((m) => m.position.x)),
-			right: Math.max(...members.map((m) => m.position.x + m.width)),
-			count: members.length,
-		}));
+		.map(([y, members]) => {
+			const years = members
+				.map((member) => birthYearOf(member))
+				.filter((year): year is number => year !== null);
+			return {
+				y: y + personHeight / 2,
+				top: y,
+				bottom: y + Math.max(...members.map((m) => m.height)),
+				left: Math.min(...members.map((m) => m.position.x)),
+				right: Math.max(...members.map((m) => m.position.x + m.width)),
+				count: members.length,
+				...(years.length > 0
+					? { years: { from: Math.min(...years), to: Math.max(...years) } }
+					: {}),
+			};
+		});
 }
 
 /**

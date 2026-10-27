@@ -120,7 +120,9 @@ describe("atomic family mutations", () => {
 			"ALTER TABLE union_children ADD CONSTRAINT reject_test_child CHECK (false) NOT VALID",
 		);
 		try {
-			await expect(addRelative(form({ subjectId: subject, role: "father" }))).rejects.toThrow();
+			await expect(
+				addRelative(form({ subjectId: subject, role: "father", name: "Father" })),
+			).rejects.toThrow();
 			expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(1);
 			expect((await engine.query("SELECT id FROM unions")).rows).toHaveLength(0);
 		} finally {
@@ -135,7 +137,7 @@ describe("atomic family mutations", () => {
 		controls.beforeBatch = async () => {
 			await engine.query("UPDATE unions SET partner_b_id = $1 WHERE id = $2", [parentB, familyId]);
 		};
-		const result = await addRelative(form({ subjectId: subject, role: "mother" }));
+		const result = await addRelative(form({ subjectId: subject, role: "mother", name: "Mother" }));
 		expect(result).toMatchObject({ ok: false, error: expect.stringContaining("family changed") });
 		expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(3);
 		expect((await engine.query("SELECT partner_b_id FROM unions")).rows).toEqual([
@@ -144,32 +146,70 @@ describe("atomic family mutations", () => {
 	});
 
 	it.each([
-		["father", "mother", 1],
-		["sibling", "sibling", 2],
-		["child", "child", 2],
+		["father", "mother"],
+		["sibling", "sibling"],
+		["son", "daughter"],
 	] as const)(
 		"does not split concurrent first %s additions into separate families",
-		async (role, competingRole, count) => {
+		async (role, competingRole) => {
 			const { engine, controls } = await testDatabase();
 			controls.beforeBatch = async () => {
 				expect(
-					await addRelative(
-						form({ subjectId: subject, role: competingRole, count: String(count) }),
-					),
+					await addRelative(form({ subjectId: subject, role: competingRole, name: "Competing" })),
 				).toMatchObject({ ok: true });
 			};
-			expect(
-				await addRelative(form({ subjectId: subject, role, count: String(count) })),
-			).toMatchObject({ ok: false, error: expect.stringContaining("family changed") });
+			expect(await addRelative(form({ subjectId: subject, role, name: "First" }))).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("family changed"),
+			});
 			expect((await engine.query("SELECT id FROM unions")).rows).toHaveLength(1);
-			expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(1 + count);
-			expect(
-				await addRelative(form({ subjectId: subject, role, count: String(count) })),
-			).toMatchObject({ ok: true });
+			expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(2);
+			expect(await addRelative(form({ subjectId: subject, role, name: "Retry" }))).toMatchObject({
+				ok: true,
+			});
 			expect((await engine.query("SELECT id FROM unions")).rows).toHaveLength(1);
-			expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(1 + 2 * count);
+			expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(3);
 		},
 	);
+
+	it("records a husband or wife as married and splits the one name field", async () => {
+		const result = await addRelative(
+			form({ subjectId: subject, role: "wife", name: "  Rachna  Devi Gupta ", birthYear: "1975" }),
+		);
+		expect(result).toMatchObject({ ok: true, id: expect.any(String) });
+		const { engine } = await testDatabase();
+		expect((await engine.query("SELECT status FROM unions")).rows).toEqual([{ status: "married" }]);
+		expect(
+			(
+				await engine.query(
+					"SELECT given_name, family_name, sex, birth_date_approx FROM people WHERE id = $1",
+					[result.ok ? result.id : ""],
+				)
+			).rows,
+		).toEqual([
+			{ given_name: "Rachna Devi", family_name: "Gupta", sex: "female", birth_date_approx: "1975" },
+		]);
+	});
+
+	it("refuses a batch from a previous version instead of adding one of its people", async () => {
+		expect(
+			await addRelative(form({ subjectId: subject, role: "son", name: "Batch", count: "3" })),
+		).toMatchObject({ ok: false, error: expect.stringContaining("one person") });
+		const { engine } = await testDatabase();
+		expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(1);
+	});
+
+	it("refuses a relative with no name and writes nothing", async () => {
+		expect(await addRelative(form({ subjectId: subject, role: "son", name: "   " }))).toMatchObject(
+			{
+				ok: false,
+				error: expect.stringContaining("name"),
+			},
+		);
+		const { engine } = await testDatabase();
+		expect((await engine.query("SELECT id FROM people")).rows).toHaveLength(1);
+		expect((await engine.query("SELECT id FROM unions")).rows).toHaveLength(0);
+	});
 
 	it("keeps a new childless partnership and its chosen status intact", async () => {
 		const result = await addRelative(

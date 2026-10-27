@@ -50,6 +50,14 @@ export function GenerationRails({ bands }: { bands: GenerationBand[] }) {
 						<span className="kf-rail__label">
 							<span className="kf-rail__numeral">{NUMERALS[index] ?? index + 1}</span>
 							{band.count}
+							{/* The generation as a span of time, from whoever has a birth year. */}
+							{band.years && (
+								<span className="kf-rail__years tabular">
+									{band.years.from === band.years.to
+										? `b. ${band.years.from}`
+										: `b. ${band.years.from}-${band.years.to}`}
+								</span>
+							)}
 						</span>
 					</div>
 				))}

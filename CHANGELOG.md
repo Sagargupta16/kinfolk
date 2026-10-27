@@ -6,6 +6,97 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.6.0 -- 2026-10-27
+
+The family is built from the canvas itself. No schema or migration change.
+
+### Changed
+
+- **Relatives are added from `+` handles on the viewed card.** A `+` above the card adds a
+  parent while a parent slot is free, a `+` beside it adds a partner on the side with no
+  partner already, and a `+` below it adds a child. A couple shares ONE `+` in the gutter
+  under the pair, on the drop line their child will hang from, instead of one under each
+  card. A person with a single-parent family keeps a `+` under their own card for it,
+  beside any couple's. The handles are drawn for the viewed person only, at the card and
+  row levels; the dot overview and the orbit stay read-only. Press `a` to jump to them from
+  the keyboard, since they sit after every card in the tab order.
+- **One minimal add sheet.** A name (required), an optional birth year, and two answers --
+  Father or Mother, Husband or Wife, Son or Daughter -- that are themselves the submit
+  buttons, so the press records the relationship and the sex at once. The recorded parent's
+  complement is offered first. Enter moves from name to year to the answers and never
+  saves, because the first answer would otherwise be chosen for whoever pressed Enter.
+  Husband and wife are recorded as married. When two families qualify (birth and adoptive
+  parents, two single-parent families) the sheet asks which with nothing pre-chosen, and
+  labels them by parents, parentage role and the children already in each.
+- **The canvas holds still after an add.** The viewed card stays at the same place on
+  screen through the relayout -- measured, a card at (469, 486) was still at (469, 486)
+  after its parent was added above it -- so the next `+` is where the last one was, and the
+  new card flashes once to show where it landed. A fold that would hide the new person is
+  opened, since a written but hidden relative read as a failed save.
+- **The edit form is four controls:** name, birth year, gender (male, female, other, not
+  known) and status (living, passed away, not known), plus delete. It posts only those keys,
+  so every other stored column is left alone, and it posts the name only when it was
+  retyped. Not known stays an answer, so a sex or status set by a canvas press can be
+  corrected back to unknown.
+- **One name field everywhere.** The add sheet, the edit form and the empty-family screen
+  take one name, split on its last word into given and family name ("Rakesh Kumar Gupta"
+  is Rakesh Kumar of the Guptas; a single word is a given name). The two columns are posted
+  alongside, so a page served before the API finishes deploying still saves the name the
+  previous API reads.
+- **Siblings stand eldest first.** The layout hands ELK a depth-first family order with each
+  set of siblings sorted by birth year; people without a year keep their entry order after
+  those with one. Eldest-first sibling pairs went 28/48 -> 47/48 on the sample tree,
+  16/29 -> 29/29 mine-only and 0/12 -> 12/12 on a family entered youngest first. The
+  generation rails print each row's birth-year span ("IV 44 b. 1952-1989").
+- **Every family draws the same bracket.** Families wider than 1600px used to fall back to
+  per-child curves -- 4 families and 15 child edges on the sample tree -- so the canvas mixed
+  straight brackets and fans, and the curves merged a wide family into one bundle. Now there
+  are 0 curve paths among the 150 family edges.
+- A childless sibling keeps ELK's offset from its nearest sibling with children, and a
+  household with neither parents nor children moves to the end of its row. The second fixes
+  an unlinked childless couple taking the slot between two sets of grandparents and pushing
+  one set away from its daughter.
+
+### Removed
+
+- The nine-role picker, the More-details form (surname, gender, living status, partnership
+  status), batches of numbered placeholder children, the toolbar and profile **Add
+  relative** buttons, and **Options -> Connect existing people**. The server actions behind
+  that panel stay on the action API. `addRelative` now requires a name and adds one person,
+  and refuses a batch from a tab still open on the previous version rather than quietly
+  adding one of the people it asked for.
+- Birth surname, nickname, death year, places, work, notes and source from the edit form;
+  their stored values are untouched.
+
+### Documentation
+
+- The README screenshots and both Open Graph cards are recaptured from this build's sample
+  tree with `pnpm screenshots --base`, so they show bracket connectors and siblings eldest
+  first. The five WebP files total 219 KiB, was 207.
+- The README layout benchmark is rerun on the new layout, same machine and Node 26.10. The
+  1,000-person median is 5706 ms, with back-to-back runs of 5732 and 6290 ms (the 0.5.0
+  table had 8781). ELK is still 98% or more of the time at every size.
+
+### Verification
+
+- Biome, both strict TypeScript projects, 88 Vitest cases, both production builds, the
+  dead-Tailwind guard, both dependency audits and `git diff --check` pass. New cases pin the
+  model order as a permutation with siblings eldest first, the family choices and their
+  distinct labels, the single-parent `+` beside a couple's, a partner `+` kept off an
+  occupied side, targets that never cross the generation gap or cover a fold pill, the one
+  name field, husband or wife as married, and refusals for a nameless add and a batch.
+- Headless Chromium, both frontends, 1440x900 and 375x812, dark and light (12 runs): demo
+  canvas 151 nodes and 150 edges in both, 0 bad paths, 0 curves, one stroke treatment at
+  rest, 0 card overlaps, 0 junctions on cards, no horizontal overflow, no console errors.
+- On an isolated in-memory database with a synthetic account: parents, partners and
+  children added by mouse and by touch, kinship read correctly for each ("daughter",
+  "father-in-law", "husband"), birth year reordering a child live, the edit form saving
+  name, year and status, and `+` targets 44x44 screen pixels at fit zoom on both card levels
+  with no fold chevron covered. Zoomed out to 0.52, 0.3 and 0.17, no card's centre is under a
+  `+` target: the targets shrink (25x27 at 0.3) rather than reach into the next row. A
+  two-family choice had nothing pre-checked, Enter on it saved nothing, and an answer
+  pressed without a family was blocked.
+
 ## 0.5.2 -- 2026-10-23
 
 The README diagrams redrawn with orrery 0.12.0's 64 px icons. Documentation only; no schema,

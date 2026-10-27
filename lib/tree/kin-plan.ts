@@ -19,18 +19,20 @@
 import type { Sex } from "../db/schema";
 
 /**
- * The roles a quick-add offers.
+ * The roles the action accepts.
  *
  * Gendered words where the data model can carry the implication, because "add father" is
  * what a person actually means and "add parent, then set sex to male" is the same act
- * spelled as two. `partner` and `sibling` stay neutral: the first because the term is
- * genuinely symmetric, the second because a sibling's sex is not implied by the word the
- * viewer clicked when they want a brother AND the neutral option to exist.
+ * spelled as two. The canvas offers only the gendered pairs -- father/mother above a card,
+ * husband/wife beside it, son/daughter below it -- so the button pressed IS the sex and no
+ * gender field is ever drawn. The neutral roles stay accepted for API callers.
  */
 export type KinRole =
 	| "father"
 	| "mother"
 	| "partner"
+	| "husband"
+	| "wife"
 	| "son"
 	| "daughter"
 	| "child"
@@ -50,6 +52,8 @@ export const ROLE_SEX: Record<KinRole, Sex> = {
 	father: "male",
 	mother: "female",
 	partner: "unknown",
+	husband: "male",
+	wife: "female",
 	son: "male",
 	daughter: "female",
 	child: "unknown",
@@ -65,6 +69,8 @@ export const ROLE_DIRECTION: Record<KinRole, KinDirection> = {
 	father: "parent",
 	mother: "parent",
 	partner: "partner",
+	husband: "partner",
+	wife: "partner",
 	son: "child",
 	daughter: "child",
 	child: "child",
@@ -97,8 +103,14 @@ export type FamilyShape = {
  * branch below is a rule about families, and none of them needs a connection to be tested.
  */
 export type KinPlan = {
-	/** How many people to create, and the sex each gets. */
-	create: { count: number; sex: Sex };
+	/**
+	 * The sex the ONE new person gets.
+	 *
+	 * One person per gesture, always. Batches ("five children") were removed with the name
+	 * becoming required: a batch existed precisely because nobody knew the names yet, and it
+	 * filled the canvas with numbered placeholders that each needed renaming later.
+	 */
+	sex: Sex;
 	/**
 	 * The union to attach to. `existing` when one already fits; `create` when the family
 	 * shape has no home for this role yet.
@@ -107,7 +119,7 @@ export type KinPlan = {
 		| { kind: "existing"; unionId: string }
 		| { kind: "create"; partnerAId: string | null; partnerBId: string | null }
 		| { kind: "none" };
-	/** Where the new people go relative to that union. */
+	/** Where the new person goes relative to that union. */
 	attach: "partner" | "child";
 	/** True when the SUBJECT must also be attached to a newly created union as a child. */
 	attachSubjectAsChild: boolean;
@@ -123,17 +135,9 @@ export type KinPlan = {
  * mother" produce one couple rather than two single parents. Everything else follows from
  * where a role sits relative to the subject.
  */
-export function planKin(
-	family: FamilyShape,
-	role: KinRole,
-	count = 1,
-	unionId?: string | null,
-): KinPlan {
+export function planKin(family: FamilyShape, role: KinRole, unionId?: string | null): KinPlan {
 	const direction = ROLE_DIRECTION[role];
 	const sex = ROLE_SEX[role];
-	// NaN slips through Math.max/Math.min unchanged, so a count parsed from an
-	// empty input would otherwise plan NaN people.
-	const people = Number.isFinite(count) ? Math.max(1, Math.min(Math.trunc(count), MAX_BATCH)) : 1;
 	const candidates =
 		direction === "child"
 			? family.ownUnions
@@ -151,7 +155,7 @@ export function planKin(
 				: null;
 	if (refusal) {
 		return {
-			create: { count: 0, sex },
+			sex,
 			union: { kind: "none" },
 			attach: direction === "parent" || direction === "partner" ? "partner" : "child",
 			attachSubjectAsChild: false,
@@ -170,29 +174,17 @@ export function planKin(
 			return planParent(chosenFamily, sex);
 		case "partner":
 			return {
-				// One partner at a time. A batch of partners is not a thing anybody means, and
-				// N unions from one gesture would be impossible to undo by hand.
-				create: { count: 1, sex },
+				sex,
 				union: { kind: "create", partnerAId: family.subjectId, partnerBId: null },
 				attach: "partner",
 				attachSubjectAsChild: false,
 			};
 		case "child":
-			return planChild(chosenFamily, sex, people);
+			return planChild(chosenFamily, sex);
 		case "sibling":
-			return planSibling(chosenFamily, sex, people);
+			return planSibling(chosenFamily, sex);
 	}
 }
-
-/**
- * How many people one gesture may create.
- *
- * A batch exists because "I have five children" is one fact, and entering it as five
- * separate add-a-child journeys is five times the work for no extra information. Capped
- * because past a handful the placeholders stop being a shortcut and become a mess somebody
- * has to clean up -- and an accidental 500 in the box would be unrecoverable by hand.
- */
-export const MAX_BATCH = 12;
 
 /**
  * A parent goes into the subject's EXISTING parent union whenever there is one with room.
@@ -214,7 +206,7 @@ function planParent(family: FamilyShape, sex: Sex): KinPlan {
 
 	if (withRoom) {
 		return {
-			create: { count: 1, sex },
+			sex,
 			union: { kind: "existing", unionId: withRoom.id },
 			attach: "partner",
 			attachSubjectAsChild: false,
@@ -223,7 +215,7 @@ function planParent(family: FamilyShape, sex: Sex): KinPlan {
 
 	if (family.parentUnions.length > 0) {
 		return {
-			create: { count: 0, sex },
+			sex,
 			union: { kind: "none" },
 			attach: "partner",
 			attachSubjectAsChild: false,
@@ -234,7 +226,7 @@ function planParent(family: FamilyShape, sex: Sex): KinPlan {
 	}
 
 	return {
-		create: { count: 1, sex },
+		sex,
 		union: { kind: "create", partnerAId: null, partnerBId: null },
 		attach: "partner",
 		attachSubjectAsChild: true,
@@ -250,12 +242,12 @@ function planParent(family: FamilyShape, sex: Sex): KinPlan {
  * partner columns are nullable precisely so a single parent still forms a union -- and it
  * is the honest shape when nobody has recorded the other parent.
  */
-function planChild(family: FamilyShape, sex: Sex, count: number): KinPlan {
+function planChild(family: FamilyShape, sex: Sex): KinPlan {
 	const existing = family.ownUnions[0];
 
 	if (existing) {
 		return {
-			create: { count, sex },
+			sex,
 			union: { kind: "existing", unionId: existing.id },
 			attach: "child",
 			attachSubjectAsChild: false,
@@ -263,7 +255,7 @@ function planChild(family: FamilyShape, sex: Sex, count: number): KinPlan {
 	}
 
 	return {
-		create: { count, sex },
+		sex,
 		union: { kind: "create", partnerAId: family.subjectId, partnerBId: null },
 		attach: "child",
 		attachSubjectAsChild: false,
@@ -278,14 +270,14 @@ function planChild(family: FamilyShape, sex: Sex, count: number): KinPlan {
  * parents, one is created with BOTH partners null and both children attached -- a union
  * with no partners is a bare junction, and the canvas already handles it, because a union
  * dot is dropped only once fewer than two of the nodes it joins remain (see the collapse
- * gotchas). Two siblings keep it at two.
+ * gotchas).
  */
-function planSibling(family: FamilyShape, sex: Sex, count: number): KinPlan {
+function planSibling(family: FamilyShape, sex: Sex): KinPlan {
 	const existing = family.parentUnions[0];
 
 	if (existing) {
 		return {
-			create: { count, sex },
+			sex,
 			union: { kind: "existing", unionId: existing.id },
 			attach: "child",
 			attachSubjectAsChild: false,
@@ -293,7 +285,7 @@ function planSibling(family: FamilyShape, sex: Sex, count: number): KinPlan {
 	}
 
 	return {
-		create: { count, sex },
+		sex,
 		union: { kind: "create", partnerAId: null, partnerBId: null },
 		attach: "child",
 		// The subject joins the new union too, or the "sibling" shares nothing with them.
@@ -354,28 +346,24 @@ export function birthYearColumns(input: string): {
 }
 
 /**
- * The name a placeholder gets.
+ * One typed name, split into the two columns the schema keeps.
  *
- * A batch of children is created before anybody knows their names, and `addPerson` rightly
- * refuses a person with no name at all -- a nameless row renders as "Unknown" and cannot be
- * told from any other. So a placeholder is NUMBERED against the role that made it, which
- * makes each one addressable ("Child 3") until it is filled in.
+ * The canvas asks for ONE name field, because "Paras Gupta" is how a relative is said and
+ * two boxes for one fact is the friction the node editor exists to remove. The split is the
+ * common convention: the last word is the family name, everything before it the given
+ * name -- "Mary Ann Smith" is Mary Ann of the Smiths, "Rakesh Kumar Gupta" is Rakesh Kumar.
+ * A single word is a given name alone, never a surname, so "Mini" stays findable as Mini.
  *
- * `offset` is how many the family already has, so a second batch does not restart at 1 and
- * produce two people called "Child 1".
+ * The display is unaffected either way: `displayName()` joins the two columns with a space,
+ * so the split only decides which half search and sorting treat as the surname. Whitespace
+ * is collapsed first, so a doubled space cannot produce an empty word.
  */
-export function placeholderName(role: KinRole, index: number, offset = 0): string {
-	const noun =
-		role === "son"
-			? "Son"
-			: role === "daughter"
-				? "Daughter"
-				: role === "brother"
-					? "Brother"
-					: role === "sister"
-						? "Sister"
-						: role === "sibling"
-							? "Sibling"
-							: "Child";
-	return `${noun} ${offset + index + 1}`;
+export function splitName(input: string): { givenName: string | null; familyName: string | null } {
+	const words = input.trim().split(/\s+/).filter(Boolean);
+	if (words.length === 0) return { givenName: null, familyName: null };
+	if (words.length === 1) return { givenName: words[0] ?? null, familyName: null };
+	return {
+		givenName: words.slice(0, -1).join(" "),
+		familyName: words.at(-1) ?? null,
+	};
 }
