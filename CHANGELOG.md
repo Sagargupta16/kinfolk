@@ -73,6 +73,9 @@ The family is built from the canvas itself. No schema or migration change.
 - The README screenshots and both Open Graph cards are recaptured from this build's sample
   tree with `pnpm screenshots --base`, so they show bracket connectors and siblings eldest
   first. The five WebP files total 219 KiB, was 207.
+- The README layout benchmark is rerun on the new layout, same machine and Node 26.10. The
+  1,000-person median is 5706 ms, with back-to-back runs of 5732 and 6290 ms (the 0.5.0
+  table had 8781). ELK is still 98% or more of the time at every size.
 
 ### Verification
 

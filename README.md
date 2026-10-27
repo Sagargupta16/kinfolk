@@ -136,13 +136,13 @@ median of 7 timed runs after 2 warm-ups:
 
 | Graph | Nodes (people + unions) | Layout edges | Median | Fastest | ELK share | Kinfolk passes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample tree, 117 people | 151 | 150 | 140 ms | 122 ms | 99% | 2 ms |
-| generated, 50 people | 60 | 59 | 38 ms | 37 ms | 98% | 1 ms |
-| generated, 200 people | 243 | 242 | 232 ms | 201 ms | 99% | 3 ms |
-| generated, 1000 people | 1232 | 1231 | 8781 ms | 7556 ms | 100% | 32 ms |
+| sample tree, 117 people | 151 | 150 | 124 ms | 108 ms | 99% | 2 ms |
+| generated, 50 people | 60 | 59 | 32 ms | 30 ms | 98% | 1 ms |
+| generated, 200 people | 243 | 242 | 161 ms | 149 ms | 99% | 2 ms |
+| generated, 1000 people | 1232 | 1231 | 5706 ms | 5647 ms | 100% | 18 ms |
 
-Three back-to-back runs on that machine gave 1,000-person medians of 8781, 9500 and
-9752 ms, and the absolute numbers move with whatever else the machine is doing, so read
+Three back-to-back runs on that machine gave 1,000-person medians of 5706, 5732 and
+6290 ms, and the absolute numbers move with whatever else the machine is doing, so read
 them as an order of magnitude and compare sizes within one run. Family-sized trees lay
 out in well under a second. At every size ELK's layered layout is 97% or more of the
 time, and because it runs on the main thread the canvas freezes until it returns; moving
