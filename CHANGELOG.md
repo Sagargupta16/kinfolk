@@ -6,6 +6,33 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.6.1 -- 2026-10-27
+
+The Pages app no longer logs a Content Security Policy error on every load. No schema, API
+or UI change.
+
+### Fixed
+
+- **Fonts are never inlined into the SPA's stylesheet.** Vite inlines any asset under 4 KiB
+  as a `data:` URI, and JetBrains Mono's Cyrillic Extended subset is 2028 bytes, so the
+  Pages build embedded it in the CSS, where the SPA's `font-src 'self'` policy blocked it on
+  every page load, the landing page included, and the face could never load.
+  `build.assetsInlineLimit` in `frontend/vite.config.ts` now opts font files out, so the
+  subset ships as its own file under `/kinfolk/assets/` and is fetched only when a page asks
+  for those characters. The policy stays strict. The Next fallback was never affected: its
+  build emits every font as a file.
+
+### Verification
+
+- A production build served by `vite preview` under the same policy, desktop and phone, with
+  the demo through the local Next app. On main's config the landing page logged 1
+  `font-src` violation, and loading the Cyrillic Extended face was rejected with a
+  NetworkError. With the fix: 0 violations, 0 console errors, and the face loads from its
+  file. The sample tree drew 117 people and 150 edges in both. The Pages-shaped build has 0
+  inlined fonts, was 1.
+- Biome, both strict TypeScript projects, 88 Vitest cases, both production builds, the
+  dead-Tailwind guard, both dependency audits and `git diff --check` pass.
+
 ## 0.6.0 -- 2026-10-27
 
 The family is built from the canvas itself. No schema or migration change.

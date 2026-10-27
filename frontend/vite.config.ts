@@ -128,6 +128,11 @@ export default defineConfig(({ command, mode }) => {
 			// readable implementation source and to keep the artifact small.
 			sourcemap: false,
 			manifest: "asset-manifest.json",
+			// Fonts are never inlined. Vite turns any asset under 4 KiB into a data: URI, and
+			// the CSP in index.html allows fonts from 'self' only, so JetBrains Mono's 2 KiB
+			// Cyrillic Extended subset was blocked on every page load, the landing page
+			// included. Other small assets keep the default rule; img-src allows data:.
+			assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf|eot)(\?|$)/i.test(file) ? false : undefined),
 		},
 	};
 });
