@@ -57,7 +57,7 @@ Inspect the picture and measured DOM geometry:
    junctions.filter((j) => people.some((p) => j.left < p.right && j.right > p.left && j.top < p.bottom && j.bottom > p.top)).length
    ```
 
-5. **Sibling bars:** bars stay below their own junction, overlapping family spans use separate lanes, wide families fall back to curves rather than a canvas-wide rule, and real corners are rounded. Straight vertical drops need no artificial curve.
+5. **Sibling bars:** bars stay below their own junction, overlapping family spans use separate lanes, every family with two or more children draws the same bracket however wide (no cubic `C` commands in a family path), and real corners are rounded. Straight vertical drops need no artificial curve.
 6. **Cards and labels:** names remain legible, junction labels do not collide with cards, relation labels appear only for the revealed person, and no contact value appears in visible text or an accessible name.
 
 ## Interaction and viewport stability
@@ -73,6 +73,7 @@ Inspect the picture and measured DOM geometry:
   ```
 
 - Touch panning starts on cards, fold controls do not eclipse a card, and canvas controls retain a 44-screen-pixel target across zoom levels.
+- On an editable canvas only the viewed card carries `+` handles (`.kf-node-add`): above for a parent while a parent slot is free, beside on a side with no partner, below the card for a single person, and ONE shared `+` in the gutter under each couple. They are hidden at the dot level and in orbit. Targets measure 44x44 screen pixels at fit zoom, never cover a fold chevron's pill, and `elementFromPoint` at each target's centre returns the target. Zoom out to about 0.5, 0.3 and the floor and confirm `elementFromPoint` at every card's centre returns the card, never a `.kf-node-add`: a target must shrink rather than reach into the next row. A two-family choice must start with no radio checked. Press Enter in the add sheet's fields and confirm it moves focus instead of saving; the sex comes only from the answer pressed. Demo mode is read-only, so this needs a signed-in editable view on an isolated database.
 - Tree/orbit switching, detail-level switching, collapse/expand, search travel, and panel close do not replay stale navigation or lose the selected person.
 
 ## Console and boundary checks

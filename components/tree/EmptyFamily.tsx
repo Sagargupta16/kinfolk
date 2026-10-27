@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { addPerson } from "@/lib/tree/edit-actions";
+import { splitName } from "@/lib/tree/kin-plan";
 
 export function EmptyFamily({ treeId }: { treeId: string | null }) {
 	const router = useRouter();
@@ -25,6 +26,11 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 								event.preventDefault();
 								if (pending) return;
 								const form = new FormData(event.currentTarget);
+								// The two columns too, which is all the previous API version reads while the
+								// app and the API are mid-deploy; the current one lets `name` win.
+								const columns = splitName(String(form.get("name") ?? ""));
+								if (columns.givenName) form.set("givenName", columns.givenName);
+								if (columns.familyName) form.set("familyName", columns.familyName);
 								setError("");
 								startTransition(async () => {
 									try {
@@ -38,26 +44,19 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 							}}
 						>
 							<input type="hidden" name="treeId" value={treeId} />
-							<label htmlFor={`${id}-given`} className="block text-xs text-ink-muted">
-								First name
+							{/* One name field, split on its last word by the server, like the canvas `+`. */}
+							<label htmlFor={`${id}-name`} className="block text-xs text-ink-muted">
+								Name
 							</label>
 							<input
-								id={`${id}-given`}
-								name="givenName"
+								id={`${id}-name`}
+								name="name"
 								required
 								autoComplete="off"
-								maxLength={200}
-								className="min-h-11 w-full rounded-md border border-hairline bg-surface px-3 text-sm"
-							/>
-							<label htmlFor={`${id}-family`} className="block text-xs text-ink-muted">
-								Family name <span className="text-ink-faint">(optional)</span>
-							</label>
-							<input
-								id={`${id}-family`}
-								name="familyName"
-								autoComplete="off"
-								maxLength={200}
-								className="min-h-11 w-full rounded-md border border-hairline bg-surface px-3 text-sm"
+								autoCapitalize="words"
+								maxLength={120}
+								placeholder="Full name"
+								className="min-h-11 w-full rounded-md border border-hairline bg-surface px-3 text-base"
 							/>
 							<button
 								type="submit"

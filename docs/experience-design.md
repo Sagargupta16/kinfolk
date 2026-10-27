@@ -20,12 +20,13 @@ The existing-people editor can attach or detach a child without deleting their p
 ## Research
 
 - [FamilySearch: adding a parent](https://www.familysearch.org/en/help/helpcenter/article/how-do-i-add-a-parent-in-family-tree)
-  starts with the existing child, then the relationship. Kinfolk follows that order
-  and makes the subject visible in the add form.
+  starts with the existing child, then the relationship. Kinfolk follows that order:
+  the `+` sits on the existing person's card, in the direction the relative will appear,
+  and the add sheet names the subject in its heading.
 - [Nielsen Norman Group: progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/)
   recommends putting frequent tasks first and clearly naming the way to secondary
-  controls. Kinfolk keeps Tree, People, search, and Add relative visible; Options
-  contains the less frequent canvas controls.
+  controls. Kinfolk keeps Tree, People and search visible, puts adding a relative on the
+  viewed card itself, and Options contains the less frequent canvas controls.
 
 These are design inputs, not evidence from a usability study of Kinfolk.
 

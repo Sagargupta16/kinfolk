@@ -37,7 +37,6 @@ import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import { type Lod, NODE_METRICS } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
-import { QuickAddButton } from "./QuickAdd";
 
 export type PersonNodeData = FusedPerson & {
 	/** Marks the durable subject of navigation, distinct from hover and signed-in identity. */
@@ -57,15 +56,6 @@ export type PersonNodeData = FusedPerson & {
 	hidden?: number;
 	/** Fold or unfold. Absent when this canvas has no collapse affordance. */
 	onFold?: (personId: string, direction: "descendants" | "ancestors") => void;
-	/**
-	 * Open the quick-add sheet for this person. Absent on a read-only canvas, which is what
-	 * hides the `+` entirely -- a disabled control advertises an action that cannot work.
-	 *
-	 * Handed the whole FusedPerson rather than an id and a name, because the canvas has to
-	 * resolve WHICH source row the write targets: the fused id is the smallest member id, and
-	 * on a person recorded by two families it belongs to the other family about half the time.
-	 */
-	onQuickAdd?: (person: FusedPerson) => void;
 };
 
 /**
@@ -398,27 +388,6 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 			</div>
 
 			{/*
-			 * The `+`, on the card's TRAILING edge.
-			 *
-			 * The fold chevrons already own the top and bottom centre with 44px targets, so the
-			 * right-hand edge is the one side of a card carrying no control. Always visible for
-			 * the SELECTED card, which is how a touch or keyboard user reaches it at all; on
-			 * hover otherwise, like the chevrons.
-			 */}
-			{data.onQuickAdd && (
-				<QuickAddButton
-					visible={Boolean(data.isViewed || selected)}
-					// The whole FusedPerson, not `data.id`. The subject of a quick-add has to be a
-					// source row the viewer may write to, and the fused id is the smallest member id
-					// -- which on a merged person is the far family's row about half the time, so
-					// `addRelative` would refuse with "you may not change this graph" about somebody's
-					// own grandmother. The canvas resolves it through `editTarget`.
-					onOpen={() => data.onQuickAdd?.(data)}
-					className="absolute -right-2.5 top-1/2 z-10 size-6 -translate-y-1/2"
-				/>
-			)}
-
-			{/*
 			 * Fold controls, OUTSIDE the card and only where there is something to fold.
 			 *
 			 * Outside because the card is already at its measured content height, so a control
@@ -517,8 +486,14 @@ function FoldButton({
 				 * So the button is a transparent square that centres a small pill. The border,
 				 * fill and shadow move to the inner span, so the touch area is honest at every
 				 * zoom while the mark stays 20px.
+				 *
+				 * At 16% across rather than the centre: the centre of the top and bottom edges
+				 * belongs to the viewed card's `+` handles (see NodeAdd.tsx), and a chevron under
+				 * a `+` is a control nobody can reach. `FOLD_AT` in lib/tree/node-add.ts is this
+				 * same fraction, and the `+` targets are sized to stop short of this pill; where
+				 * the two TARGETS still meet at low zoom, the `+` layer wins by stacking order.
 				 */
-				"nodrag absolute left-1/2 z-10 flex -translate-x-1/2 items-center justify-center",
+				"nodrag absolute left-[16%] z-10 flex -translate-x-1/2 items-center justify-center",
 				"transition-opacity duration-(--duration-fast) ease-(--ease-out)",
 				// Revealed on hover of the wrapper, so the control appears with the card rather
 				// than having to be hunted for. Always visible once FOLDED, because a hidden

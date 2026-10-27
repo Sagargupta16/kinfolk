@@ -24,7 +24,6 @@ import {
 	Briefcase,
 	Calendar,
 	Crosshair,
-	GitBranch,
 	Globe,
 	Heart,
 	Home,
@@ -86,7 +85,6 @@ export function PersonDetail({
 	onSaved,
 	onClose,
 	onGoTo,
-	onAddRelative,
 	onCenter,
 }: {
 	/** Null closes the panel. Passed rather than held, so the canvas owns selection. */
@@ -103,8 +101,6 @@ export function PersonDetail({
 	onClose: () => void;
 	/** Travel to a relative named in the panel. This is the breadcrumb trail's engine. */
 	onGoTo: (personId: string) => void;
-	/** Grow this person's branch through the relationship-first composer. */
-	onAddRelative?: () => void;
 	/** Re-frame this person without closing the panel. */
 	onCenter?: () => void;
 }) {
@@ -196,15 +192,9 @@ export function PersonDetail({
 							onClose={onClose}
 						/>
 
+						{/* Adding relatives lives on the card's own `+` handles now, so the panel keeps
+						    only what is about THIS record: editing it and finding it again. */}
 						<div className="flex border-b border-hairline">
-							{onAddRelative && (
-								<ActionButton
-									label="Add relative"
-									Icon={GitBranch}
-									onClick={onAddRelative}
-									primary
-								/>
-							)}
 							{editTarget(person, editableTreeIds ?? []).editable && (
 								<ActionButton label="Edit" Icon={Pencil} onClick={() => setEditing(true)} />
 							)}
@@ -262,8 +252,8 @@ export function PersonDetail({
 									0 && (
 									<p className="py-5 text-sm leading-relaxed text-ink-muted">
 										Every family starts with one person.
-										{onAddRelative
-											? " Add a relative to begin this branch."
+										{editTarget(person, editableTreeIds ?? []).editable
+											? " Use the + above, beside or below their card to add a parent, partner or child."
 											: " No family connections have been recorded yet."}
 									</p>
 								)}
@@ -431,12 +421,10 @@ function ActionButton({
 	label,
 	Icon,
 	onClick,
-	primary = false,
 }: {
 	label: string;
-	Icon: typeof GitBranch;
+	Icon: typeof Pencil;
 	onClick: () => void;
-	primary?: boolean;
 }) {
 	return (
 		<button
@@ -446,9 +434,7 @@ function ActionButton({
 				"flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 border-r border-hairline px-2",
 				"last:border-r-0 text-[0.75rem] font-medium transition-colors",
 				"duration-(--duration-fast) ease-(--ease-out)",
-				primary
-					? "bg-accent/8 text-accent-ink hover:bg-accent/14"
-					: "text-ink-muted hover:bg-surface-raised hover:text-ink",
+				"text-ink-muted hover:bg-surface-raised hover:text-ink",
 			)}
 		>
 			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden="true" />

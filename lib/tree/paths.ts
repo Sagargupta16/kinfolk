@@ -8,9 +8,11 @@
  *   - 82 of 150 paths were built from `L` commands alone, so every turn was a hard 90
  *     degree corner. The rounded-corner constant existed and only the fallback branch
  *     ever used it.
- *   - One shared sibling bar ran 6013px against a median of 200px. A single horizontal
- *     line crossing the whole canvas is not a family bracket; it is a rule, and it reads
- *     as one.
+ *   - One shared sibling bar ran 6013px against a median of 200px, which was mostly layout
+ *     DRIFT: couples sat far from their own children. With each couple now centred over its
+ *     children a wide bar means a large family, so every family -- however wide -- is drawn
+ *     as the same bracket. A span threshold that switched wide families to fanning curves
+ *     was removed: two shapes on one canvas read as two kinds of fact.
  *
  * SVG's y axis grows DOWNWARD throughout. "Down" means increasing y, and a parent sits
  * at a smaller y than its child.
@@ -18,25 +20,6 @@
 
 /** Corner radius, matched to the card's own so a join reads as part of the same set. */
 export const CORNER = 10;
-
-/**
- * The widest a shared sibling bar may run before the family is drawn as curves instead.
- *
- * A bracket says "these people are siblings" by being short enough to take in at once.
- * Past roughly a screen it stops being a bracket: the eye cannot hold both ends, and the
- * line reads as a divider lying across the canvas. The sample tree's median bar is 200px
- * and its widest was 6013px, so this is not a hypothetical.
- *
- * 1600, raised from 900. The old value predates parent-over-children alignment in
- * layout.ts: back then a bar's width was partly drift, so a narrow limit was catching
- * genuinely misaligned families as well as genuinely wide ones. With each couple now
- * centred on its own children, a wide bar means a large family and nothing else -- and 900
- * was rejecting a set of FOUR siblings at 1052px, which is precisely the case the bracket
- * exists for. 1600 is a little over a 1440px viewport, so a bar that survives is one the
- * eye can hold at fit zoom, while the seven-child spans (4847px on a real graph) still
- * take the curves.
- */
-export const MAX_BAR_SPAN = 1600;
 
 /**
  * Round one corner of an orthogonal turn.
@@ -106,32 +89,6 @@ export function elbowPath(
 		turn(targetX, barY, sourceX, barY, targetX, targetY, radius),
 		`L ${targetX} ${targetY}`,
 	].join(" ");
-}
-
-/**
- * A vertical-tangent S-curve from one point to another.
- *
- * Used where a bracket would be too wide to read. Both tangents are vertical, so the line
- * still leaves a parent downward and arrives at a child from above -- the direction cue
- * the orthogonal route gets for free from its geometry, which a naive straight diagonal
- * would throw away.
- *
- * `tension` is the fraction of the vertical gap each control point extends. At 0 the curve
- * is a straight line; at 1 the control points reach the opposite endpoint's row and the
- * curve leaves and arrives almost perfectly vertically. 0.55 is the default because it
- * keeps the middle of the curve diagonal enough to follow while the ends stay clearly
- * vertical.
- */
-export function curvePath(
-	sourceX: number,
-	sourceY: number,
-	targetX: number,
-	targetY: number,
-	tension = 0.55,
-): string {
-	const dy = targetY - sourceY;
-	const reach = dy * tension;
-	return `M ${sourceX} ${sourceY} C ${sourceX} ${sourceY + reach} ${targetX} ${targetY - reach} ${targetX} ${targetY}`;
 }
 
 /**

@@ -27,6 +27,7 @@ export type ShortcutAction =
 	| "detail"
 	| "generation"
 	| "expandAll"
+	| "add"
 	| "clear"
 	| "theme"
 	| "help";
@@ -41,6 +42,7 @@ const BINDINGS: { keys: string[]; action: ShortcutAction; label: string }[] = [
 	{ keys: ["d"], action: "detail", label: "Cycle detail: cards, rows, dots" },
 	{ keys: ["g"], action: "generation", label: "Fold the selected generation" },
 	{ keys: ["e"], action: "expandAll", label: "Expand everything again" },
+	{ keys: ["a"], action: "add", label: "Add a relative: jump to the + handles" },
 	{ keys: ["t"], action: "theme", label: "Switch light and dark" },
 	{ keys: ["Escape"], action: "clear", label: "Clear selection and close panels" },
 	{ keys: ["?"], action: "help", label: "Show this list" },

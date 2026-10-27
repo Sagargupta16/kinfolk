@@ -9,13 +9,19 @@
  * graph is yours, and until now nothing could fill it in -- `updatePerson` existed with no
  * UI at all.
  *
- * Two things here are less obvious than the form:
+ * Four controls, the same facts the canvas `+` asks for plus the two a card draws: a name, a
+ * birth year, male or female, and living or passed away. The longer form (birth surname,
+ * nickname, places, work, notes, sources) was removed with the node editor; the columns it
+ * wrote are left exactly as they are, because this form never posts them.
+ *
+ * Three things here are less obvious than the form:
  *
  *   - It edits a SOURCE row, resolved by `editTarget`, never the fused id. A merged person's
  *     id is the smallest member id, which lands on the far family's row about half the time.
- *   - It posts only the fields it renders. `updatePerson` now patches by key presence, so an
- *     absent key is left alone -- which is what makes a compact form safe next to columns it
- *     never shows.
+ *   - It posts only the fields it renders. `updatePerson` patches by key presence, so an
+ *     absent key is left alone -- which is what keeps every column this form does not show.
+ *   - It posts the NAME only when it was retyped. The one field is split on its last word,
+ *     and a stored "Jan" / "van der Berg" would not survive that round trip untouched.
  */
 import { Check, Loader2, Pencil, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -23,22 +29,35 @@ import { useEffect, useId, useRef, useState } from "react";
 import { deletePerson, updatePerson } from "@/lib/tree/edit-actions";
 import { dateInputValue, editInitialValues, editTarget } from "@/lib/tree/editable";
 import { displayName, type FusedPerson } from "@/lib/tree/graph";
+import { splitName } from "@/lib/tree/kin-plan";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
 
-/** Sex options, in the schema's own order. `unknown` is a real stored value, not a blank. */
+/**
+ * The schema's own values, `unknown` included.
+ *
+ * "Not known" is an answer, not a blank: genealogy is mostly incomplete data, and a sex or
+ * living status chosen by a button press on the canvas has to be correctable back to
+ * unknown when it turns out to have been a guess. The stored value is pre-selected, so an
+ * untouched save posts what was already there.
+ */
 const SEXES = [
-	{ value: "female", label: "Female" },
 	{ value: "male", label: "Male" },
+	{ value: "female", label: "Female" },
 	{ value: "other", label: "Other" },
 	{ value: "unknown", label: "Not known" },
 ] as const;
 
 const LIVING = [
 	{ value: "living", label: "Living" },
-	{ value: "deceased", label: "Deceased" },
+	{ value: "deceased", label: "Passed away" },
 	{ value: "unknown", label: "Not known" },
 ] as const;
+
+/** The two name columns as the one field shows them, whitespace collapsed for comparison. */
+function joinedName(givenName: string | null | undefined, familyName: string | null | undefined) {
+	return [givenName, familyName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
 
 export function PersonEdit({
 	person,
@@ -78,6 +97,7 @@ export function PersonEdit({
 	}
 
 	const values = editInitialValues(person, target.personId);
+	const initialName = joinedName(values?.givenName, values?.familyName);
 
 	async function submit(formData: FormData) {
 		if (pending) return;
@@ -86,6 +106,25 @@ export function PersonEdit({
 		// The SOURCE row, not the fused id. The server would refuse the latter, and the message
 		// would tell somebody they may not edit their own record.
 		formData.set("personId", target.editable ? target.personId : "");
+		// An untouched name is not posted, so the split it was stored with survives. A retyped
+		// one also posts the two columns, which is all the previous API version reads -- the
+		// app and the API deploy separately, and the current API lets `name` win.
+		const typed = String(formData.get("name") ?? "")
+			.replace(/\s+/g, " ")
+			.trim();
+		if (typed === initialName) {
+			formData.delete("name");
+		} else if (!typed) {
+			// Refused here as well as on the server, so a previous API version (which would
+			// write the two blank columns) can never erase a name.
+			setError("A person needs a name.");
+			setPending(false);
+			return;
+		} else {
+			const columns = splitName(typed);
+			formData.set("givenName", columns.givenName ?? "");
+			formData.set("familyName", columns.familyName ?? "");
+		}
 
 		try {
 			const result = await updatePerson(formData);
@@ -114,75 +153,32 @@ export function PersonEdit({
 					void submit(new FormData(event.currentTarget));
 				}}
 				aria-busy={pending}
-				className="space-y-2 px-3 pb-3"
+				className="space-y-3 px-3 pb-3"
 			>
-				<div className="flex gap-2">
-					<Field label="First name">
+				<div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2">
+					<Field label="Name">
 						{(id) => (
 							<input
 								id={id}
 								ref={firstField}
-								name="givenName"
-								defaultValue={values?.givenName ?? ""}
+								name="name"
+								defaultValue={initialName}
+								maxLength={120}
 								autoComplete="off"
+								autoCapitalize="words"
+								placeholder="Full name"
 								className={inputClass}
 							/>
 						)}
 					</Field>
-					<Field label="Family name">
-						{(id) => (
-							<input
-								id={id}
-								name="familyName"
-								defaultValue={values?.familyName ?? ""}
-								autoComplete="off"
-								className={inputClass}
-							/>
-						)}
-					</Field>
-				</div>
-
-				{/* Searchable, and the field the old action silently nulled on every save. */}
-				<Field label="Born as" hint="Maiden or pre-marriage name">
-					{(id) => (
-						<input
-							id={id}
-							name="birthFamilyName"
-							defaultValue={values?.birthFamilyName ?? ""}
-							autoComplete="off"
-							className={inputClass}
-						/>
-					)}
-				</Field>
-
-				<Field label="Known as">
-					{(id) => (
-						<input
-							id={id}
-							name="nickname"
-							defaultValue={values?.nickname ?? ""}
-							autoComplete="off"
-							className={inputClass}
-						/>
-					)}
-				</Field>
-
-				<Choice name="sex" legend="Gender" options={SEXES} current={values?.sex ?? "unknown"} />
-				<Choice
-					name="living"
-					legend="Status"
-					options={LIVING}
-					current={values?.living ?? "unknown"}
-				/>
-
-				<div className="flex gap-2">
-					{/* Keep exact dates intact while also accepting years and approximate text. */}
-					<Field label="Born" hint="Date or year">
+					{/* Keeps an exact stored date intact; a bare year goes to the fuzzy column. */}
+					<Field label="Born" hint="year">
 						{(id) => (
 							<input
 								id={id}
 								name="birthYear"
-								placeholder="1952"
+								inputMode="numeric"
+								placeholder="Year"
 								defaultValue={dateInputValue(
 									values?.birthDate ?? null,
 									values?.birthDateApprox ?? null,
@@ -191,95 +187,15 @@ export function PersonEdit({
 							/>
 						)}
 					</Field>
-					<Field label="Died" hint="Date or year">
-						{(id) => (
-							<input
-								id={id}
-								name="deathYear"
-								defaultValue={dateInputValue(
-									values?.deathDate ?? null,
-									values?.deathDateApprox ?? null,
-								)}
-								className={cn(inputClass, "tabular")}
-							/>
-						)}
-					</Field>
 				</div>
 
-				<details className="rounded-lg border border-hairline px-3">
-					<summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-ink-muted">
-						Places, work and notes
-					</summary>
-					<div className="space-y-3 pb-3">
-						<Field label="Birthplace">
-							{(id) => (
-								<input
-									id={id}
-									name="birthPlace"
-									defaultValue={values?.birthPlace ?? ""}
-									autoComplete="off"
-									className={inputClass}
-								/>
-							)}
-						</Field>
-
-						<Field label="Lives" hint="Now, or last known">
-							{(id) => (
-								<input
-									id={id}
-									name="currentPlace"
-									defaultValue={values?.currentPlace ?? ""}
-									autoComplete="off"
-									className={inputClass}
-								/>
-							)}
-						</Field>
-
-						<Field label="Work">
-							{(id) => (
-								<input
-									id={id}
-									name="occupation"
-									defaultValue={values?.occupation ?? ""}
-									autoComplete="off"
-									className={inputClass}
-								/>
-							)}
-						</Field>
-
-						<Field label="Notes">
-							{(id) => (
-								<textarea
-									id={id}
-									name="bio"
-									rows={3}
-									defaultValue={values?.bio ?? ""}
-									className={cn(inputClass, "h-auto resize-y py-2 leading-relaxed")}
-								/>
-							)}
-						</Field>
-
-						{/*
-						 * Where the record came from, in the owner's own words.
-						 *
-						 * `verification` is deliberately NOT here. It is a provenance claim the card renders
-						 * as a tick, and letting somebody mark their own row `documented` would turn the
-						 * strongest evidence level into a self-assessment -- which is exactly what the
-						 * separate `self_confirmed` level already means without overstating it.
-						 */}
-						<Field label="Source" hint="Certificate, who remembered it">
-							{(id) => (
-								<input
-									id={id}
-									name="sourceNote"
-									defaultValue={values?.sourceNote ?? ""}
-									autoComplete="off"
-									className={inputClass}
-								/>
-							)}
-						</Field>
-					</div>
-				</details>
+				<Choice name="sex" legend="Gender" options={SEXES} current={values?.sex ?? "unknown"} />
+				<Choice
+					name="living"
+					legend="Status"
+					options={LIVING}
+					current={values?.living ?? "unknown"}
+				/>
 
 				{error && !confirmDelete && (
 					<p role="alert" className="text-[0.75rem] leading-snug text-danger">
@@ -381,8 +297,9 @@ export function PersonEdit({
 	);
 }
 
+/** 16px text: iOS Safari zooms the page into any focused input smaller than that. */
 const inputClass =
-	"h-11 w-full rounded-lg border border-hairline bg-surface px-3 text-[0.875rem] text-ink placeholder:text-ink-faint";
+	"h-11 w-full rounded-lg border border-hairline bg-surface px-3 text-base text-ink placeholder:text-ink-faint";
 
 function Shell({
 	titleId,
@@ -397,8 +314,8 @@ function Shell({
 }) {
 	return (
 		<div
-			// Announced like QuickAdd's sheet: a dialog with the heading as its name.
-			// Non-modal, because the canvas behind stays usable -- see EditorPanel.
+			// Announced like the add sheet in NodeAdd: a dialog with the heading as its
+			// name. Non-modal, because the canvas behind stays usable.
 			role="dialog"
 			aria-modal="false"
 			aria-labelledby={titleId}

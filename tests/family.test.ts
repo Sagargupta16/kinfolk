@@ -14,19 +14,19 @@ describe("unambiguous quick-add", () => {
 
 	it("requires a family choice after remarriage and attaches only to that choice", () => {
 		expect(planKin(family, "child").refusal).toContain("Choose which family");
-		expect(planKin(family, "child", 2, "second")).toMatchObject({
-			create: { count: 2, sex: "unknown" },
+		expect(planKin(family, "daughter", "second")).toMatchObject({
+			sex: "female",
 			union: { kind: "existing", unionId: "second" },
 			attach: "child",
 			attachSubjectAsChild: false,
 		});
-		expect(planKin(family, "child", 1, "not-this-family").refusal).toBeTruthy();
+		expect(planKin(family, "child", "not-this-family").refusal).toBeTruthy();
 	});
 
 	it("does not silently choose a birth or adoptive family for a sibling", () => {
 		const child = { subjectId: "child", parentUnions: [first, second], ownUnions: [] };
 		expect(planKin(child, "sibling").refusal).toBeTruthy();
-		expect(planKin(child, "sibling", 1, "first").union).toEqual({
+		expect(planKin(child, "sibling", "first").union).toEqual({
 			kind: "existing",
 			unionId: "first",
 		});
