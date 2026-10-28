@@ -6,6 +6,57 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.8.1 -- 2026-10-28
+
+Every line between two generations gets a lane of its own, clear of the cards. Found by
+watching 0.8.0 in production, where the bracket fix held for each family's own bracket but
+not for everything else drawn in the same gaps. No schema or migration change.
+
+### Fixed
+
+- **A remarried person stands between the people they married.** A household's members were
+  laid out in ELK's left-to-right order, which for Victoria Melita (married to Ernest Louis,
+  then Kirill, while Ernest Louis remarried Eleonore) read Ernest Louis, Kirill, Eleonore,
+  Victoria Melita: no couple side by side, so all three marriage lines ran through the gap
+  under the cards on one shared line, and their children's brackets were pushed onto one y.
+  The household is now walked along its marriages: Kirill, Victoria Melita, Ernest Louis,
+  Eleonore. Somebody with three partners can stand beside only two; the third marriage line
+  now runs a third of the gap under the couple instead of through the middle, where sibling
+  brackets centre.
+- **No two families draw on one line.** A lane holds a family's whole run -- the bracket and
+  the stems from its junction, which can reach past the children's span -- where it used to
+  be sized on the children alone. A family is never offered a lane above its own junction,
+  where the old clamp moved two families onto one y, and a marriage line that has to cross a
+  gap keeps the lanes off its stretch. Measured on the sample: 13 pairs of lines from
+  different families on one y and 8 more within 3px (combined view, card level), 21 and 35
+  mine-only; now none, at every level.
+- **A lone child's line turns mid-gap too.** A child not straight below their parents took
+  React Flow's smoothstep, whose run fell halfway between the junction and the child: one ran
+  18px under its parents' row for 5,000px. It now turns through a lane, like a bracket.
+- **A crowded gap grows instead of squeezing its lines.** Lanes keep a fixed step (9px on
+  cards) and stay a third of the gap clear of both rows (24px on cards, where lane 0 has 36);
+  a gap with more lanes than that allows is made taller. On the sample's intermarried
+  generations the outer lines sat 13px from the cards; now the closest is 24px. The canvas is
+  42px taller at the card level (748 to 790).
+- A single parent's junction sits on their children's bracket, so the parent's line drops
+  straight to a bead on it, as a couple's drop leaves a bead on their marriage line. It sat in
+  the middle of the gap, where lane 0 runs, and pushed the family's own bracket off centre.
+
+### Verification
+
+- `tests/layout.test.ts` asserts, on both sample views at all three levels, that no two
+  families share a line, that no couple's junction is routed below both partners, and that
+  every line keeps a third of the gap from the cards. 91 tests pass.
+- In the browser, on the SPA harness and the Next app, desktop and phone, dark and light:
+  256 nodes, 216 people, 40 junctions, 265 edges, 0 bad paths, 0 card overlaps, 0 shared
+  lines read off the rendered paths, every stem and bracket 24px or more from the cards,
+  both lone children turning mid-gap (36/36), the layout worker loaded, a clean console. A
+  synthetic family with a single parent and a three-times-married person: the parent's
+  junction on its bar, two of the three couples side by side, the third routed a third of
+  the gap under them, nothing shared.
+- `pnpm bench:layout`: the sample in 251 ms (234 before), Kinfolk's own passes 4 ms; the
+  lanes are now assigned inside the layout, where the bench counts them.
+
 ## 0.8.0 -- 2026-10-28
 
 A whole-repository audit, every finding fixed, and a sample family of real, public records.

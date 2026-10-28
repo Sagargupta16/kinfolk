@@ -37,7 +37,9 @@ small sheet, and removes the add and connect forms. **0.7.0** keeps every edit o
 a tap only picks a person, the `+` and a second tap open one small strip beside the card,
 and the tree moves to make room for each new relative. **0.8.0** is a whole-repository
 audit with every finding fixed, a sample family of real records from Wikidata, and layout
-in a Web Worker; see the [changelog](CHANGELOG.md).
+in a Web Worker. **0.8.1** gives every line between two generations its own lane, clear of
+the cards, and stands each remarried person between the people they married; see the
+[changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -144,10 +146,10 @@ Node 26.10, median of 7 timed runs after 2 warm-ups, on 2026-10-28:
 
 | Graph | Nodes (people + unions) | Layout edges | Median | Fastest | ELK share | Kinfolk passes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample tree, 216 people | 256 | 265 | 234 ms | 231 ms | 99% | 2 ms |
-| generated, 50 people | 60 | 59 | 20 ms | 17 ms | 98% | 0 ms |
-| generated, 200 people | 243 | 242 | 180 ms | 164 ms | 99% | 2 ms |
-| generated, 1000 people | 1232 | 1231 | 5099 ms | 4934 ms | 100% | 15 ms |
+| sample tree, 216 people | 256 | 265 | 251 ms | 240 ms | 99% | 4 ms |
+| generated, 50 people | 60 | 59 | 23 ms | 21 ms | 98% | 1 ms |
+| generated, 200 people | 243 | 242 | 150 ms | 145 ms | 99% | 2 ms |
+| generated, 1000 people | 1232 | 1231 | 5312 ms | 5129 ms | 100% | 23 ms |
 
 The absolute numbers move with whatever else the machine is doing (earlier runs gave
 1,000-person medians between 5.1 and 6.3 seconds), so read them as an order of magnitude
@@ -278,6 +280,8 @@ viewed card and removes the panel for connecting existing people; its server act
 0.7.0 moves editing a person's name and year onto their card too, and opens the profile only
 when asked for. 0.8.0 makes the sample family real (Wikidata), keeps contact values off the
 tree view, leaves access changes to a graph's owner, and fixes every finding of a full audit.
+0.8.1 gives each family's line between two generations a lane of its own, at least a third of
+the gap from the cards, growing a crowded gap to fit.
 
 Photo uploads still need an approved private-storage provider and authentication flow.
 Avatars use initials. Profiles linked to an account cannot be deleted; other deletion

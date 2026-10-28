@@ -86,7 +86,7 @@ import { type AddSlot, type AddTarget, addSlots, nodeAffordances } from "@/lib/t
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
 import { collapseUnionEdges, radialLayout } from "@/lib/tree/radial";
 import { indexRelatives, relativesOf } from "@/lib/tree/relatives";
-import { type SiblingBar, siblingBars } from "@/lib/tree/siblings";
+import { detourY, type SiblingBar } from "@/lib/tree/siblings";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
@@ -200,17 +200,6 @@ function rowFor(y: number, bands: GenerationBand[]): number {
 	}
 
 	return best;
-}
-
-/**
- * The unions in a projected graph, for the sibling-bar pass.
- *
- * Read back off the union NODES rather than passed alongside them: a union node already
- * carries its own row, so a second prop would be the same data arriving twice with no
- * guarantee the two agree.
- */
-function unionsOf(nodes: FlowNode[]): UnionWithChildren[] {
-	return nodes.filter((node) => node.type === "union").map((node) => node.data.union);
 }
 
 /** Add or remove one class, preserving whatever else is on the element. */
@@ -874,13 +863,14 @@ function Canvas({
 				? Promise.resolve({
 						...radialLayout(laidOutNodes, laidOutEdges, orbitFocusId, lod),
 						bands: [] as GenerationBand[],
+						bars: new Map<string, SiblingBar>(),
 					})
 				: layoutGraph(laidOutNodes, laidOutEdges, lod, selfNodeId);
 
 		// ELK is async and imported lazily, so a fast second data change can resolve out of
 		// order. The flag drops stale layouts.
 		arranged
-			.then(({ nodes: positioned, bands: rows, extent: box }) => {
+			.then(({ nodes: positioned, bands: rows, extent: box, bars: laneBars }) => {
 				if (cancelled) return;
 
 				/** Entrance delay per node id, reused below to time the edges. */
@@ -1072,9 +1062,9 @@ function Canvas({
 				/**
 				 * Sibling bars, and which child edge of each family draws the horizontal run.
 				 *
-				 * Skipped entirely in orbit mode: a bar is a horizontal bracket in a generation
-				 * gap, and an orbit has neither. Computing them anyway would hand every edge bar
-				 * coordinates from a coordinate space the nodes are no longer in.
+				 * The layout computes them, because it sizes the generation gaps from them. None
+				 * in orbit mode: a bar is a horizontal bracket in a generation gap, and an orbit
+				 * has neither.
 				 *
 				 * The election is by lowest edge id rather than by position, so it is stable
 				 * across relayouts: picking the leftmost child would hand the bar to a different
@@ -1082,9 +1072,7 @@ function Canvas({
 				 * edge that had not changed.
 				 */
 				const orbiting = view === "orbit" && Boolean(orbitFocusId);
-				const bars: Map<string, SiblingBar> = orbiting
-					? new Map()
-					: siblingBars(unionsOf(laidOutNodes), positioned);
+				const bars: Map<string, SiblingBar> = orbiting ? new Map() : laneBars;
 
 				/**
 				 * The centre of every union dot, for edges to terminate on.
@@ -1123,33 +1111,17 @@ function Canvas({
 					const sBox = boxes.get(edge.source);
 					const tBox = boxes.get(edge.target);
 					if (!sBox || !tBox) return null;
-					const sourceMidX = sBox.position.x + sBox.width / 2;
-					const targetMidX = tBox.position.x + tBox.width / 2;
 					const sourceMidY = sBox.position.y + sBox.height / 2;
 					const targetMidY = tBox.position.y + tBox.height / 2;
-					let railY = tBox.type === "union" ? targetMidY : (sourceMidY + targetMidY) / 2;
-
 					// A direct childless partnership has no junction whose placement can choose a
 					// safe lane. If another card lies between its endpoints, route through the
-					// empty generation gap instead of drawing through that person's name.
-					if (tBox.type === "person") {
-						const left = Math.min(sourceMidX, targetMidX);
-						const right = Math.max(sourceMidX, targetMidX);
-						const crossesCard = personBoxes.some(
-							(box) =>
-								box.id !== edge.source &&
-								box.id !== edge.target &&
-								railY >= box.position.y &&
-								railY <= box.position.y + box.height &&
-								box.position.x < right &&
-								box.position.x + box.width > left,
-						);
-						if (crossesCard) {
-							railY =
-								Math.max(sBox.position.y + sBox.height, tBox.position.y + tBox.height) +
-								NODE_METRICS[lod].rowGap / 3;
-						}
-					}
+					// generation gap instead of drawing through that person's name -- by the same
+					// rule the sibling lanes keep clear of.
+					const railY =
+						tBox.type === "union"
+							? targetMidY
+							: (detourY(sBox, tBox, personBoxes, NODE_METRICS[lod].rowGap) ??
+								(sourceMidY + targetMidY) / 2);
 
 					return { partner: true as const, railY, sourceMidY, targetMidY };
 				};
