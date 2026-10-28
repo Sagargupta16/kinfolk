@@ -22,7 +22,7 @@ import type { FusedPerson } from "./graph";
  * rather than for a log: "this record belongs to another family" is actionable, where
  * "forbidden" is not.
  */
-export type EditTarget =
+type EditTarget =
 	| { editable: true; personId: string; treeId: string }
 	| { editable: false; reason: string };
 
@@ -30,9 +30,10 @@ export type EditTarget =
  * Resolve the editable source row of a fused person.
  *
  * `editableTreeIds` is a list rather than a single id on purpose. `TreeView.editableTreeId`
- * is one value -- the graph the Add panel writes to -- but a viewer can hold write grants on
- * several trees, and a merged person can carry a row in more than one of them. Taking a list
- * means this helper cannot be the thing that gets it wrong later.
+ * is one value -- the default graph a new relative from the `+` handles is written to -- but
+ * a viewer can hold write grants on several trees, and a merged person can carry a row in
+ * more than one of them. Taking a list means this helper cannot be the thing that gets it
+ * wrong later.
  *
  * Where several sources qualify, the FIRST in `editableTreeIds` order wins, so the caller's
  * own preference (its primary graph first) decides rather than uuid ordering.

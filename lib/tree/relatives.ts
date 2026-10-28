@@ -36,7 +36,7 @@ export type Partnership = {
 };
 
 /** A non-hierarchical connection, already read from the subject's end. */
-export type RelationLink = {
+type RelationLink = {
 	person: FusedPerson;
 	relationId: string;
 	relationTreeId: string;
@@ -54,7 +54,8 @@ export type Relatives = {
 	children: FusedPerson[];
 	childRoles: Record<string, ParentRole[]>;
 	/**
-	 * Anyone sharing a union with the subject as a child.
+	 * Anyone sharing a union with the subject as a child, then the children a parent has
+	 * through their OTHER unions.
 	 *
 	 * Half-siblings included and NOT distinguished, because the union model already
 	 * makes the distinction visible on the canvas and a panel that labelled somebody
@@ -128,21 +129,46 @@ export function relativesOf(index: FamilyIndex, personId: string): Relatives {
 	const children = new Dedupe(index);
 	const siblings = new Dedupe(index);
 	const partners = new Map<string, Partnership>();
-	const rolesByParent: Record<string, ParentRole[]> = {};
-	const rolesByChild: Record<string, ParentRole[]> = {};
+	/** Each parent's role claims, one entry per union that records them. */
+	const parentClaims = new Map<string, ParentRole[][]>();
+	const childClaims = new Map<string, ParentRole[][]>();
 
-	for (const union of index.asChild.get(personId) ?? []) {
+	const ownFamilies = index.asChild.get(personId) ?? [];
+	for (const union of ownFamilies) {
 		for (const parentId of [union.partnerAId, union.partnerBId]) {
 			if (parentId) {
 				parents.add(parentId);
-				rolesByParent[parentId] = [
-					...new Set([...(rolesByParent[parentId] ?? []), ...parentRoles(union, personId)]),
-				];
+				push(parentClaims, parentId, parentRoles(union, personId));
 			}
 		}
 		for (const siblingId of union.childIds) {
 			// The subject is a child of this union too, and is not their own sibling.
 			if (siblingId !== personId) siblings.add(siblingId);
+		}
+	}
+
+	/*
+	 * Half-siblings: the children a parent has through their OTHER unions.
+	 *
+	 * Walking only the subject's own unions missed them entirely -- a father's children by a
+	 * second wife share no union with his first marriage's son -- while `kinshipMap` walks the
+	 * parent and calls the same boy "brother", so the panel and the card disagreed about who
+	 * the family is. Both ends must be the parent's child as kinship counts one (biological or
+	 * adoptive): a stepmother's own son from before shares no parent with the subject, and
+	 * neither does anybody the subject is only a stepchild alongside.
+	 */
+	for (const union of ownFamilies) {
+		if (!sharesParent(parentRoles(union, personId))) continue;
+		for (const parentId of [union.partnerAId, union.partnerBId]) {
+			if (!parentId) continue;
+			for (const other of index.asPartner.get(parentId) ?? []) {
+				if (other === union) continue;
+				for (const childId of other.childIds) {
+					if (childId !== personId && sharesParent(parentRoles(other, childId))) {
+						siblings.add(childId);
+					}
+				}
+			}
 		}
 	}
 
@@ -157,21 +183,43 @@ export function relativesOf(index: FamilyIndex, personId: string): Relatives {
 		}
 		for (const childId of union.childIds) {
 			children.add(childId);
-			rolesByChild[childId] = [
-				...new Set([...(rolesByChild[childId] ?? []), ...parentRoles(union, childId)]),
-			];
+			push(childClaims, childId, parentRoles(union, childId));
 		}
 	}
 
 	return {
 		parents: parents.values,
-		parentRoles: rolesByParent,
+		parentRoles: settleRoles(parentClaims),
 		partners: [...partners.values()],
 		children: children.values,
-		childRoles: rolesByChild,
+		childRoles: settleRoles(childClaims),
 		siblings: siblings.values,
 		relations: relationsOf(index, personId),
 	};
+}
+
+/** Roles under which two children of one parent are siblings: those kinship walks as family. */
+function sharesParent(roles: readonly ParentRole[]): boolean {
+	return roles.includes("biological") || roles.includes("adoptive");
+}
+
+/**
+ * One parent-child pair's roles, from every union that records the pair.
+ *
+ * A parent recorded as biological through one union does not ALSO become a step-parent
+ * through another. Roles sit on the union, so a father's second marriage recording his son
+ * as `step` -- which is what the boy is to the new wife -- reached the father too, and the
+ * panel said "father / stepfather". So once any union says biological, claims from unions
+ * that do not are dropped. Within ONE union both claims stay: there they are two families
+ * disagreeing about the same parent, which fusion preserves on purpose.
+ */
+function settleRoles(claims: Map<string, ParentRole[][]>): Record<string, ParentRole[]> {
+	const settled: Record<string, ParentRole[]> = {};
+	for (const [id, perUnion] of claims) {
+		const biological = perUnion.filter((roles) => roles.includes("biological"));
+		settled[id] = [...new Set((biological.length > 0 ? biological : perUnion).flat())];
+	}
+	return settled;
 }
 
 /**
@@ -180,10 +228,12 @@ export function relativesOf(index: FamilyIndex, personId: string): Relatives {
  * `relationLabel()` rather than the edge's own `label`, because the projection wrote
  * that label reading A -> B and half of these edges arrive with the subject at B.
  * Left alone, opening a mentee's panel would list their mentor as "mentor" -- naming
- * the subject's own role instead of the other person's, which inverts the fact.
+ * the subject's own role instead of the other person's, which inverts the fact. A label the
+ * owner typed ("best man") is passed through, as the card's kinship line does, so the
+ * panel cannot say "friend" about somebody their card calls the best man.
  */
 function relationsOf(index: FamilyIndex, personId: string): RelationLink[] {
-	const links: RelationLink[] = [];
+	const links: { link: RelationLink; closeness: number }[] = [];
 
 	for (const edge of index.relations) {
 		if (edge.source !== personId && edge.target !== personId) continue;
@@ -192,27 +242,32 @@ function relationsOf(index: FamilyIndex, personId: string): RelationLink[] {
 		if (!person || !edge.relationKind || !edge.relationId || !edge.relationTreeId) continue;
 
 		links.push({
-			person,
-			relationId: edge.relationId,
-			relationTreeId: edge.relationTreeId,
-			// `otherId` is the end being NAMED, and `edge.source` is stored A. A symmetric
-			// kind reads the same either way, so this only bites on the directed ones.
-			label: relationLabel(edge.relationKind, edge.source, otherId),
-			kind: edge.relationKind,
-			ended: Boolean(edge.ended),
+			link: {
+				person,
+				relationId: edge.relationId,
+				relationTreeId: edge.relationTreeId,
+				// `otherId` is the end being NAMED, and `edge.source` is stored A. A symmetric
+				// kind reads the same either way, so this only bites on the directed ones.
+				label: relationLabel(edge.relationKind, edge.source, otherId, edge.customLabel),
+				kind: edge.relationKind,
+				ended: Boolean(edge.ended),
+			},
+			// The edge's own weight, which honours a closeness the owner stored ("a colleague,
+			// but my closest one") and drops an ended relation to the floor. The kind's default
+			// is only the fallback for an edge that carries none.
+			closeness: edge.closeness ?? RELATION_KINDS[edge.relationKind].closeness,
 		});
 	}
 
 	// Live before ended, then closest first, then alphabetical -- so a panel opens on
 	// the connections that still exist rather than on a former colleague.
-	return links.sort((a, b) => {
-		if (a.ended !== b.ended) return a.ended ? 1 : -1;
-		const closeness =
-			(RELATION_KINDS[b.kind ?? "other"]?.closeness ?? 0) -
-			(RELATION_KINDS[a.kind ?? "other"]?.closeness ?? 0);
-		if (closeness !== 0) return closeness;
-		return a.label.localeCompare(b.label);
-	});
+	return links
+		.sort((a, b) => {
+			if (a.link.ended !== b.link.ended) return a.link.ended ? 1 : -1;
+			if (a.closeness !== b.closeness) return b.closeness - a.closeness;
+			return a.link.label.localeCompare(b.link.label);
+		})
+		.map(({ link }) => link);
 }
 
 /** An insertion-ordered set of people, resolved through the index. */

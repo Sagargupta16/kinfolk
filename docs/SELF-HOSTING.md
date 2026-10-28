@@ -78,7 +78,7 @@ are wired to the original deployment:
   `PRODUCTION_URL` repository variable (your Vercel URL) under **Settings -> Secrets and
   variables -> Actions -> Variables**. From then on schema changes ship themselves.
 - **Pages** publishes the GitHub Pages SPA, and **Production health** probes that SPA as well
-  as the API every night. Disable both under **Actions -> (workflow) -> ... -> Disable
+  as the API once a day. Disable both under **Actions -> (workflow) -> ... -> Disable
   workflow** unless you also host the SPA.
 
 Updating later is a normal Git flow: pull this repository's `main` into your copy, run

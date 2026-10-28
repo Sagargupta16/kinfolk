@@ -52,7 +52,10 @@ fi
 # `package.json`, every source directory, and anything else not named here.
 ignored='^(frontend/|docs/|drizzle/|\.github/|\.claude/|[^/]*\.md$|\.gitattributes$|\.gitignore$)'
 
-if echo "$changed" | grep -qvE "$ignored"; then
+# A here-string, not `echo | grep -q`: under pipefail, `grep -q` exits at its first
+# match, `echo` then dies of SIGPIPE on a list longer than the pipe buffer, and the
+# pipeline's 141 reads as "no code changed" -- a large diff would skip its build.
+if grep -qvE "$ignored" <<<"$changed"; then
 	echo "code changed: build"
 	echo "$changed" | grep -vE "$ignored" | sed 's/^/  /'
 	exit 1

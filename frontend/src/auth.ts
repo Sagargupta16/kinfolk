@@ -9,7 +9,15 @@
  * except the moment they are on GitHub authorising, which is the one hop that
  * cannot be anywhere else.
  */
-import { API_BASE, clearToken, getToken, setToken } from "./api";
+import {
+	API_BASE,
+	clearToken,
+	getToken,
+	REQUEST_TIMEOUT_MS,
+	SIGN_IN_TIMEOUT_MS,
+	setToken,
+	withTimeout,
+} from "./api";
 
 /**
  * Where GitHub returns the visitor.
@@ -36,11 +44,18 @@ export async function startSignIn(): Promise<void> {
 	const url = new URL(`${API_BASE}/api/oauth/authorize`, window.location.origin);
 	url.searchParams.set("redirect_uri", callbackUrl());
 
-	const response = await fetch(url, { headers: { Accept: "application/json" } });
-	if (!response.ok) {
-		throw new Error("Sign-in is unavailable right now.");
-	}
-	const { url: authorize, state } = (await response.json()) as { url: string; state: string };
+	// Offline, timed out, refused or unreadable all end in the same sentence, because the
+	// landing page prints the message and a raw "Failed to fetch" or "signal timed out"
+	// tells a visitor nothing they can act on.
+	const unavailable = new Error("Sign-in is unavailable right now.");
+	const response = await fetch(url, {
+		headers: { Accept: "application/json" },
+		signal: withTimeout(REQUEST_TIMEOUT_MS),
+	}).catch(() => null);
+	if (!response?.ok) throw unavailable;
+	const body = (await response.json().catch(() => null)) as { url: string; state: string } | null;
+	if (!body) throw unavailable;
+	const { url: authorize, state } = body;
 
 	// Bind the callback to the tab that started sign-in. The server's signature
 	// proves issuance and expiry, but cannot establish that browser binding.
@@ -108,12 +123,20 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 		throw new Error("Start sign-in again in this tab. That sign-in link could not be verified.");
 	}
 
-	const response = await fetch(`${API_BASE}/api/oauth/callback`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		// POST, so the code never lands in a log, in history or in a Referer.
-		body: JSON.stringify({ code, state, redirect_uri: callbackUrl() }),
-	});
+	let response: Response;
+	try {
+		response = await fetch(`${API_BASE}/api/oauth/callback`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			// POST, so the code never lands in a log, in history or in a Referer.
+			body: JSON.stringify({ code, state, redirect_uri: callbackUrl() }),
+			signal: withTimeout(SIGN_IN_TIMEOUT_MS),
+		});
+	} catch {
+		// The callback screen prints this message, so it must be a sentence rather than
+		// the browser's own wording for a dropped or timed-out request.
+		throw new Error("Could not complete sign-in.");
+	}
 
 	if (!response.ok) {
 		const body = await readSignInResponse(response);
@@ -136,6 +159,7 @@ export async function completeSignIn(): Promise<CompletedSignIn> {
 			await fetch(`${API_BASE}/api/oauth/signout`, {
 				method: "POST",
 				headers: { Authorization: `Bearer ${body.token}` },
+				signal: withTimeout(REQUEST_TIMEOUT_MS),
 			});
 		} catch {}
 		throw new Error(
@@ -167,6 +191,7 @@ export async function signOut(): Promise<void> {
 	const response = await fetch(`${API_BASE}/api/oauth/signout`, {
 		method: "POST",
 		headers: { Authorization: `Bearer ${token}` },
+		signal: withTimeout(REQUEST_TIMEOUT_MS),
 	});
 	if (!response.ok) throw new Error("Could not sign out. Try again.");
 

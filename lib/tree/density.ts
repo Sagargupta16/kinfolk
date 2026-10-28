@@ -78,7 +78,16 @@ export function degrees(nodes: FlowNode[], edges: FlowEdge[]): Map<string, Degre
 			continue;
 		}
 
-		// Hierarchical: exactly one end is a union dot in a well-formed graph.
+		// A childless couple is projected as ONE edge between the two people, with no dot to
+		// traverse (see `toFlowGraph`), so it is counted directly: each partner has one more
+		// relative. Missed, both partners of a marriage scored family 0, as if alone.
+		if (!unionIds.has(edge.source) && !unionIds.has(edge.target)) {
+			bump(family, edge.source, 1);
+			bump(family, edge.target, 1);
+			continue;
+		}
+
+		// Otherwise hierarchical through a junction: exactly one end is a union dot.
 		for (const [end, other] of [
 			[edge.source, edge.target],
 			[edge.target, edge.source],

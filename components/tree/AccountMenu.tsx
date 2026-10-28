@@ -14,7 +14,7 @@
  */
 import { ChevronDown, GitMerge, LogOut, Share2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { leave } from "@/lib/tree/share-actions";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
@@ -33,6 +33,9 @@ export function AccountMenu({
 }) {
 	const [open, setOpen] = useState(false);
 	const wrapper = useRef<HTMLDivElement>(null);
+	// Held here rather than inside the popover, so closing and reopening the menu still
+	// shows why the last attempt failed.
+	const [signOutError, signOutAction, signingOut] = useActionState(leave, null);
 
 	// The label falls back through name, then email, then a generic -- an account with
 	// neither is possible (a GitHub profile can hide both) and "Signed in" is still true.
@@ -106,8 +109,10 @@ export function AccountMenu({
 							"absolute right-0 top-[calc(100%+0.375rem)] z-40 w-[min(15rem,calc(100vw-1.5rem))]",
 							// Opaque, like the legend: this sits over the canvas and a translucent
 							// surface would put a person's name through the middle of the email.
-							"overflow-hidden rounded-md border border-hairline-strong bg-surface",
-							"shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
+							"overflow-hidden rounded-2xl border border-hairline-strong bg-surface",
+							// The token, not a literal: a black shadow tuned for dark is a smudge on
+							// the light canvas, which has its own.
+							"shadow-(--kf-shadow-panel)",
 						)}
 					>
 						<div className="border-b border-hairline px-3 py-2.5">
@@ -126,6 +131,9 @@ export function AccountMenu({
 								}}
 								className={cn(
 									"flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs text-ink-muted",
+									// Inside the button, because the popover clips; `!` because the
+									// global ring is unlayered CSS and would otherwise win.
+									"focus-visible:-outline-offset-2!",
 									"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 									"hover:bg-surface-raised hover:text-ink",
 								)}
@@ -142,7 +150,7 @@ export function AccountMenu({
 									setOpen(false);
 									onLinks();
 								}}
-								className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink"
+								className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink focus-visible:-outline-offset-2!"
 							>
 								<GitMerge aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
 								Link family records
@@ -153,19 +161,30 @@ export function AccountMenu({
 						 * A form posting to a server action, not an onClick fetch. Sign-out has to
 						 * delete a database row and clear an httpOnly cookie, neither of which the
 						 * client can do -- and as a form it still works if JS has not hydrated.
+						 *
+						 * Through `useActionState`, because a sign-out that fails has to say so: the
+						 * action answers with a sentence instead of redirecting, and the session stays
+						 * intact so pressing again retries.
 						 */}
-						<form action={leave} className="border-t border-hairline">
+						<form action={signOutAction} className="border-t border-hairline">
 							<button
 								type="submit"
+								disabled={signingOut}
 								className={cn(
 									"flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs text-ink-muted",
+									"focus-visible:-outline-offset-2!",
 									"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-									"hover:bg-surface-raised hover:text-ink",
+									"hover:bg-surface-raised hover:text-ink disabled:cursor-wait disabled:opacity-60",
 								)}
 							>
 								<LogOut aria-hidden className="size-3.5 shrink-0" strokeWidth={1.5} />
-								Sign out
+								{signingOut ? "Signing out..." : "Sign out"}
 							</button>
+							{signOutError && (
+								<p role="alert" className="px-3 pb-2.5 text-xs leading-relaxed text-danger">
+									{signOutError}
+								</p>
+							)}
 						</form>
 					</motion.div>
 				)}

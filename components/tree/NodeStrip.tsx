@@ -14,7 +14,7 @@
  * a compositor move rather than a layout. On a narrow canvas it docks along the bottom edge
  * instead, where a phone keyboard expects an input, and still grows from the `+` above it.
  */
-import { useStore } from "@xyflow/react";
+import { useReactFlow, useStore } from "@xyflow/react";
 import { motion, useAnimate, type Variants } from "motion/react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MOTION_ATTR } from "@/lib/theme";
@@ -25,6 +25,9 @@ import { useEscapeClose } from "./escape";
 /** Below this canvas width the strip docks at the bottom, like the profile sheet. */
 const DOCK_BELOW = 640;
 const MARGIN = 12;
+/** How much canvas a docked strip leaves above itself before the card's `+`. */
+const CLEARANCE = 32;
+const PAN_MS = 260;
 
 /**
  * Opens on a quick spring from its origin, and the rows follow 45ms apart.
@@ -124,13 +127,71 @@ export function NodeStrip({
 
 	const point = { x: anchor.x * zoom + tx, y: anchor.y * zoom + ty };
 	const docked = bounds !== null && bounds.width < DOCK_BELOW;
+
+	/*
+	 * The bottom of what is actually visible, in this layer's coordinates.
+	 *
+	 * A phone keyboard shrinks the VISUAL viewport and leaves the layout one alone, so a strip
+	 * docked to the layout bottom sat underneath the keyboard its own input had just opened --
+	 * the answer buttons included. `visualViewport` is the only place that height is reported.
+	 */
+	const [visibleBottom, setVisibleBottom] = useState<number | null>(null);
+	useEffect(() => {
+		const viewport = window.visualViewport;
+		const host = layer.current;
+		if (!docked || !viewport || !host) return;
+		const update = () =>
+			setVisibleBottom(viewport.offsetTop + viewport.height - host.getBoundingClientRect().top);
+		update();
+		viewport.addEventListener("resize", update);
+		viewport.addEventListener("scroll", update);
+		return () => {
+			viewport.removeEventListener("resize", update);
+			viewport.removeEventListener("scroll", update);
+		};
+	}, [docked]);
+
 	let place: { left: number; top: number; originX: number; originY: number } | null = null;
 	if (bounds && docked) {
-		const top = bounds.height - size.height - MARGIN;
+		const bottom = Math.min(bounds.height, visibleBottom ?? bounds.height);
+		const top = Math.max(MARGIN, bottom - size.height - MARGIN);
 		place = { left: MARGIN, top, originX: point.x - MARGIN, originY: point.y - top };
 	} else if (bounds) {
 		place = placeStrip(point, side, size, bounds);
 	}
+
+	/*
+	 * Docked, the strip covers the bottom of the canvas wherever the card is, so a card low on
+	 * the screen -- and its `+`, which is also the strip's close mark -- went underneath it.
+	 * Pan the canvas up just enough to keep the control clear, once each time the strip's top
+	 * moves (opening, growing, the keyboard), never on the viewer's own pans.
+	 */
+	const { getViewport, setViewport } = useReactFlow();
+	const dockTop = docked ? (place?.top ?? null) : null;
+	useEffect(() => {
+		if (dockTop === null) return;
+		const viewport = getViewport();
+		const overlap = anchor.y * viewport.zoom + viewport.y - (dockTop - CLEARANCE);
+		if (overlap <= 0) return;
+		const reduced = document.documentElement.getAttribute(MOTION_ATTR) === "off";
+		void setViewport({ ...viewport, y: viewport.y - overlap }, { duration: reduced ? 0 : PAN_MS });
+	}, [dockTop, anchor.y, getViewport, setViewport]);
+
+	/*
+	 * Focus the field marked `data-autofocus` once the strip is VISIBLE.
+	 *
+	 * Its first frame is hidden until it has been measured and placed, and `focus()` on a
+	 * hidden element does nothing -- so the strips focusing their own field on mount left
+	 * focus on the `+` that opened them, and the first letter typed went to the canvas
+	 * shortcuts instead (a "d" changed the detail level and closed the strip).
+	 */
+	const shown = place !== null;
+	useEffect(() => {
+		if (!shown) return;
+		const field = box.current?.querySelector<HTMLInputElement>("[data-autofocus]");
+		field?.focus();
+		if (field?.dataset.autofocus === "select") field.select();
+	}, [shown]);
 
 	return (
 		<div ref={layer} className="pointer-events-none absolute inset-0 z-50 overflow-hidden">

@@ -20,26 +20,29 @@ import type { UnionWithChildren } from "./graph";
 import type { KinRole } from "./kin-plan";
 import type { Box } from "./layout";
 
-/** What one `+` adds, as the add sheet needs it. */
+/** What one `+` adds, as the strip it opens needs it. */
 export type AddTarget = {
 	/** The source row the action writes against. */
 	subjectId: string;
-	/** Whose relative this is, named in the sheet's heading. */
+	/**
+	 * Whose relative this is. The strip has no heading, so this names the subject in the name
+	 * field's placeholder ("Morgan's child") and in the strip's and the control's accessible names.
+	 */
 	subjectName: string;
 	direction: "parent" | "partner" | "child";
 	/**
-	 * The two roles the sheet offers, in display order.
+	 * The two roles the strip offers, in display order.
 	 *
 	 * Always a gendered pair, so the button pressed IS the sex and no gender field exists.
 	 * The order puts the likelier answer first -- a mother beside a recorded father -- but
 	 * pressing Enter never picks one: a daughter saved as a son because Enter chose the first
-	 * button is exactly the silent wrong fact this sheet must not produce.
+	 * button is exactly the silent wrong fact this strip must not produce.
 	 */
 	roles: [KinRole, KinRole];
 	/** The union the new person joins, when it is already decided. */
 	unionId?: string;
 	/**
-	 * Several families qualify (birth and adoptive, two single-parent families), so the sheet
+	 * Several families qualify (birth and adoptive, two single-parent families), so the strip
 	 * asks which -- with NOTHING pre-chosen. `planKin` refuses to pick one, and a default
 	 * radio would quietly do exactly what it refuses to.
 	 */
@@ -47,7 +50,7 @@ export type AddTarget = {
 };
 
 /** Every `+` one person carries, before any geometry. */
-export type NodeAffordances = {
+type NodeAffordances = {
 	/** Absent once both parents are recorded: a third would have nowhere to go. */
 	parent: AddTarget | null;
 	partner: AddTarget;
@@ -81,9 +84,10 @@ const NON_BIOLOGICAL: Partial<Record<ParentRole, string>> = {
 /**
  * What the person may grow, from the unions of the tree the viewer may write to.
  *
- * `people` maps a source id to its display name and sex, for headings, role order and
- * family labels. A union whose partner is missing from it still counts: the partner may be
- * folded away or simply unnamed, and the slot they occupy is real either way.
+ * `people` maps a source id to its display name and sex, for the strip's placeholder and
+ * accessible names, role order and family labels. A union whose partner is missing from it
+ * still counts: the partner may be folded away or simply unnamed, and the slot they occupy
+ * is real either way.
  */
 export function nodeAffordances({
 	subjectId,
@@ -91,6 +95,7 @@ export function nodeAffordances({
 	subjectSex,
 	unions,
 	people,
+	drawnParents,
 }: {
 	subjectId: string;
 	subjectName: string;
@@ -98,6 +103,12 @@ export function nodeAffordances({
 	/** Source unions of the subject's own tree. */
 	unions: UnionWithChildren[];
 	people: Map<string, { name: string; sex: Sex }>;
+	/**
+	 * How many distinct parents the canvas already draws above the subject, across every
+	 * family in view. In the combined view a linked family can record parents this tree does
+	 * not hold, and only the canvas knows. Absent when this tree's unions are the whole picture.
+	 */
+	drawnParents?: number;
 }): NodeAffordances {
 	const nameOf = (id: string | null) => (id ? (people.get(id)?.name ?? "Unknown") : null);
 	const partnersOf = (union: UnionWithChildren, except?: string) =>
@@ -150,8 +161,22 @@ export function nodeAffordances({
 
 	const parentUnions = unions.filter((union) => union.childIds.includes(subjectId));
 	const withRoom = parentUnions.filter((union) => !union.partnerAId || !union.partnerBId);
+	/*
+	 * This tree's unions are not the whole picture in the combined view. A linked family can
+	 * draw both of somebody's parents while this tree records none, or fold this tree's lone
+	 * mother into their couple, and a `+` above that card would then add a THIRD parent to a
+	 * picture that already shows two. So once the canvas draws two parents this tree does not
+	 * account for, the slot is gone -- the same reading of the laid-out graph the partner `+`
+	 * makes. Parents this tree records itself are counted out, so a birth couple beside an
+	 * adoptive family with room still offers its slot.
+	 */
+	const recordedHere = new Set(
+		parentUnions.flatMap((union) => [union.partnerAId, union.partnerBId]).filter(Boolean),
+	).size;
+	const filledElsewhere =
+		drawnParents !== undefined && drawnParents >= 2 && drawnParents > recordedHere;
 	let parent: AddTarget | null = null;
-	if (parentUnions.length === 0 || withRoom.length > 0) {
+	if (!filledElsewhere && (parentUnions.length === 0 || withRoom.length > 0)) {
 		const only = withRoom.length === 1 ? withRoom[0] : undefined;
 		const recorded = only?.partnerAId ?? only?.partnerBId ?? null;
 		parent = {
@@ -193,8 +218,9 @@ export function nodeAffordances({
 				partnerSourceId: other,
 				target: {
 					subjectId,
-					// Both parents, because the child belongs to the couple and the heading should
-					// say which couple -- after a remarriage it is the only thing telling them apart.
+					// Both parents, because the child belongs to the couple and the placeholder and
+					// accessible names should say which couple -- after a remarriage it is the only
+					// thing telling them apart.
 					subjectName: `${subjectName} and ${nameOf(other)}`,
 					direction: "child" as const,
 					roles: ["son", "daughter"] as [KinRole, KinRole],
@@ -228,7 +254,7 @@ export function nodeAffordances({
 }
 
 /** Minimum touch target, in SCREEN pixels. */
-export const HIT_TARGET = 44;
+const HIT_TARGET = 44;
 
 /**
  * Where the fold chevron's pill sits across a card's top and bottom edges, as a fraction of
@@ -256,6 +282,11 @@ export type AddSlot = {
 	reach?: number;
 	/** The facing edges of an adjacent couple, which bound the shared `+`'s target. */
 	gutter?: { left: number; right: number };
+	/**
+	 * On a couple's `+`: the x of the subject's own single-parent `+` on the same edge, when
+	 * both are drawn, so the couple's target stops where that one's begins.
+	 */
+	besideChild?: number;
 	/** The accessible name, which is also the tooltip. */
 	label: string;
 };
@@ -362,6 +393,7 @@ export function addSlots(
 			kind: "couple",
 			target: couple.target,
 			...slot,
+			...(affordances.child ? { besideChild: cx } : {}),
 			label: `Add a child of ${couple.target.subjectName}`,
 		});
 	}
@@ -397,10 +429,12 @@ export function addSlots(
  *     cost, a target that opens "add a child" when you tap the child is a defect.
  *   - ACROSS the edge short of the fold chevron's pill, on this card and, for a couple's `+`,
  *     on the right-hand partner's card, whose pill sits 16% from the gutter side.
+ *   - A couple's target also stops where the subject's own single-parent `+` begins, when
+ *     both share the bottom edge: zoomed out, it reached about 10 screen pixels into it.
  *   - A side target reaches outward by less than the free space beside the card (`reach`).
  */
 export function hitBox(
-	slot: Pick<AddSlot, "kind" | "x" | "y" | "side" | "reach" | "gutter">,
+	slot: Pick<AddSlot, "kind" | "x" | "y" | "side" | "reach" | "gutter" | "besideChild">,
 	card: { width: number; height: number; reach: number; rowGap: number },
 	zoom: number,
 ): { left: number; top: number; width: number; height: number } {
@@ -425,18 +459,26 @@ export function hitBox(
 	if (slot.kind === "couple" && slot.gutter) {
 		// Into the left card freely (its pill is at its far edge), into the right card only up
 		// to its fold pill, which sits 16% from the gutter.
-		const leftLimit = slot.gutter.left - card.width * 0.4;
-		const rightLimit = slot.gutter.right + Math.max(0, FOLD_AT * card.width - FOLD_PILL_HALF);
+		let leftLimit = slot.gutter.left - card.width * 0.4;
+		let rightLimit = slot.gutter.right + Math.max(0, FOLD_AT * card.width - FOLD_PILL_HALF);
+		// And never over the subject's own single-parent `+`, which shares this edge.
+		if (slot.besideChild !== undefined) {
+			const half = edgeWidth(card, hit) / 2;
+			if (slot.besideChild < slot.x) leftLimit = Math.max(leftLimit, slot.besideChild + half);
+			else rightLimit = Math.min(rightLimit, slot.besideChild - half);
+		}
 		const width = Math.min(hit, rightLimit - leftLimit);
 		const left = Math.min(Math.max(slot.x - width / 2, leftLimit), rightLimit - width);
 		return { left, top, width, height };
 	}
 
-	const width =
-		slot.kind === "couple"
-			? Math.min(hit, card.width * 0.4)
-			: Math.min(hit, 2 * ((0.5 - FOLD_AT) * card.width - FOLD_PILL_HALF));
+	const width = slot.kind === "couple" ? Math.min(hit, card.width * 0.4) : edgeWidth(card, hit);
 	return { left: slot.x - width / 2, top, width, height };
+}
+
+/** The width of a parent or child target: centred on the edge, short of both fold pills. */
+function edgeWidth(card: { width: number }, hit: number): number {
+	return Math.min(hit, 2 * ((0.5 - FOLD_AT) * card.width - FOLD_PILL_HALF));
 }
 
 /** Which way a strip opens from the control that opened it. */

@@ -9,10 +9,11 @@
  *
  * Three things this route must not become:
  *
- *   - **The place contact filtering happens.** `lib/tree/visibility.ts` strips
- *     values while the view is assembled, so what arrives here is already
- *     filtered. Re-deciding it would put the same rule in two files, and the copy
- *     that goes stale is the one that leaks.
+ *   - **The place contact filtering happens.** `lib/tree/visibility.ts` drops the
+ *     rows a viewer may not see while the view is assembled, and the view carries
+ *     no contact values at all, so what arrives here is already filtered.
+ *     Re-deciding it would put the same rule in two files, and the copy that goes
+ *     stale is the one that leaks.
  *   - **A cookie-authenticated endpoint.** Auth is a bearer token, which is what
  *     keeps the session cookie `SameSite=Lax`. See lib/tree/bearer.ts.
  *   - **Trusting a client-supplied user id.** The only accepted identity is a
@@ -52,6 +53,17 @@ export async function GET(request: NextRequest) {
 		showRelations: params.get("relations") !== "0",
 	};
 
+	// An explicit `?demo=1` is the sample family whoever asks, matching app/tree/page.tsx.
+	// Checked BEFORE the token: a signed-in visitor who opened the sample was otherwise
+	// shown their own family under a banner calling it the sample. The same answer for
+	// everybody, so the browser may keep it for a few minutes.
+	if (params.get("demo") === "1") {
+		return NextResponse.json(
+			{ view: serialiseTreeView(buildDemoView(options)) },
+			{ headers: { ...cors, "Cache-Control": "public, max-age=300" } },
+		);
+	}
+
 	// Both database calls are wrapped, and the absence of this was a real defect: an
 	// unhandled throw here answered 500 with an EMPTY BODY, so a failing query was
 	// indistinguishable from a crashed function. The stage marker exists for the same
@@ -82,11 +94,10 @@ export async function GET(request: NextRequest) {
 		);
 	}
 
-	// No token: the sample tree, if the caller asked for it the same way the page
-	// does. Demo mode reads no session and no database, so it is the one path that
-	// works for a visitor who has never signed in.
-	const wantsDemo = params.get("demo") === "1" || request.cookies.get(DEMO_COOKIE)?.value === "1";
-	if (wantsDemo) {
+	// No token: the sample tree, if the demo cookie asks for it the way the page reads
+	// it. Demo mode reads no session and no database, so it is the one path that works
+	// for a visitor who has never signed in.
+	if (request.cookies.get(DEMO_COOKIE)?.value === "1") {
 		return NextResponse.json(
 			{ view: serialiseTreeView(buildDemoView(options)) },
 			{ headers: cors },

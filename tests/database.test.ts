@@ -488,7 +488,9 @@ describe("cross-family consent", () => {
 		const view = await loadTreeView(other);
 		const contacts =
 			view?.nodes.flatMap((node) => (node.type === "person" ? node.data.contacts : [])) ?? [];
-		expect(contacts.map(({ value }) => value)).toEqual(["shared@example.invalid"]);
+		expect(contacts.map(({ kind }) => kind)).toEqual(["email"]);
+		expect(contacts.some((contact) => "value" in contact)).toBe(false);
+		expect(JSON.stringify(view?.nodes)).not.toContain("shared@example.invalid");
 		expect(await contactState(subject)).toMatchObject({
 			editable: false,
 			contacts: [{ value: "shared@example.invalid" }],

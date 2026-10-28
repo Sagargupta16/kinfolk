@@ -67,3 +67,49 @@ export function authHeaders(): Record<string, string> {
 	const token = getToken();
 	return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+/**
+ * How long an ordinary read or write may take before it is reported as failed.
+ *
+ * A fetch has no limit of its own, so a stalled connection -- a phone between masts, a
+ * captive portal that accepts the socket and never answers -- spun forever, which reads
+ * as a broken app rather than a bad connection. Twenty seconds clears a cold function
+ * waking a suspended database with room to spare.
+ */
+export const REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * The OAuth callback gets longer. Inside that one request the server exchanges the code
+ * with GitHub, reads the account and may create the first graph, and the code can be
+ * spent only once, so abandoning a slow exchange early costs the visitor a fresh sign-in.
+ */
+export const SIGN_IN_TIMEOUT_MS = 45_000;
+
+/**
+ * A signal that aborts after `ms`, or as soon as `signal` does.
+ *
+ * `AbortSignal.any` is the natural way to join the two, but the build targets iOS 16.4
+ * and Safari added it in 17.4, where calling it throws before the request is even made.
+ * So it is used where it exists and the first abort is forwarded by hand where it does
+ * not.
+ */
+export function withTimeout(ms: number, signal?: AbortSignal): AbortSignal {
+	const timeout = AbortSignal.timeout(ms);
+	if (!signal) return timeout;
+	if (typeof AbortSignal.any === "function") return AbortSignal.any([signal, timeout]);
+
+	const joined = new AbortController();
+	for (const source of [signal, timeout]) {
+		if (source.aborted) {
+			joined.abort(source.reason);
+			break;
+		}
+		source.addEventListener("abort", () => joined.abort(source.reason), { once: true });
+	}
+	return joined.signal;
+}
+
+/** Whether a rejected request ran out of time, rather than failing outright. */
+export function timedOut(error: unknown): boolean {
+	return error instanceof DOMException && error.name === "TimeoutError";
+}

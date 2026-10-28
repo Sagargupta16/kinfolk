@@ -42,7 +42,7 @@ import { useEffect, useId, useMemo, useState, useTransition } from "react";
 import type { ContactKind, ParentRole } from "@/lib/db/schema";
 import { deleteRelation } from "@/lib/tree/edit-actions";
 import { editTarget } from "@/lib/tree/editable";
-import { displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
+import { birthYear, deathYear, displayName, type FusedPerson, lifespan } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import { parentageLabel } from "@/lib/tree/parentage";
 import type { FamilyIndex, Relatives } from "@/lib/tree/relatives";
@@ -168,19 +168,21 @@ export function PersonDetail({
 					className={cn(
 						"kf-sheet kf-sheet--rail absolute z-40 flex flex-col overflow-hidden",
 						/*
-						 * Phone: a bottom sheet at 55dvh, not 70.
+						 * Phone: a bottom sheet of at most 55% of the CANVAS, not 70% of the screen.
 						 *
 						 * Measured at 375x812: 70dvh is 568px of sheet and leaves 244px of canvas, and
 						 * the header, demo banner and search box already own most of that -- so the
 						 * card you just tapped was itself covered. A detail panel that hides its own
 						 * subject has lost the thing that makes it a panel rather than a page: this is
 						 * deliberately non-modal so you can read a person against the family around
-						 * them. 55dvh keeps roughly 365px of canvas, which holds the subject's row and
-						 * the one above it, and the sheet still scrolls to every section.
+						 * them. 55dvh alone still came to 447px against a canvas region of 620px
+						 * signed in and 563px in the demo, leaving 173 and 116px; capping at 55% of
+						 * the region keeps the subject's row and the one above it in view, and the
+						 * sheet still scrolls to every section.
 						 *
 						 * Desktop: a full-height rail on the right, where vertical room is not scarce.
 						 */
-						"inset-x-0 bottom-0 max-h-[55dvh] rounded-t-2xl",
+						"inset-x-0 bottom-0 max-h-[min(55dvh,55%)] rounded-t-2xl",
 						"sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[22rem] sm:rounded-none sm:rounded-l-2xl",
 					)}
 				>
@@ -326,8 +328,8 @@ export function PersonDetail({
 								)}
 								{!person.sources.some((source) => /^[0-9a-f-]{36}$/i.test(source.id)) && (
 									<p className="py-4 text-sm leading-relaxed text-ink-muted">
-										Contact values are private. This sample only shows the kinds of details a family
-										can keep.
+										The sample family is historical, so it keeps no contact details. Your own
+										relatives' details stay private, on a page of their own.
 									</p>
 								)}
 							</>
@@ -369,14 +371,18 @@ function Header({
 			 * The avatar is INITIALS, not a photo, and that is a data decision rather than a
 			 * shortcut: `photoKey` points into object storage that has no signed-URL route
 			 * yet, so rendering an <img> would either 404 on every card or leak a bucket path.
-			 * Initials over a living-status tint carry the same "who is this" at a glance.
+			 *
+			 * Muted for somebody who has died, neutral otherwise. Living used to wear a green
+			 * tint, against the rule that the majority state gets no colour -- and it tinted
+			 * everybody NOT deceased, so a relative added from the canvas, whose status starts
+			 * as not recorded, wore living green beside a Facts row saying "Not recorded".
 			 */}
 			<div
 				className={cn(
 					"flex size-12 shrink-0 items-center justify-center rounded-full border text-base font-medium",
 					primary.living === "deceased"
 						? "border-hairline bg-surface text-ink-muted"
-						: "border-living/40 bg-living/10 text-ink",
+						: "border-hairline-strong bg-surface-raised text-ink",
 				)}
 				aria-hidden="true"
 			>
@@ -411,7 +417,7 @@ function Header({
 					"hover:bg-surface-raised hover:text-ink",
 				)}
 			>
-				<X className="size-4" strokeWidth={1.5} aria-hidden="true" />
+				<X className="size-4" strokeWidth={1.75} aria-hidden="true" />
 			</button>
 		</div>
 	);
@@ -466,7 +472,7 @@ function Facts({ person }: { person: FusedPerson }) {
 	const p = person.primary;
 	const rows: { label: string; value: string; Icon: typeof Calendar }[] = [];
 
-	const birth = p.birthDate?.slice(0, 4) ?? p.birthDateApprox;
+	const birth = birthYear(p);
 	if (birth) {
 		rows.push({
 			label: "Born",
@@ -475,7 +481,7 @@ function Facts({ person }: { person: FusedPerson }) {
 		});
 	}
 
-	const death = p.deathDate?.slice(0, 4) ?? p.deathDateApprox;
+	const death = deathYear(p);
 	if (death) {
 		rows.push({
 			label: "Died",
@@ -611,26 +617,36 @@ function PersonRow({
 				"hover:bg-surface-raised",
 			)}
 		>
+			{/* The canvas's own status marks: living is the majority and stays neutral. */}
 			<span
 				className={cn(
 					"size-1.5 shrink-0 rounded-full",
 					person.primary.living === "deceased"
 						? "bg-past"
 						: person.primary.living === "unknown"
-							? "bg-hairline-strong"
-							: "bg-living",
+							? "bg-ink-faint"
+							: "bg-edge",
 				)}
 				aria-hidden="true"
 			/>
-			<span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink">
-				{displayName(person.primary)}
+			{/*
+			 * The name over its kinship term, rather than beside it. On one line the term and the
+			 * dates could not shrink, so on a phone "great-great-uncle by marriage" left the name
+			 * about eight characters -- and the name is what the row is for.
+			 */}
+			<span className="flex min-w-0 flex-1 flex-col">
+				<span className="truncate text-[0.8125rem] text-ink">{displayName(person.primary)}</span>
+				{(trailing || kinship) && (
+					<span
+						className={cn(
+							"truncate font-mono text-[0.625rem]",
+							trailing ? "text-accent-ink" : "text-ink-faint",
+						)}
+					>
+						{trailing ?? kinship?.label}
+					</span>
+				)}
 			</span>
-			{trailing && (
-				<span className="shrink-0 font-mono text-[0.625rem] text-accent-ink">{trailing}</span>
-			)}
-			{!trailing && kinship && (
-				<span className="shrink-0 font-mono text-[0.625rem] text-ink-faint">{kinship.label}</span>
-			)}
 			{dates && <span className="tabular shrink-0 text-[0.625rem] text-ink-faint">{dates}</span>}
 		</button>
 	);

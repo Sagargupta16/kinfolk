@@ -44,7 +44,11 @@ async function settle(page: Page, ms = 1200) {
 }
 
 async function openPerson(page: Page, name: string) {
-	await page.locator(".react-flow__node-person", { hasText: name }).first().click();
+	// The exact name, not a substring: "Edward VII" is also the start of "Edward VIII".
+	await page
+		.locator(".react-flow__node-person", { has: page.getByText(name, { exact: true }) })
+		.first()
+		.click();
 	await settle(page, 1500);
 }
 
@@ -73,7 +77,7 @@ const shots: Shot[] = [
 		name: "person-desktop-dark",
 		viewport: DESKTOP,
 		scheme: "dark",
-		prepare: (page) => openPerson(page, "April Fortin"),
+		prepare: (page) => openPerson(page, "Edward VII"),
 	},
 	{
 		name: "people-desktop-dark",
@@ -89,7 +93,7 @@ const shots: Shot[] = [
 		viewport: PHONE,
 		scheme: "dark",
 		mobile: true,
-		prepare: (page) => openPerson(page, "Sophie Fortin"),
+		prepare: (page) => openPerson(page, "George VI"),
 	},
 ];
 

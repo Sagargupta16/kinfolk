@@ -239,7 +239,7 @@ export function TreeMinimap({ nodes, extent }: { nodes: OverviewNode[]; extent: 
 				title={open ? "Hide the overview" : "Show the overview"}
 				className={cn(
 					"flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
-					"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider backdrop-blur-sm",
+					"bg-surface font-mono text-[0.625rem] uppercase tracking-wider",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					open
 						? // `accent-ink`, not the raw accent: 10px type owes 4.5:1, which the

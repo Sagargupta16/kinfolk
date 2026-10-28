@@ -17,11 +17,11 @@ sample data is read-only.
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FSagargupta16%2Fkinfolk&project-name=kinfolk&repository-name=kinfolk&env=AUTH_SECRET%2CAUTH_GITHUB_ID%2CAUTH_GITHUB_SECRET&envDescription=A%20random%20AUTH_SECRET%20and%20a%20GitHub%20OAuth%20app.%20The%20Neon%20integration%20supplies%20DATABASE_URL.&envLink=https%3A%2F%2Fgithub.com%2FSagargupta16%2Fkinfolk%2Fblob%2Fmain%2Fdocs%2FSELF-HOSTING.md&demo-title=Kinfolk&demo-description=Collaborative%20family%20graph%3A%20each%20relative%20keeps%20their%20own%20tree%2C%20consent%20links%20join%20them.&demo-url=https%3A%2F%2Fkinfolk-neon.vercel.app%2Fdemo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
 Run your own copy with a private Neon database: [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
-![The sample family on the Tree view: three generations of cards with kinship labels, joined at union dots](docs/screenshots/tree-desktop-dark.webp)
+![The sample family, Queen Victoria's and Christian IX's descendants, on the Tree view: rows of cards by generation with kinship labels, joined at union dots](docs/screenshots/tree-desktop-dark.webp)
 
 | Person profile | People directory | Phone |
 | --- | --- | --- |
-| ![April Fortin's profile panel open beside the tree, listing her parents and marriages](docs/screenshots/person-desktop-dark.webp) | ![The People directory: a searchable list with kinship and birth years](docs/screenshots/people-desktop-dark.webp) | ![The tree on a phone, with Sophie Fortin's profile as a bottom sheet](docs/screenshots/person-phone-dark.webp) |
+| ![Edward VII's profile panel open beside the tree, listing his parents and his marriage](docs/screenshots/person-desktop-dark.webp) | ![The People directory: a searchable list with kinship and birth years](docs/screenshots/people-desktop-dark.webp) | ![The tree on a phone, with George VI's profile as a bottom sheet](docs/screenshots/person-phone-dark.webp) |
 
 Screenshots are the live sample tree, captured by `pnpm screenshots` (Playwright). A light
 theme [is available too](docs/screenshots/tree-desktop-light.webp).
@@ -35,7 +35,9 @@ The [review and verification report](docs/verification-0.4.0.md) records the 0.4
 layout benchmark. **0.6.0** adds relatives from `+` handles on the viewed card through one
 small sheet, and removes the add and connect forms. **0.7.0** keeps every edit on the card:
 a tap only picks a person, the `+` and a second tap open one small strip beside the card,
-and the tree moves to make room for each new relative; see the [changelog](CHANGELOG.md).
+and the tree moves to make room for each new relative. **0.8.0** is a whole-repository
+audit with every finding fixed, a sample family of real records from Wikidata, and layout
+in a Web Worker; see the [changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -52,9 +54,10 @@ social rather than visual:
 - **Most genealogy data is missing or fuzzy.** `unknown` is a stored value, and approximate dates
   ("about 1890") have their own fields rather than being rounded into a lie.
 
-It is also a contact graph, not only a pedigree. Anyone can be a node -- a friend, a
-colleague, a neighbour -- and a friendship carries no generation, so it must never reach
-the layout engine.
+It is also a contact graph, not only a pedigree. The schema lets anyone be a node -- a
+friend, a colleague, a neighbour -- and a friendship carries no generation, so it must never
+reach the layout engine. Today the interface adds parents, partners and children; a
+connection outside the family can be shown and removed, but not yet added.
 
 The long version, with the schema, the union-find that fuses trees, and why the layout
 libraries were ruled out: [A family tree is not a tree](docs/a-family-tree-is-not-a-tree.md).
@@ -134,24 +137,24 @@ Key decisions:
 ## Layout performance
 
 `pnpm bench:layout` times the full layout (ELK plus Kinfolk's pedigree passes) on the
-sample tree and on seeded generated families, in Node, on the same code path the browser
-runs. It also times `elk.layout()` on its own, so the last two columns split the total
-between ELK and Kinfolk's passes. One run on an Intel i9-14900HX laptop, Node 26.10,
-median of 7 timed runs after 2 warm-ups:
+sample tree and on seeded generated families, in Node, with the same ELK and the same
+passes the browser runs. It also times `elk.layout()` on its own, so the last two columns
+split the total between ELK and Kinfolk's passes. One run on an Intel i9-14900HX laptop,
+Node 26.10, median of 7 timed runs after 2 warm-ups, on 2026-10-28:
 
 | Graph | Nodes (people + unions) | Layout edges | Median | Fastest | ELK share | Kinfolk passes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample tree, 117 people | 151 | 150 | 124 ms | 108 ms | 99% | 2 ms |
-| generated, 50 people | 60 | 59 | 32 ms | 30 ms | 98% | 1 ms |
-| generated, 200 people | 243 | 242 | 161 ms | 149 ms | 99% | 2 ms |
-| generated, 1000 people | 1232 | 1231 | 5706 ms | 5647 ms | 100% | 18 ms |
+| sample tree, 216 people | 256 | 265 | 234 ms | 231 ms | 99% | 2 ms |
+| generated, 50 people | 60 | 59 | 20 ms | 17 ms | 98% | 0 ms |
+| generated, 200 people | 243 | 242 | 180 ms | 164 ms | 99% | 2 ms |
+| generated, 1000 people | 1232 | 1231 | 5099 ms | 4934 ms | 100% | 15 ms |
 
-Three back-to-back runs on that machine gave 1,000-person medians of 5706, 5732 and
-6290 ms, and the absolute numbers move with whatever else the machine is doing, so read
-them as an order of magnitude and compare sizes within one run. Family-sized trees lay
-out in well under a second. At every size ELK's layered layout is 97% or more of the
-time, and because it runs on the main thread the canvas freezes until it returns; moving
-ELK into a Web Worker is the planned fix.
+The absolute numbers move with whatever else the machine is doing (earlier runs gave
+1,000-person medians between 5.1 and 6.3 seconds), so read them as an order of magnitude
+and compare sizes within one run. Family-sized trees lay out in well under a second. At
+every size ELK's layered layout is 97% or more of the time. Since 0.8.0 the browser runs it
+in a Web Worker, so even the 1,000-person layout leaves the page responsive while it works;
+if the worker cannot start, layout falls back to the page thread.
 
 ## Local dev
 
@@ -235,7 +238,7 @@ split is necessary because Pages cannot run Auth.js, query Neon, or execute serv
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/release-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/release-light.svg">
-  <img width="628" src="docs/diagrams/release-light.svg" alt="Kinfolk release. A push to main starts up to three independent paths. Vercel's Git integration builds every push and promotes it to Vercel production. deploy.yml runs when server paths change: it applies the committed SQL migrations to Neon, then waits until Vercel production reports /api/health ready on the same commit. pages.yml runs when UI paths change: it builds the SPA with the /kinfolk/ base and a 404.html shell, publishes it to the Pages site, and verifies the commit, a deep link and the assets. A nightly health workflow at 02:31 UTC probes both Vercel production and the Pages site.">
+  <img width="628" src="docs/diagrams/release-light.svg" alt="Kinfolk release. A push to main starts up to three independent paths. Vercel's Git integration builds every push and promotes it to Vercel production. deploy.yml runs when server paths change: it applies the committed SQL migrations to Neon, then waits until Vercel production reports /api/health ready on the same commit. pages.yml runs when UI paths change: it builds the SPA with the /kinfolk/ base and a 404.html shell, publishes it to the Pages site, and verifies the commit, a deep link and the assets. A health workflow scheduled daily at 02:31 UTC, which GitHub usually starts several hours later, probes both Vercel production and the Pages site.">
 </picture>
 
 The spec behind the picture is [`docs/diagrams/release.yaml`](docs/diagrams/release.yaml), rendered with [orrery](https://github.com/Sagargupta16/orrery).
@@ -273,7 +276,8 @@ private contact editing, deletion of unclaimed records, and demo mode. Most of t
 been live since 0.4.0 (2026-09-10). 0.6.0 moves adding relatives onto `+` handles on the
 viewed card and removes the panel for connecting existing people; its server actions remain.
 0.7.0 moves editing a person's name and year onto their card too, and opens the profile only
-when asked for.
+when asked for. 0.8.0 makes the sample family real (Wikidata), keeps contact values off the
+tree view, leaves access changes to a graph's owner, and fixes every finding of a full audit.
 
 Photo uploads still need an approved private-storage provider and authentication flow.
 Avatars use initials. Profiles linked to an account cannot be deleted; other deletion

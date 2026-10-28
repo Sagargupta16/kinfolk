@@ -10,6 +10,15 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 	const id = useId();
 	const [error, setError] = useState("");
 	const [pending, startTransition] = useTransition();
+	/**
+	 * Saved, and waiting for the view to change -- which unmounts this screen.
+	 *
+	 * In Next the refresh is part of the transition, so `pending` covers it. In the SPA
+	 * `router.refresh()` only asks for a re-read and returns at once, so without this the
+	 * button came back with the name still typed and a second tap added the same person
+	 * twice.
+	 */
+	const [added, setAdded] = useState(false);
 	return (
 		<div className="flex h-full items-center justify-center overflow-y-auto px-4 py-8">
 			<div className="w-full max-w-sm space-y-4">
@@ -21,10 +30,10 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 						</p>
 						<form
 							className="space-y-3"
-							aria-busy={pending}
+							aria-busy={pending || added}
 							onSubmit={(event) => {
 								event.preventDefault();
-								if (pending) return;
+								if (pending || added) return;
 								const form = new FormData(event.currentTarget);
 								// The two columns too, which is all the previous API version reads while the
 								// app and the API are mid-deploy; the current one lets `name` win.
@@ -35,8 +44,10 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 								startTransition(async () => {
 									try {
 										const result = await addPerson(form);
-										if (result.ok) router.refresh();
-										else setError(result.error);
+										if (result.ok) {
+											setAdded(true);
+											router.refresh();
+										} else setError(result.error);
 									} catch {
 										setError("Could not add that person. Try again.");
 									}
@@ -60,10 +71,10 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 							/>
 							<button
 								type="submit"
-								disabled={pending}
+								disabled={pending || added}
 								className="min-h-11 w-full rounded-md bg-ink px-4 text-sm text-canvas disabled:opacity-60"
 							>
-								{pending ? "Adding..." : "Add the first person"}
+								{pending ? "Adding..." : added ? "Added" : "Add the first person"}
 							</button>
 						</form>
 						{error && (

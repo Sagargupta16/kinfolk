@@ -12,19 +12,26 @@
  * Invites are addressed by email or GitHub login because the invitee usually has no
  * account yet, which is why `tree_invites` carries both and neither is a foreign key.
  */
-import { and, eq, inArray } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
-import { sessionOrNull, signOut } from "@/auth";
+import { and, eq, gt, inArray } from "drizzle-orm";
+import { signOut } from "@/auth";
 import { db } from "../db/client";
 import { treeInvites, treeMembers, trees, users } from "../db/schema";
-import { assertCanEditTree, NotAllowedError } from "./authz";
-import { userIdFromBearer } from "./bearer";
+import { assertCanEditTree, assertOwnsTree, NotAllowedError } from "./authz";
 import { DEMO_COOKIE } from "./demo";
-import type { Result } from "./edit-actions";
+import { isUuid } from "./ids";
 import { normalizeGitHubLogin, parseInviteRole } from "./invite";
+import { withinHourlyBudget } from "./rate-limit";
+import { inDemo, requestUserId } from "./request-user";
+import type { Result } from "./result";
+import type { ShareState } from "./sharing";
+
+export type { ShareState } from "./sharing";
 
 /** How long an unclaimed invite stays valid. */
 const INVITE_DAYS = 14;
+
+/** A GitHub username: letters, digits and single inner hyphens, at most 39 characters. */
+const GITHUB_LOGIN = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/;
 
 /**
  * Sign out.
@@ -34,8 +41,13 @@ const INVITE_DAYS = 14;
  * sample data -- the demo cookie outlives the session, and `/tree` prefers a session but
  * falls back to the cookie, so the person would land on somebody else's family and be
  * told it was theirs.
+ *
+ * Shaped for `useActionState`, which hands it the previous message and the form, so the
+ * menu can say when the SPA's version of this fails. This one never returns a message:
+ * Auth.js's `signOut` ends in Next's redirect, which must reach the framework, so
+ * nothing here may catch it.
  */
-export async function leave(): Promise<void> {
+export async function leave(_previous: string | null, _form?: FormData): Promise<string | null> {
 	const { cookies } = await import("next/headers");
 	const store = await cookies();
 	store.delete(DEMO_COOKIE);
@@ -43,26 +55,17 @@ export async function leave(): Promise<void> {
 	// URL, which is /tree, which immediately redirects to /signin -- two navigations to
 	// reach the page it could have gone to directly.
 	await signOut({ redirectTo: "/" });
+	return null;
 }
 
 async function sharer(): Promise<{ userId: string } | { error: string }> {
-	const { cookies, headers } = await import("next/headers");
-	const session = await sessionOrNull();
-	const userId = session?.user?.id;
+	const userId = await requestUserId();
 	if (userId) return { userId };
-
-	// A bearer token, for a UI served from another origin. Same reasoning as
-	// `editor()` in edit-actions.ts: the cookie is tried first, so the
-	// server-rendered path is untouched.
-	const bearer = await userIdFromBearer((await headers()).get("authorization"));
-	if (bearer) return { userId: bearer };
-
-	const store = await cookies();
-	if (store.get(DEMO_COOKIE)) {
-		return { error: "This is sample data. Sign in to share a graph of your own." };
-	}
-
-	return { error: "Sign in to share." };
+	return {
+		error: (await inDemo())
+			? "This is sample data. Sign in to share a graph of your own."
+			: "Sign in to share.",
+	};
 }
 
 /**
@@ -77,11 +80,26 @@ function inviteToken(): string {
 }
 
 /**
+ * NotAllowedError as the panel's message. Anything else is logged by name and rethrown
+ * bare, because a failed query's message carries its bound values -- here an invitee's
+ * email address -- and Next logs whatever an action throws.
+ */
+function refuse(error: unknown, action: string): Result {
+	if (error instanceof NotAllowedError) return { ok: false, error: error.message };
+	console.error(`[share] ${action} failed`);
+	throw new Error(`${action} failed`);
+}
+
+/**
  * Invite somebody to a graph.
  *
  * Role defaults to `viewer`, which is the narrowest: seeing a family graph is already a
  * lot, and edit rights should be a deliberate second decision rather than the default
  * that happens when nobody thought about it.
+ *
+ * Only the OWNER may invite. A viewer sharing onward would route around the owner's
+ * decision about who sees their family, and an editor doing it routes around the same
+ * decision: editing the records is not deciding who reads them.
  */
 export async function invite(form: FormData): Promise<Result> {
 	const auth = await sharer();
@@ -97,19 +115,22 @@ export async function invite(form: FormData): Promise<Result> {
 	);
 	const role = parseInviteRole(form.get("role"));
 
-	if (!treeId) return { ok: false, error: "Which graph?" };
+	if (!isUuid(treeId)) return { ok: false, error: "Which graph?" };
 	if (!email && !githubLogin) {
 		return { ok: false, error: "An email address or a GitHub username, so we know who to invite." };
 	}
 	if (!role) return { ok: false, error: "Invite access must be viewer or editor." };
-	if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+	if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
 		return { ok: false, error: "That does not look like an email address." };
+	}
+	if (githubLogin && !GITHUB_LOGIN.test(githubLogin)) {
+		return { ok: false, error: "That does not look like a GitHub username." };
 	}
 
 	try {
-		// Only somebody who may EDIT may invite. A viewer sharing onward would route around
-		// the owner's decision about who sees their family.
-		await assertCanEditTree(auth.userId, treeId);
+		await assertOwnsTree(auth.userId, treeId);
+		const budget = await withinHourlyBudget("invites", treeId);
+		if (!budget.ok) return budget;
 
 		const expiresAt = new Date();
 		expiresAt.setDate(expiresAt.getDate() + INVITE_DAYS);
@@ -124,7 +145,9 @@ export async function invite(form: FormData): Promise<Result> {
 			expiresAt,
 		});
 
-		revalidatePath("/tree");
+		// No revalidatePath here or below: nothing the tree page draws depends on who has
+		// access, and the panel re-reads its own state after every change.
+		//
 		// There is no mail sender yet, so say so rather than implying one was sent. A
 		// "invite sent" message for an email that never leaves the building is the kind of
 		// lie that costs a user a week of waiting.
@@ -133,8 +156,7 @@ export async function invite(form: FormData): Promise<Result> {
 			id: "Invite recorded. They will get access the first time they sign in with that address or username.",
 		};
 	} catch (error) {
-		if (error instanceof NotAllowedError) return { ok: false, error: error.message };
-		throw error;
+		return refuse(error, "invite");
 	}
 }
 
@@ -144,7 +166,7 @@ export async function revokeInvite(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const inviteId = String(form.get("inviteId") ?? "");
-	if (!inviteId) return { ok: false, error: "Which invite?" };
+	if (!isUuid(inviteId)) return { ok: false, error: "Which invite?" };
 
 	try {
 		const [row] = await db
@@ -154,7 +176,7 @@ export async function revokeInvite(form: FormData): Promise<Result> {
 			.limit(1);
 		if (!row) return { ok: true };
 
-		await assertCanEditTree(auth.userId, row.treeId);
+		await assertOwnsTree(auth.userId, row.treeId);
 		// Marked revoked rather than deleted, so a claim attempt can say "that invite was
 		// withdrawn" instead of "no such invite", and so the owner keeps a record of who
 		// they invited.
@@ -171,11 +193,9 @@ export async function revokeInvite(form: FormData): Promise<Result> {
 			};
 		}
 
-		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		if (error instanceof NotAllowedError) return { ok: false, error: error.message };
-		throw error;
+		return refuse(error, "revokeInvite");
 	}
 }
 
@@ -186,19 +206,14 @@ export async function removeMember(form: FormData): Promise<Result> {
 
 	const treeId = String(form.get("treeId") ?? "");
 	const userId = String(form.get("userId") ?? "");
-	if (!treeId || !userId) return { ok: false, error: "Which person?" };
+	if (!isUuid(treeId) || !isUuid(userId)) return { ok: false, error: "Which person?" };
 
 	try {
-		await assertCanEditTree(auth.userId, treeId);
+		await assertOwnsTree(auth.userId, treeId);
 
 		// The owner is not a member row and must not be removable: a graph with no owner
 		// has nobody who can invite, revoke, or delete it.
-		const [tree] = await db
-			.select({ ownerId: trees.ownerId })
-			.from(trees)
-			.where(eq(trees.id, treeId))
-			.limit(1);
-		if (tree?.ownerId === userId) {
+		if (userId === auth.userId) {
 			return { ok: false, error: "The owner of a graph cannot be removed from it." };
 		}
 
@@ -206,40 +221,61 @@ export async function removeMember(form: FormData): Promise<Result> {
 			.delete(treeMembers)
 			.where(and(eq(treeMembers.treeId, treeId), eq(treeMembers.userId, userId)));
 
-		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		if (error instanceof NotAllowedError) return { ok: false, error: error.message };
-		throw error;
+		return refuse(error, "removeMember");
 	}
 }
 
-export type ShareState = {
-	members: { userId: string; name: string; role: string; isOwner: boolean }[];
-	invites: { id: string; addressedTo: string; role: string; expiresAt: string }[];
-};
-
-/** Who currently has access, and who has been invited but not yet arrived. */
+/**
+ * Who currently has access, and who has been invited but not yet arrived.
+ *
+ * Read by owners and editors alike -- seeing who else can read the family is part of
+ * editing it -- while `canManage` keeps the changes to the owner.
+ */
 export async function shareState(treeId: string): Promise<ShareState> {
+	const nothing: ShareState = { canManage: false, members: [], invites: [] };
 	const auth = await sharer();
-	if ("error" in auth) return { members: [], invites: [] };
+	// Thrown, not answered with an empty list: a session that failed to load is not a
+	// graph nobody shares, and the panel must be able to tell the two apart.
+	if ("error" in auth) throw new NotAllowedError(auth.error);
+	if (!isUuid(treeId)) return nothing;
 
 	try {
 		await assertCanEditTree(auth.userId, treeId);
-	} catch {
-		return { members: [], invites: [] };
+	} catch (error) {
+		// Somebody who may not see this graph's access learns nothing about it. Anything
+		// else is the database failing, and must read as a failure: an outage shown as
+		// "nobody has access" is the panel lying.
+		if (error instanceof NotAllowedError) return nothing;
+		throw error;
 	}
 
-	const [tree] = await db
-		.select({ ownerId: trees.ownerId })
-		.from(trees)
-		.where(eq(trees.id, treeId))
-		.limit(1);
-
-	const memberRows = await db
-		.select({ userId: treeMembers.userId, role: treeMembers.role })
-		.from(treeMembers)
-		.where(eq(treeMembers.treeId, treeId));
+	const [[tree], memberRows, inviteRows] = await Promise.all([
+		db.select({ ownerId: trees.ownerId }).from(trees).where(eq(trees.id, treeId)).limit(1),
+		db
+			.select({ userId: treeMembers.userId, role: treeMembers.role })
+			.from(treeMembers)
+			.where(eq(treeMembers.treeId, treeId)),
+		db
+			.select({
+				id: treeInvites.id,
+				email: treeInvites.email,
+				githubLogin: treeInvites.githubLogin,
+				role: treeInvites.role,
+				expiresAt: treeInvites.expiresAt,
+			})
+			.from(treeInvites)
+			.where(
+				and(
+					eq(treeInvites.treeId, treeId),
+					eq(treeInvites.status, "pending"),
+					// An expired invite can never be claimed, so listing it as pending would
+					// tell the owner somebody is still on their way.
+					gt(treeInvites.expiresAt, new Date()),
+				),
+			),
+	]);
 
 	// The owner plus every member, so the list answers "who can see this" completely --
 	// the owner has no member row, and omitting them would make the list look shorter
@@ -273,18 +309,8 @@ export async function shareState(treeId: string): Promise<ShareState> {
 		});
 	}
 
-	const inviteRows = await db
-		.select({
-			id: treeInvites.id,
-			email: treeInvites.email,
-			githubLogin: treeInvites.githubLogin,
-			role: treeInvites.role,
-			expiresAt: treeInvites.expiresAt,
-		})
-		.from(treeInvites)
-		.where(and(eq(treeInvites.treeId, treeId), eq(treeInvites.status, "pending")));
-
 	return {
+		canManage: tree?.ownerId === auth.userId,
 		members,
 		invites: inviteRows.map((row) => ({
 			id: row.id,

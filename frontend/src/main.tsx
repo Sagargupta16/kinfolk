@@ -14,14 +14,50 @@
 import { createRoot } from "react-dom/client";
 import "@/app/globals.css";
 import "@xyflow/react/dist/style.css";
+import { LoadBoundary } from "@/components/ui/LoadBoundary";
 import { MotionPreference } from "@/components/ui/MotionPreference";
 import { App } from "./App";
+import { FramedScreen, ReloadScreen } from "./screens/States";
+
+/**
+ * One automatic reload when a chunk from an older deploy has gone.
+ *
+ * Pages replaces the whole site on every deploy, so a tab opened before one asks for
+ * chunk names that no longer exist the next time it lazily loads a surface. Vite raises
+ * this event before the import rejects; reloading fetches the current build, which is
+ * what the visitor would otherwise have to work out to do.
+ *
+ * At most once a minute, remembered across the reload, so a build that is broken rather
+ * than replaced falls through to `LoadBoundary` and its button instead of reloading in a
+ * loop. Never while offline: the reload would swap a canvas that still works for the
+ * browser's own error page.
+ */
+const RELOADED_AT = "kinfolk.reloaded-for-update";
+window.addEventListener("vite:preloadError", (event) => {
+	if (!navigator.onLine) return;
+	try {
+		if (Date.now() - Number(sessionStorage.getItem(RELOADED_AT) ?? 0) < 60_000) return;
+		sessionStorage.setItem(RELOADED_AT, String(Date.now()));
+	} catch {
+		// No storage, no loop guard -- so no automatic reload either.
+		return;
+	}
+	event.preventDefault();
+	window.location.reload();
+});
 
 const root = document.getElementById("root");
 if (!root) throw new Error("No #root element to mount into.");
 
 createRoot(root).render(
-	<MotionPreference>
-		<App />
-	</MotionPreference>,
+	// Framed by another page: render the way out and nothing else (see FramedScreen).
+	window.top !== window.self ? (
+		<FramedScreen />
+	) : (
+		<MotionPreference>
+			<LoadBoundary fallback={<ReloadScreen />}>
+				<App />
+			</LoadBoundary>
+		</MotionPreference>
+	),
 );

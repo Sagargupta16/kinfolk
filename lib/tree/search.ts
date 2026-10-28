@@ -15,7 +15,7 @@
  */
 import { displayName, type FusedPerson, lifespan } from "./graph";
 
-export type SearchHit = {
+type SearchHit = {
 	/** The fused node id, so a caller can select or centre it directly. */
 	id: string;
 	name: string;
@@ -90,7 +90,7 @@ function fold(value: string): string {
  * behind the one you have never heard of. Both signals are already computed for
  * the canvas, so this adds no new state.
  */
-export type SearchContext = {
+type SearchContext = {
 	/**
 	 * The viewer's own PERSON-ROW id, which always sorts first among equal matches.
 	 *
@@ -103,6 +103,57 @@ export type SearchContext = {
 	/** How connected each person is, keyed by fused id. */
 	degree?: Map<string, { rank: number }>;
 };
+
+/** One person's searchable fields, folded, in rank order. */
+type Folded = { name: string; fields: [SearchHit["matched"], string][] };
+
+/**
+ * Folded fields per person, computed once rather than on every keystroke.
+ *
+ * Folding is NFD normalisation plus two regex passes, and a query re-ran it over four fields
+ * of every person for each character typed. Keyed on the person OBJECT, so a reloaded view
+ * (new objects) folds afresh and a dropped one is collected with its cache entry.
+ */
+const foldedCache = new WeakMap<FusedPerson, Folded>();
+
+function foldedFields(person: FusedPerson): Folded {
+	const cached = foldedCache.get(person);
+	if (cached) return cached;
+	const primary = person.primary;
+	const name = displayName(primary);
+	const fields: [SearchHit["matched"], string][] = [];
+	for (const [matched, value] of [
+		["name", name],
+		["nickname", primary.nickname],
+		["birthName", primary.birthFamilyName],
+		["place", primary.birthPlace],
+	] as const) {
+		if (value) fields.push([matched, fold(value)]);
+	}
+	const folded = { name, fields };
+	foldedCache.set(person, folded);
+	return folded;
+}
+
+/**
+ * Whether `needle` starts a word anywhere in `haystack`: at the very start, or straight after
+ * a space or a hyphen.
+ *
+ * Only index 0 used to count, so "haw" ranked Aaron Shaw level with Bea Hawkins and the
+ * alphabet put Shaw first -- a surname typed from its start losing to a match inside another
+ * surname. Every occurrence is checked, because the first can sit mid-word ("Shawn
+ * Hawthorne") while a later one starts the surname.
+ */
+function startsWord(haystack: string, needle: string): boolean {
+	for (
+		let index = haystack.indexOf(needle);
+		index !== -1;
+		index = haystack.indexOf(needle, index + 1)
+	) {
+		if (index === 0 || /[\s-]/.test(haystack[index - 1] ?? "")) return true;
+	}
+	return false;
+}
 
 /**
  * Search every person the viewer can see.
@@ -125,37 +176,27 @@ export function searchPeople(
 	const hits: (SearchHit & { rank: number; connectedness: number })[] = [];
 
 	for (const person of people) {
-		const primary = person.primary;
-		const name = displayName(primary);
+		const { name, fields } = foldedFields(person);
 
 		// Fields in rank order, and the FIRST match wins. A person matching on both
 		// their name and their birthplace is one result ranked by the better of the
 		// two, not two rows competing with each other.
-		const fields: [SearchHit["matched"], string | null][] = [
-			["name", name],
-			["nickname", primary.nickname],
-			["birthName", primary.birthFamilyName],
-			["place", primary.birthPlace],
-		];
-
 		for (const [matched, value] of fields) {
-			if (!value) continue;
-			const index = fold(value).indexOf(needle);
-			if (index === -1) continue;
+			if (!value.includes(needle)) continue;
 
 			hits.push({
 				id: person.id,
 				name,
-				dates: lifespan(primary),
+				dates: lifespan(person.primary),
 				matched,
 				isSelf: Boolean(
 					context.selfId &&
 						(person.id === context.selfId ||
 							person.sources.some((source) => source.id === context.selfId)),
 				),
-				// A prefix hit outranks a mid-string one within the same field, which is
+				// A word-start hit outranks a mid-word one within the same field, which is
 				// what makes a short query behave like a typeahead rather than a grep.
-				rank: FIELD_RANK[matched] * 2 + (index === 0 ? 0 : 1),
+				rank: FIELD_RANK[matched] * 2 + (startsWord(value, needle) ? 0 : 1),
 				connectedness: context.degree?.get(person.id)?.rank ?? 0,
 			});
 			break;

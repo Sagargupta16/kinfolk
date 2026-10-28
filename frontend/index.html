@@ -37,8 +37,11 @@
       Theme before first paint.
 
       Kept as a blocking external script so it still runs before paint while the CSP
-      can reject inline JavaScript. Its behaviour mirrors THEME_SCRIPT in lib/theme.ts.
+      can reject inline JavaScript. Its behaviour mirrors THEME_SCRIPT in lib/theme.ts,
+      including this one theme-color meta, which it rewrites from the stored choice.
+      The content here is the dark default, matching data-theme above.
     -->
+    <meta name="theme-color" content="#0b1012" />
     <script src="/theme-init.js"></script>
   </head>
   <body>

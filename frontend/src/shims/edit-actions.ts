@@ -1,14 +1,18 @@
 /**
  * The server actions, as HTTP calls.
  *
- * Aliased over `@/lib/tree/edit-actions` so the eight components that import
+ * Aliased over the five server-action modules (`edit-actions`, `share-actions`,
+ * `demo-actions`, `link-actions`, `contact-state`) so the components that import
  * `addPerson`, `updatePerson` and the rest keep working with no edits. Each export
  * has the SAME signature as the action it replaces -- `(form: FormData) =>
  * Promise<Result>` -- because React's `<form action={...}>` hands a FormData to
  * whatever it is given, and the whole point is that the forms do not change.
  *
- * `Result` is re-exported as a type so `SharePanel` and friends can import it from
- * here exactly as they do today.
+ * `Result` and `ShareState` come from their type-only modules (lib/tree/result.ts,
+ * lib/tree/sharing.ts) and are re-exported here, so a component importing either
+ * from an aliased module gets the server's own definition. A hand-written copy in
+ * this file compiled against nothing, and a new variant on the server would have
+ * drifted silently from the client that renders it.
  *
  * What this file must NOT do is make a permission decision. It posts to
  * `/api/action/<name>`, which calls the real action, which starts with its own auth
@@ -18,12 +22,19 @@
 
 import type { ContactState } from "@/lib/tree/contacts";
 import type { LinkState } from "@/lib/tree/links";
-import { API_BASE, authHeaders, clearToken } from "../api";
+import type { Result } from "@/lib/tree/result";
+import type { ShareState } from "@/lib/tree/sharing";
+import {
+	API_BASE,
+	authHeaders,
+	clearToken,
+	REQUEST_TIMEOUT_MS,
+	timedOut,
+	withTimeout,
+} from "../api";
 import { signOut } from "../auth";
 
-export type Result =
-	| { ok: true; id?: string }
-	| { ok: false; error: string; confirmation?: "additional-relation" };
+export type { Result, ShareState };
 
 /**
  * POST a form to one named action.
@@ -39,6 +50,7 @@ async function call(name: string, form: FormData): Promise<Result> {
 			method: "POST",
 			headers: authHeaders(),
 			body: form,
+			signal: withTimeout(REQUEST_TIMEOUT_MS),
 		});
 
 		if (!response.ok) {
@@ -62,7 +74,16 @@ async function call(name: string, form: FormData): Promise<Result> {
 		}
 
 		return (await response.json()) as Result;
-	} catch {
+	} catch (error) {
+		// A write that ran out of time may still have landed: the request can reach the
+		// server and only the answer go missing. "Could not reach the server" would invite
+		// a second press, and on an add that is a second person.
+		if (timedOut(error)) {
+			return {
+				ok: false,
+				error: "The server did not answer in time. Check whether it saved before trying again.",
+			};
+		}
 		return { ok: false, error: "Could not reach the server. Check your connection." };
 	}
 }
@@ -108,23 +129,29 @@ export const decideLink = action("decideLink");
  * Here it revokes the session row through `/api/oauth/signout` and drops the local
  * token, which is the same outcome by the only means available cross-origin.
  *
- * Returns `void` because React's `<form action={...}>` requires it, and because the
- * real one does too. The frontend typecheck insisted on that, having been the only
- * check that looks at this file.
+ * The `useActionState` shape, like the real one: the previous answer and the form in,
+ * a sentence out when it fails. A failure used to return nothing, so the button did
+ * nothing visible and a visitor on a shared computer could walk away believing they
+ * had signed out.
  */
-export async function leave(_form: FormData): Promise<void> {
+export async function leave(_previous: string | null, _form: FormData): Promise<string | null> {
 	try {
 		await signOut();
 	} catch {
 		// Stay on the current screen with the token intact. Submitting again retries the
 		// idempotent server revocation instead of turning a network failure into logout.
-		return;
+		return "Could not sign out. Try again.";
 	}
 	window.location.assign(import.meta.env.BASE_URL);
+	return null;
 }
 
 async function readState<T>(path: string): Promise<T> {
-	const response = await fetch(`${API_BASE}${path}`, { headers: authHeaders(), cache: "no-store" });
+	const response = await fetch(`${API_BASE}${path}`, {
+		headers: authHeaders(),
+		cache: "no-store",
+		signal: withTimeout(REQUEST_TIMEOUT_MS),
+	});
 	if (!response.ok) {
 		if (response.status === 401) clearToken();
 		const body = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -157,10 +184,7 @@ export async function exitDemo(): Promise<void> {
 	window.location.assign(import.meta.env.BASE_URL);
 }
 
-export type ShareState = {
-	members: { userId: string; name: string; role: string; isOwner: boolean }[];
-	invites: { id: string; addressedTo: string; role: string; expiresAt: string }[];
-};
+const SHARE_UNAVAILABLE = "Family access could not be loaded. Try again.";
 
 /**
  * Who has access to a graph.
@@ -169,21 +193,35 @@ export type ShareState = {
  * `(treeId: string) => ShareState` rather than the dispatcher's
  * `(FormData) => Result`.
  *
- * An empty state on failure, matching what the real action does when the viewer
- * cannot see the graph: the panel then shows "nobody yet" instead of an error, which
- * is the truthful reading of "you may not know".
+ * Failures THROW. An empty state used to stand in for every one of them, so a server
+ * error showed the panel saying nobody had access -- a false statement about who can
+ * see somebody's family, delivered as fact. The route itself answers an empty state
+ * when this viewer may not see the list, so an empty list here is now always true.
+ * The two messages are the ones the account bar shows.
  */
 export async function shareState(treeId: string): Promise<ShareState> {
-	try {
-		const url = new URL(`${API_BASE}/api/share`, window.location.origin);
-		url.searchParams.set("treeId", treeId);
-		const response = await fetch(url, { headers: authHeaders() });
-		if (!response.ok) {
-			if (response.status === 401) clearToken();
-			return { members: [], invites: [] };
-		}
-		return (await response.json()) as ShareState;
-	} catch {
-		return { members: [], invites: [] };
+	const url = new URL(`${API_BASE}/api/share`, window.location.origin);
+	url.searchParams.set("treeId", treeId);
+
+	const response = await fetch(url, {
+		headers: authHeaders(),
+		cache: "no-store",
+		signal: withTimeout(REQUEST_TIMEOUT_MS),
+	}).catch(() => null);
+	if (response?.status === 401) {
+		clearToken();
+		throw new Error("Your session has expired. Sign in again.");
 	}
+	if (!response?.ok) throw new Error(SHARE_UNAVAILABLE);
+
+	const body = (await response.json().catch(() => null)) as ShareState | null;
+	// The two lists are what the panel maps over; without them it would crash in render.
+	if (!body || !Array.isArray(body.members) || !Array.isArray(body.invites)) {
+		throw new Error(SHARE_UNAVAILABLE);
+	}
+	// Pages can serve this build minutes before Vercel serves the API that sends
+	// `canManage`. The previous API let everybody who could read the list change it, so a
+	// missing flag means exactly that, rather than showing the owner a read-only panel
+	// until the API catches up.
+	return { ...body, canManage: typeof body.canManage === "boolean" ? body.canManage : true };
 }

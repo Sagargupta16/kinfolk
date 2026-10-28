@@ -4,16 +4,17 @@
  * What the canvas shows when it has nothing to draw.
  *
  * Four states, and they are separate components rather than one with a `variant` prop
- * because they answer four different questions: "is it working?", "did it break?", "is
- * there anybody here?", "did my search miss?". A single component would take a union of
- * every prop each needs and read as a switch statement wearing a costume.
+ * because they answer four different questions: "is it working?", "did it break?", "did
+ * my search miss?", "can I still save?". A single component would take a union of every
+ * prop each needs and read as a switch statement wearing a costume.
  *
- * All four keep the canvas's own texture (`.kf-lattice`) so an empty state still looks
- * like this app rather than like a framework default.
+ * The full-canvas ones keep the canvas's own texture (`Lattice`) so an empty state still
+ * looks like this app rather than like a framework default.
  */
-import { CloudOff, RotateCw, type Search, TriangleAlert, UserPlus } from "lucide-react";
+import { CloudOff, RotateCw, type Search, TriangleAlert } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { Lattice } from "@/components/ui/Lattice";
 import { cn } from "@/lib/utils";
 
 /** Shared shell: centred, textured, and announced. */
@@ -41,9 +42,10 @@ function State({
 }) {
 	return (
 		<div
-			className="kf-lattice flex size-full flex-col items-center justify-center gap-3 px-6 text-center"
+			className="relative isolate flex size-full flex-col items-center justify-center gap-3 px-6 text-center"
 			{...(live ? { role: "status", "aria-live": "polite" } : {})}
 		>
+			<Lattice />
 			<motion.div
 				initial={{ opacity: 0, y: 8 }}
 				animate={{ opacity: 1, y: 0 }}
@@ -90,10 +92,11 @@ export function TreeLoading({ delayMs = 220 }: { delayMs?: number }) {
 
 	return (
 		<div
-			className="kf-lattice flex size-full items-center justify-center"
+			className="relative isolate flex size-full items-center justify-center"
 			role="status"
 			aria-live="polite"
 		>
+			<Lattice />
 			<p className="font-mono text-[0.6875rem] uppercase tracking-wider text-ink-faint">
 				Arranging the graph
 			</p>
@@ -134,27 +137,6 @@ export function TreeError({ onRetry }: { onRetry?: () => void }) {
 				</button>
 			)}
 		</State>
-	);
-}
-
-/**
- * A signed-in viewer whose graph holds only themselves.
- *
- * Not the same as `EmptyTree` (which is "you have no graph at all"): here provisioning
- * worked and there is one node. So the copy names the next action rather than explaining
- * the product, and the action is the editor that is already on screen.
- */
-export function TreeAlone({ canEdit }: { canEdit: boolean }) {
-	return (
-		<State
-			Icon={UserPlus}
-			title="Just you, so far"
-			body={
-				canEdit
-					? "Add a parent, a partner or a friend, and the graph starts to take shape. Every person you add can be linked to a relative's own records later."
-					: "Nobody else has been added to this graph yet."
-			}
-		/>
 	);
 }
 
@@ -217,7 +199,10 @@ export function OfflineNotice() {
 			aria-live="polite"
 			className={cn(
 				"kf-glass absolute left-1/2 top-3 z-40 flex -translate-x-1/2 items-center gap-2",
-				"rounded-full px-3 py-1.5 text-[0.75rem] text-ink-muted",
+				// Sized to its sentence. A box at `left: 50%` otherwise shrinks to the half of
+				// the canvas right of that line, which at 375px squeezed it into three lines
+				// inside a pill. Where it must wrap, a rounded rectangle holds two lines.
+				"w-max max-w-[calc(100%-1.5rem)] rounded-xl px-3 py-1.5 text-[0.75rem] text-ink-muted",
 			)}
 		>
 			<CloudOff

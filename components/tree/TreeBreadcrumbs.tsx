@@ -26,7 +26,10 @@ import { cn } from "@/lib/utils";
  * with it -- or truncates every other name to nothing. Older entries are dropped from
  * the FRONT, since the recent ones are what a viewer is retracing.
  */
-export const TRAIL_LIMIT = 6;
+const TRAIL_LIMIT = 6;
+
+/** How many of them a phone shows: the most recent, which are what is being retraced. */
+const PHONE_LIMIT = 3;
 
 export function TreeBreadcrumbs({
 	trail,
@@ -69,7 +72,15 @@ export function TreeBreadcrumbs({
 						// revisiting somebody REWINDS the trail to them rather than appending, so
 						// no person can appear twice. Adding the index would have hidden that
 						// invariant behind a key that works either way.
-						<li key={person.id} className="flex min-w-0 items-center gap-0.5">
+						<li
+							key={person.id}
+							className={cn(
+								"flex min-w-0 items-center gap-0.5",
+								// A phone keeps the last three. Six entries in 270px cut every name to two
+								// or three letters and every button to about 32px, under the 44px floor.
+								index < trail.length - PHONE_LIMIT && "max-sm:hidden",
+							)}
+						>
 							{index > 0 && (
 								<ChevronRight
 									className="size-3 shrink-0 text-ink-faint"
@@ -86,7 +97,7 @@ export function TreeBreadcrumbs({
 								aria-current={current ? "location" : undefined}
 								title={displayName(person.primary)}
 								className={cn(
-									"min-h-11 min-w-0 max-w-[9rem] truncate rounded px-1.5 py-1 text-[0.75rem]",
+									"min-h-11 min-w-11 max-w-[9rem] truncate rounded px-1.5 py-1 text-[0.75rem]",
 									"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 									current
 										? "font-medium text-ink"

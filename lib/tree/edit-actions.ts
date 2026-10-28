@@ -21,7 +21,6 @@
  */
 import { and, eq, exists, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { sessionOrNull } from "@/auth";
 import { db } from "../db/client";
 import {
 	contactDetails,
@@ -39,9 +38,15 @@ import {
 	unions,
 	visibilityEnum,
 } from "../db/schema";
-import { assertSameTree, NotAllowedError, treeIdForEditablePerson } from "./authz";
-import { userIdFromBearer } from "./bearer";
-import { DEMO_COOKIE } from "./demo";
+import {
+	assertCanEditTree,
+	assertSameTree,
+	editableTreeIds,
+	NotAllowedError,
+	treeIdForEditablePerson,
+	treeIdForEditableUnion,
+} from "./authz";
+import { isUuid } from "./ids";
 import {
 	birthYearColumns,
 	type FamilyShape,
@@ -51,13 +56,14 @@ import {
 	ROLE_SEX,
 	splitName,
 } from "./kin-plan";
-import { buildPersonPatch, oneOf } from "./person-patch";
-import { reservePeopleBudget } from "./rate-limit";
+import { buildPersonPatch, invalidDate, oneOf, orNull, TEXT_FIELDS, tooLong } from "./person-patch";
+import { postgresCode, UNIQUE_VIOLATION } from "./pg-error";
+import { reservePeopleBudget, withinContactLimit, withinHourlyBudget } from "./rate-limit";
 import { canonicalPair, RELATION_KINDS } from "./relations";
+import { inDemo, requestUserId } from "./request-user";
+import type { Result } from "./result";
 
-export type Result =
-	| { ok: true; id?: string }
-	| { ok: false; error: string; confirmation?: "additional-relation" };
+export type { Result } from "./result";
 
 /**
  * The signed-in user id, or a refusal.
@@ -67,40 +73,31 @@ export type Result =
  * check once means a new action cannot forget it.
  */
 async function editor(): Promise<{ userId: string } | { error: string }> {
-	const { cookies, headers } = await import("next/headers");
-	const session = await sessionOrNull();
-	const userId = session?.user?.id;
+	const userId = await requestUserId();
 	if (userId) return { userId };
-
-	// A bearer token, for the Pages-hosted UI: that origin cannot send this app's
-	// cookie without it becoming SameSite=None, so the SPA authenticates its calls
-	// with the session token instead (see lib/tree/bearer.ts). The cookie is tried
-	// FIRST so the server-rendered path is untouched.
-	const bearer = await userIdFromBearer((await headers()).get("authorization"));
-	if (bearer) return { userId: bearer };
-
-	const store = await cookies();
-	if (store.get(DEMO_COOKIE)) {
-		return { error: "This is sample data. Sign in to build your own graph." };
-	}
-
-	return { error: "Sign in to make changes." };
-}
-
-/** Turns a thrown NotAllowedError into a message; anything else is a real bug. */
-function refuse(error: unknown): Result {
-	if (error instanceof NotAllowedError) return { ok: false, error: error.message };
-	throw error;
+	return {
+		error: (await inDemo())
+			? "This is sample data. Sign in to build your own graph."
+			: "Sign in to make changes.",
+	};
 }
 
 /**
- * Empty string means "not recorded", which is not the same as an empty string in the
- * database. A form always posts a value, so this is where "" becomes null -- storing
- * the empty string would make `is null` checks miss half the unrecorded rows.
+ * Turns a thrown NotAllowedError into a message; anything else is a real failure.
+ *
+ * The original is never rethrown. Next logs whatever a server action throws, and a failed
+ * query's message spells out its bound parameters -- a phone number, an address, an
+ * invitee's email -- so the log gets the action and the Postgres code, and the caller an
+ * error that says nothing it should not. `known` turns an expected code (a unique index
+ * refusing a duplicate that slipped past an earlier check) into its message.
  */
-function orNull(value: FormDataEntryValue | null): string | null {
-	const text = typeof value === "string" ? value.trim() : "";
-	return text.length > 0 ? text : null;
+function refuse(error: unknown, action: string, known: Record<string, string> = {}): Result {
+	if (error instanceof NotAllowedError) return { ok: false, error: error.message };
+	const code = postgresCode(error);
+	const message = code && Object.hasOwn(known, code) ? known[code] : undefined;
+	if (message) return { ok: false, error: message };
+	console.error(`[action] ${action} failed${code ? ` (${code})` : ""}`);
+	throw new Error(`${action} failed`);
 }
 
 /**
@@ -131,15 +128,17 @@ export async function addPerson(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const treeId = String(form.get("treeId") ?? "");
-	if (!treeId) return { ok: false, error: "Which graph?" };
+	if (!isUuid(treeId)) return { ok: false, error: "Which graph?" };
 
 	const { givenName, familyName } = nameColumns(form);
 	if (!givenName && !familyName) {
 		return { ok: false, error: "A person needs at least one name." };
 	}
+	const fields = [...TEXT_FIELDS, "name"];
+	const refusal = tooLong(form, fields) ?? invalidDate(form, ["birthDate", "deathDate"]);
+	if (refusal) return { ok: false, error: refusal };
 
 	try {
-		const { assertCanEditTree } = await import("./authz");
 		await assertCanEditTree(auth.userId, treeId);
 
 		const sex = oneOf(form.get("sex"), sexEnum.enumValues, "unknown");
@@ -160,8 +159,8 @@ export async function addPerson(form: FormData): Promise<Result> {
 				nickname: orNull(form.get("nickname")),
 				sex: sex.value,
 				living: living.value,
-				// A real date if it parses, otherwise the fuzzy text column. "about 1890" is
-				// a genuine genealogical answer and must not be coerced into a false precision.
+				// An exact date only, checked above; "about 1890" is a genuine genealogical
+				// answer and goes in the fuzzy column rather than into a false precision.
 				birthDate: orNull(form.get("birthDate")),
 				birthDateApprox: orNull(form.get("birthDateApprox")),
 				birthPlace: orNull(form.get("birthPlace")),
@@ -173,10 +172,12 @@ export async function addPerson(form: FormData): Promise<Result> {
 			})
 			.returning({ id: people.id });
 
-		revalidatePath("/tree");
+		// No revalidatePath: every caller refreshes the route itself, and a server action
+		// that revalidates ALSO returns the re-rendered page, so both together made each
+		// write render the whole tree twice.
 		return { ok: true, id: row?.id };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "addPerson");
 	}
 }
 
@@ -199,7 +200,7 @@ export async function updatePerson(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const personId = String(form.get("personId") ?? "");
-	if (!personId) return { ok: false, error: "Which person?" };
+	if (!isUuid(personId)) return { ok: false, error: "Which person?" };
 
 	// The patch rule lives in lib/tree/person-patch.ts, where it is pure and asserted.
 	// Absent keys are left alone; a key present but blank is a deliberate erasure.
@@ -217,10 +218,9 @@ export async function updatePerson(form: FormData): Promise<Result> {
 			.set({ ...patch, updatedAt: new Date() })
 			.where(eq(people.id, personId));
 
-		revalidatePath("/tree");
 		return { ok: true, id: personId };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "updatePerson");
 	}
 }
 
@@ -229,13 +229,18 @@ export async function updatePerson(form: FormData): Promise<Result> {
  *
  * Detach the person's partner slots before deletion so the surviving parent's
  * partnership and child links remain. The whole operation is one HTTP transaction.
+ *
+ * A partnership the deletion leaves with no children and at most one partner goes with
+ * the person, in the same transaction. Kept, it is the junction joining nothing that
+ * `addUnion` refuses to create: a dot on the canvas, and a second family the survivor is
+ * asked to choose between the next time they add a child.
  */
 export async function deletePerson(form: FormData): Promise<Result> {
 	const auth = await editor();
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const personId = String(form.get("personId") ?? "");
-	if (!personId) return { ok: false, error: "Which person?" };
+	if (!isUuid(personId)) return { ok: false, error: "Which person?" };
 
 	try {
 		const treeId = await treeIdForEditablePerson(auth.userId, personId);
@@ -245,6 +250,25 @@ export async function deletePerson(form: FormData): Promise<Result> {
 				.from(people)
 				.where(and(eq(people.id, personId), isNull(people.claimedByUserId))),
 		);
+		// Their partnerships and the families they are a child of: the only unions this
+		// deletion can leave empty.
+		const [asPartner, asChild] = await Promise.all([
+			db
+				.select({ id: unions.id })
+				.from(unions)
+				.where(
+					and(
+						eq(unions.treeId, treeId),
+						or(eq(unions.partnerAId, personId), eq(unions.partnerBId, personId)),
+					),
+				),
+			db
+				.select({ id: unionChildren.unionId })
+				.from(unionChildren)
+				.where(eq(unionChildren.childId, personId)),
+		]);
+		const touched = [...new Set([...asPartner, ...asChild].map(({ id }) => id))];
+
 		const [, , , , , deleted] = await db.batch([
 			db.select({ id: trees.id }).from(trees).where(eq(trees.id, treeId)).for("update"),
 			db.select({ id: people.id }).from(people).where(eq(people.id, personId)).for("update"),
@@ -264,6 +288,16 @@ export async function deletePerson(form: FormData): Promise<Result> {
 				.delete(people)
 				.where(and(eq(people.id, personId), isNull(people.claimedByUserId)))
 				.returning({ id: people.id }),
+			// Only once the person is gone, so a refused deletion touches no union.
+			db
+				.delete(unions)
+				.where(
+					and(
+						touched.length > 0 ? inArray(unions.id, touched) : sql`false`,
+						emptyUnion,
+						notExists(db.select({ id: people.id }).from(people).where(eq(people.id, personId))),
+					),
+				),
 		]);
 		if (deleted.length === 0) {
 			return {
@@ -271,12 +305,22 @@ export async function deletePerson(form: FormData): Promise<Result> {
 				error: "Profiles linked to an account cannot be deleted. You can edit their details.",
 			};
 		}
-		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "deletePerson");
 	}
 }
+
+/** A union with no children and at most one partner: a junction joining nothing. */
+const emptyUnion = and(
+	or(isNull(unions.partnerAId), isNull(unions.partnerBId)),
+	notExists(
+		db
+			.select({ id: unionChildren.unionId })
+			.from(unionChildren)
+			.where(eq(unionChildren.unionId, unions.id)),
+	),
+);
 
 /* -------------------------------------------------------------------------- */
 /* Relations                                                                  */
@@ -301,15 +345,21 @@ export async function addRelation(form: FormData): Promise<Result> {
 	const personBId = String(form.get("personBId") ?? "");
 	const kind = String(form.get("kind") ?? "") as RelationKind;
 
-	if (!personAId || !personBId) return { ok: false, error: "Pick two people." };
+	if (!isUuid(personAId) || !isUuid(personBId)) return { ok: false, error: "Pick two people." };
 	if (personAId === personBId) {
 		return { ok: false, error: "A person cannot have a relation to themselves." };
 	}
-	if (!RELATION_KINDS[kind]) return { ok: false, error: "Pick a kind of relation." };
+	// `Object.hasOwn`: a plain lookup lets "constructor" through, and the enum insert then
+	// fails as a 500 instead of this refusal.
+	if (!Object.hasOwn(RELATION_KINDS, kind)) return { ok: false, error: "Pick a kind of relation." };
+	if ((orNull(form.get("label"))?.length ?? 0) > 100) {
+		return { ok: false, error: "Keep the label under 100 characters." };
+	}
+	const refusal = tooLong(form, ["note"]) ?? invalidDate(form, ["startDate", "endDate"]);
+	if (refusal) return { ok: false, error: refusal };
 
 	try {
 		const treeId = await assertSameTree(personAId, personBId);
-		const { assertCanEditTree } = await import("./authz");
 		await assertCanEditTree(auth.userId, treeId);
 
 		const pair = canonicalPair(kind, personAId, personBId);
@@ -349,6 +399,9 @@ export async function addRelation(form: FormData): Promise<Result> {
 		const closenessRaw = orNull(form.get("closeness"));
 		const closeness = closenessRaw ? Number(closenessRaw) : null;
 
+		const budget = await withinHourlyBudget("relations", treeId);
+		if (!budget.ok) return budget;
+
 		const [row] = await db
 			.insert(personRelations)
 			.values({
@@ -369,10 +422,11 @@ export async function addRelation(form: FormData): Promise<Result> {
 			.onConflictDoNothing()
 			.returning({ id: personRelations.id });
 
+		// Kept on the API-only writes: no UI calls them, so no caller refreshes for them.
 		revalidatePath("/tree");
 		return { ok: true, id: row?.id };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "addRelation");
 	}
 }
 
@@ -381,7 +435,7 @@ export async function deleteRelation(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const relationId = String(form.get("relationId") ?? "");
-	if (!relationId) return { ok: false, error: "Which relation?" };
+	if (!isUuid(relationId)) return { ok: false, error: "Which relation?" };
 
 	try {
 		const [row] = await db
@@ -391,14 +445,12 @@ export async function deleteRelation(form: FormData): Promise<Result> {
 			.limit(1);
 		if (!row) return { ok: true };
 
-		const { assertCanEditTree } = await import("./authz");
 		await assertCanEditTree(auth.userId, row.treeId);
 
 		await db.delete(personRelations).where(eq(personRelations.id, relationId));
-		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "deleteRelation");
 	}
 }
 
@@ -442,23 +494,32 @@ export async function addUnion(form: FormData): Promise<Result> {
 	const partnerAId = orNull(form.get("partnerAId"));
 	const partnerBId = orNull(form.get("partnerBId"));
 	if (!partnerAId && !partnerBId) return { ok: false, error: "Pick at least one partner." };
+	if ((partnerAId && !isUuid(partnerAId)) || (partnerBId && !isUuid(partnerBId))) {
+		return { ok: false, error: "Pick at least one partner." };
+	}
 	if (partnerAId && partnerBId && partnerAId === partnerBId) {
 		return { ok: false, error: "Those are the same person." };
 	}
+	const refusal = tooLong(form, ["place"]) ?? invalidDate(form, ["startDate", "endDate"]);
+	if (refusal) return { ok: false, error: refusal };
 
 	try {
 		// Both ends when there are two, so a cross-tree partnership is refused with the
-		// message that explains person links; one end otherwise.
-		const treeId =
-			partnerAId && partnerBId
-				? await assertSameTree(partnerAId, partnerBId)
-				: await treeIdForEditablePerson(auth.userId, (partnerAId ?? partnerBId) as string);
-
-		const { assertCanEditTree } = await import("./authz");
-		await assertCanEditTree(auth.userId, treeId);
+		// message that explains person links; one end otherwise, where the lookup already
+		// checks the write grant.
+		let treeId: string;
+		if (partnerAId && partnerBId) {
+			treeId = await assertSameTree(partnerAId, partnerBId);
+			await assertCanEditTree(auth.userId, treeId);
+		} else {
+			treeId = await treeIdForEditablePerson(auth.userId, (partnerAId ?? partnerBId) as string);
+		}
 
 		const status = oneOf(form.get("status"), unionStatusEnum.enumValues, "unknown");
 		if (!status.ok) return { ok: false, error: "Choose a valid partnership status." };
+
+		const budget = await withinHourlyBudget("unions", treeId);
+		if (!budget.ok) return budget;
 
 		const [row] = await db
 			.insert(unions)
@@ -476,7 +537,7 @@ export async function addUnion(form: FormData): Promise<Result> {
 		revalidatePath("/tree");
 		return { ok: true, id: row?.id };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "addUnion");
 	}
 }
 
@@ -493,24 +554,34 @@ export async function addChild(form: FormData): Promise<Result> {
 
 	const unionId = String(form.get("unionId") ?? "");
 	const childId = String(form.get("childId") ?? "");
-	if (!unionId || !childId) return { ok: false, error: "Pick a partnership and a child." };
+	if (!isUuid(unionId) || !isUuid(childId)) {
+		return { ok: false, error: "Pick a partnership and a child." };
+	}
 
 	try {
-		const { treeIdForEditableUnion } = await import("./authz");
-		const unionTreeId = await treeIdForEditableUnion(auth.userId, unionId);
-		const childTreeId = await treeIdForEditablePerson(auth.userId, childId);
-		if (unionTreeId !== childTreeId) {
+		// One round trip for the grant, the union and the child, where three lookups each
+		// re-read the same editable-tree list.
+		const [allowed, [union], [child]] = await Promise.all([
+			editableTreeIds(auth.userId),
+			db
+				.select({ treeId: unions.treeId, a: unions.partnerAId, b: unions.partnerBId })
+				.from(unions)
+				.where(eq(unions.id, unionId))
+				.limit(1),
+			db.select({ treeId: people.treeId }).from(people).where(eq(people.id, childId)).limit(1),
+		]);
+		if (!union) throw new NotAllowedError("That partnership no longer exists.");
+		if (!allowed.includes(union.treeId)) throw new NotAllowedError();
+		if (!child) throw new NotAllowedError("That person no longer exists.");
+		if (!allowed.includes(child.treeId)) throw new NotAllowedError();
+		const unionTreeId = union.treeId;
+		if (unionTreeId !== child.treeId) {
 			return { ok: false, error: "That child is in a different graph." };
 		}
 
 		// A child cannot be their own parent, and neither can a partner of the union they
 		// are a child of -- the graph must stay acyclic or the layout has no generations.
-		const [union] = await db
-			.select({ a: unions.partnerAId, b: unions.partnerBId })
-			.from(unions)
-			.where(eq(unions.id, unionId))
-			.limit(1);
-		if (union && (union.a === childId || union.b === childId)) {
+		if (union.a === childId || union.b === childId) {
 			return { ok: false, error: "Somebody cannot be their own parent." };
 		}
 
@@ -561,28 +632,36 @@ export async function addChild(form: FormData): Promise<Result> {
 		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "addChild");
 	}
 }
 
+/**
+ * Detach a child from a partnership, keeping both records.
+ *
+ * A single parent's last child takes the now-empty union with it, in the same
+ * transaction, for the reason `deletePerson` gives.
+ */
 export async function removeChild(form: FormData): Promise<Result> {
 	const auth = await editor();
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const unionId = String(form.get("unionId") ?? "");
 	const childId = String(form.get("childId") ?? "");
-	if (!unionId || !childId) return { ok: false, error: "Which child?" };
+	if (!isUuid(unionId) || !isUuid(childId)) return { ok: false, error: "Which child?" };
 
 	try {
-		const { treeIdForEditableUnion } = await import("./authz");
 		await treeIdForEditableUnion(auth.userId, unionId);
-		await db
-			.delete(unionChildren)
-			.where(and(eq(unionChildren.unionId, unionId), eq(unionChildren.childId, childId)));
+		await db.batch([
+			db
+				.delete(unionChildren)
+				.where(and(eq(unionChildren.unionId, unionId), eq(unionChildren.childId, childId))),
+			db.delete(unions).where(and(eq(unions.id, unionId), emptyUnion)),
+		]);
 		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "removeChild");
 	}
 }
 
@@ -605,7 +684,7 @@ export async function addContact(form: FormData): Promise<Result> {
 
 	const personId = String(form.get("personId") ?? "");
 	const value = orNull(form.get("value"));
-	if (!personId || !value) return { ok: false, error: "A channel needs a value." };
+	if (!isUuid(personId) || !value) return { ok: false, error: "A channel needs a value." };
 	if (value.length > 2000 || (orNull(form.get("label"))?.length ?? 0) > 100) {
 		return { ok: false, error: "Keep the value under 2,000 characters and the label under 100." };
 	}
@@ -619,8 +698,10 @@ export async function addContact(form: FormData): Promise<Result> {
 
 	try {
 		await treeIdForEditablePerson(auth.userId, personId);
+		const limit = await withinContactLimit(personId);
+		if (!limit.ok) return limit;
 
-		await db
+		const [inserted] = await db
 			.insert(contactDetails)
 			.values({
 				personId,
@@ -629,12 +710,16 @@ export async function addContact(form: FormData): Promise<Result> {
 				label: orNull(form.get("label")),
 				visibility: visibility.value,
 			})
-			.onConflictDoNothing();
+			.onConflictDoNothing()
+			.returning({ id: contactDetails.id });
+		// Said rather than reported as saved: re-adding a number with a wider audience
+		// would otherwise "succeed" while the stored row kept its old one.
+		if (!inserted) return { ok: false, error: "That channel and value are already recorded." };
 
 		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "addContact");
 	}
 }
 
@@ -646,7 +731,14 @@ export async function updateContact(form: FormData): Promise<Result> {
 	const label = orNull(form.get("label"));
 	const kind = oneOf(form.get("kind"), contactKindEnum.enumValues, null);
 	const visibility = oneOf(form.get("visibility"), visibilityEnum.enumValues, null);
-	if (!contactId || !value || !kind.ok || !kind.value || !visibility.ok || !visibility.value) {
+	if (
+		!isUuid(contactId) ||
+		!value ||
+		!kind.ok ||
+		!kind.value ||
+		!visibility.ok ||
+		!visibility.value
+	) {
 		return { ok: false, error: "Choose a channel, a value, and who may see it." };
 	}
 	if (value.length > 2000 || (label?.length ?? 0) > 100) {
@@ -682,7 +774,11 @@ export async function updateContact(form: FormData): Promise<Result> {
 		revalidatePath(`/contacts/${row.personId}`);
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		// Two edits ending on the same value pass the check above together; the unique
+		// index then refuses the second, which is the same answer as the check.
+		return refuse(error, "updateContact", {
+			[UNIQUE_VIOLATION]: "That channel and value are already recorded.",
+		});
 	}
 }
 
@@ -691,7 +787,7 @@ export async function deleteContact(form: FormData): Promise<Result> {
 	if ("error" in auth) return { ok: false, error: auth.error };
 
 	const contactId = String(form.get("contactId") ?? "");
-	if (!contactId) return { ok: false, error: "Which detail?" };
+	if (!isUuid(contactId)) return { ok: false, error: "Which detail?" };
 
 	try {
 		const [row] = await db
@@ -706,12 +802,12 @@ export async function deleteContact(form: FormData): Promise<Result> {
 		revalidatePath("/tree");
 		return { ok: true };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "deleteContact");
 	}
 }
 
 /* -------------------------------------------------------------------------- */
-/* Quick add                                                                  */
+/* Adding a relative from the canvas                                          */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -737,11 +833,17 @@ export async function addRelative(form: FormData): Promise<Result> {
 
 	const subjectId = String(form.get("subjectId") ?? "");
 	const role = String(form.get("role") ?? "") as KinRole;
-	if (!subjectId) return { ok: false, error: "Which person?" };
+	if (!isUuid(subjectId)) return { ok: false, error: "Which person?" };
 	if (!Object.hasOwn(ROLE_SEX, role)) return { ok: false, error: "Pick a relationship." };
+	const unionChoice = orNull(form.get("unionId"));
+	if (unionChoice !== null && !isUuid(unionChoice)) {
+		return { ok: false, error: "Choose which family this relative belongs to." };
+	}
 
 	const { givenName, familyName } = nameColumns(form);
 	if (!givenName && !familyName) return { ok: false, error: "Type their name first." };
+	const length = tooLong(form, ["name", "givenName", "familyName"]);
+	if (length) return { ok: false, error: length };
 	// A tab still open on the previous version can post a batch. Refused out loud, because
 	// quietly adding one of the three people it asked for would report success for a lie.
 	const count = orNull(form.get("count"));
@@ -750,12 +852,11 @@ export async function addRelative(form: FormData): Promise<Result> {
 	}
 
 	try {
+		// The lookup checks the write grant too, so it is not asked twice.
 		const treeId = await treeIdForEditablePerson(auth.userId, subjectId);
-		const { assertCanEditTree } = await import("./authz");
-		await assertCanEditTree(auth.userId, treeId);
 
 		const family = await familyShape(subjectId, treeId);
-		const plan = planKin(family, role, orNull(form.get("unionId")));
+		const plan = planKin(family, role, unionChoice);
 		if (plan.refusal) return { ok: false, error: plan.refusal };
 
 		const living = oneOf(form.get("living"), livingStatusEnum.enumValues, "unknown");
@@ -947,10 +1048,9 @@ export async function addRelative(form: FormData): Promise<Result> {
 			}
 		}
 
-		revalidatePath("/tree");
 		return { ok: true, id: first };
 	} catch (error) {
-		return refuse(error);
+		return refuse(error, "addRelative");
 	}
 }
 
@@ -1004,41 +1104,4 @@ async function familyShape(subjectId: string, treeId: string): Promise<FamilySha
 			childIds: [],
 		})),
 	};
-}
-
-/**
- * Everybody in this viewer's editable graphs, for the person pickers.
- *
- * Names only -- no dates, no contacts. A picker needs to disambiguate two people, and
- * shipping whole rows to populate a dropdown would send contact values into the client
- * for people the viewer never opens.
- */
-export async function editablePeople(): Promise<
-	{ id: string; treeId: string; name: string; sex: Sex }[]
-> {
-	const auth = await editor();
-	if ("error" in auth) return [];
-
-	const { editableTreeIds } = await import("./authz");
-	const treeIds = await editableTreeIds(auth.userId);
-	if (treeIds.length === 0) return [];
-
-	const rows = await db
-		.select({
-			id: people.id,
-			treeId: people.treeId,
-			givenName: people.givenName,
-			familyName: people.familyName,
-			nickname: people.nickname,
-			sex: people.sex,
-		})
-		.from(people)
-		.where(or(...treeIds.map((id) => eq(people.treeId, id))));
-
-	return rows.map((row) => ({
-		id: row.id,
-		treeId: row.treeId,
-		name: [row.givenName, row.familyName].filter(Boolean).join(" ") || row.nickname || "Unknown",
-		sex: row.sex,
-	}));
 }

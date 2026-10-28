@@ -21,7 +21,7 @@ pnpm dev --port 3007
 pnpm --dir frontend dev
 ```
 
-Open the sample graph from both the Next app and the Vite app. Vite dev proxies `/api` to Next on port 3007. The current untouched sample baseline is 151 React Flow nodes, 150 family edges, and 34 union junctions; if sample data intentionally changes, require matching counts and behavior between the two frontends instead of preserving stale numbers.
+Open the sample graph from both the Next app and the Vite app. Vite dev proxies `/api` to Next on port 3007. The current untouched sample (Queen Victoria's and Christian IX's families from Wikidata, rebuilt with `pnpm sample:build`) is 256 React Flow nodes, 265 family edges, and 40 union junctions; if sample data intentionally changes, require matching counts and behavior between the two frontends instead of preserving stale numbers.
 
 ## Required browser matrix
 

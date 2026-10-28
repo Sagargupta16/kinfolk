@@ -12,7 +12,7 @@ legend:
 
 groups:
   vercelgit: { type: box, label: Vercel Git, evidence: vercel.json:4#buildCommand }
-  deploy: { type: box, label: deploy.yml, evidence: .github/workflows/deploy.yml:21#paths }
+  deploy: { type: box, label: deploy.yml, evidence: .github/workflows/deploy.yml:22#paths }
   pages: { type: box, label: pages.yml, evidence: .github/workflows/pages.yml:22#paths }
 
 nodes:
@@ -28,25 +28,25 @@ nodes:
     label: Apply migrations
     note: check, migrate, recheck
     in: deploy
-    evidence: .github/workflows/deploy.yml:88#db:migrate
+    evidence: .github/workflows/deploy.yml:97#db:migrate
   verify:
     icon: tabler:list-check
     label: Wait for the commit
     note: /api/health ready
     in: deploy
-    evidence: .github/workflows/deploy.yml:120#--api
+    evidence: .github/workflows/deploy.yml:131#--api
   build:
     icon: logos:vite-icon
     label: Build the SPA
     note: "base /kinfolk/, 404.html shell"
     in: pages
-    evidence: .github/workflows/pages.yml:91#GITHUB_PAGES
+    evidence: .github/workflows/pages.yml:100#GITHUB_PAGES
   publish:
     icon: github:rocket
     label: Publish and verify
     note: "commit, deep link, assets"
     in: pages
-    evidence: [.github/workflows/pages.yml:106#frontend/dist, scripts/check-production.mts:87#checkSpa]
+    evidence: [.github/workflows/pages.yml:117#frontend/dist, scripts/check-production.mts:87#checkSpa]
   prod:
     icon: logos:nextjs-icon
     label: Vercel production
@@ -55,7 +55,7 @@ nodes:
   neon:
     icon: logos:neon-icon
     label: Neon Postgres
-    evidence: .github/workflows/deploy.yml:94#DATABASE_URL
+    evidence: .github/workflows/deploy.yml:103#DATABASE_URL
   site:
     icon: logos:vite-icon
     label: Pages site

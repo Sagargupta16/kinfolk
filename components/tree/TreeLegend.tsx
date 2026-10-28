@@ -4,7 +4,8 @@
  * The key to the canvas.
  *
  * This graph encodes eight things without words: dash rhythm is the category of a
- * relation, stroke weight is how close it is, a 2px rail is living or dead, a tick is
+ * relation, stroke weight is how close it is, a 2px rail marks the dead and the
+ * unrecorded, a tick is
  * how well attested somebody is, a ring is how connected they are, offset sheets are
  * how many families recorded them. Each was chosen because a mark is read faster than
  * a label -- which only holds once you know what the mark means, and until now nothing
@@ -32,7 +33,7 @@ import type { Lod } from "@/lib/tree/layout";
 import { RELATION_KINDS, type RelationCategory } from "@/lib/tree/relations";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
-import { PROVENANCE, SEX_MARKS } from "./PersonNode";
+import { DOT_TONE, PROVENANCE, RAIL_TONE, SEX_MARKS } from "./PersonNode";
 
 /**
  * How each relation category is presented, keyed so a new category is a type error
@@ -141,9 +142,9 @@ function Weights() {
 	);
 }
 
-/** The 2px left edge of a card, at the width it is actually drawn. */
+/** The 2px rail across a card's top edge, drawn the way the card draws it: lying down. */
 function Rail({ className }: { className: string }) {
-	return <span aria-hidden className={cn("block h-3.5 w-0.5 shrink-0 rounded-full", className)} />;
+	return <span aria-hidden className={cn("block h-0.5 w-3.5 shrink-0 rounded-full", className)} />;
 }
 
 function Dot({ className }: { className: string }) {
@@ -305,41 +306,48 @@ function personRows(census: TreeCensus, lod: Lod, hasSelf: boolean): Row[] {
 	if (lod === "dot") {
 		return [
 			{
-				sample: <Dot className="border-living bg-living/40" />,
+				sample: <Dot className={DOT_TONE.living} />,
 				label: "Living",
 				count: census.living,
 			},
 			{
-				sample: <Dot className="border-past bg-canvas" />,
+				sample: <Dot className={DOT_TONE.deceased} />,
 				label: "Deceased",
 				hint: "Hollow, not recoloured: at this size the fill is the only channel still readable.",
 				count: census.deceased,
 			},
 			{
-				sample: <Dot className="border-hairline-strong bg-canvas" />,
+				sample: <Dot className={DOT_TONE.unknown} />,
 				label: "Not recorded",
 				count: census.livingUnknown,
 			},
 			ringRow(census, true),
 			{
-				sample: (
-					<span
-						aria-hidden
-						className="block size-2.5 shrink-0 rounded-full bg-accent ring-1 ring-accent ring-offset-2 ring-offset-canvas"
-					/>
-				),
+				sample: <Dot className={DOT_TONE.viewed} />,
+				label: "Viewing",
+				hint: "The person you are on. The widest mark on the canvas, so it survives being scaled down.",
+				count: census.living + census.deceased + census.livingUnknown > 0 ? 1 : 0,
+			},
+			{
+				sample: <Dot className={DOT_TONE.self} />,
 				label: "You",
-				hint: "The widest mark on the canvas, so it survives being scaled down.",
+				hint: "Your own dot, while you are viewing somebody else.",
 				count: hasSelf ? 1 : 0,
 			},
 		];
 	}
 
+	// No row for living: the card draws nothing for it, because the majority state gets no
+	// mark, and a sample of nothing would explain nothing. The deceased hint says so.
 	const rows: Row[] = [
-		{ sample: <Rail className="bg-living" />, label: "Living", count: census.living },
-		{ sample: <Rail className="bg-past" />, label: "Deceased", count: census.deceased },
 		{
-			sample: <Rail className="bg-hairline-strong" />,
+			sample: <Rail className={RAIL_TONE.deceased} />,
+			label: "Deceased",
+			hint: "A grey line across the top. Living, the usual state, has none.",
+			count: census.deceased,
+		},
+		{
+			sample: <Rail className={RAIL_TONE.unknown} />,
 			label: "Not recorded",
 			hint: "A real answer, not a missing one. Genealogy is mostly incomplete.",
 			count: census.livingUnknown,
@@ -419,14 +427,15 @@ function personRows(census: TreeCensus, lod: Lod, hasSelf: boolean): Row[] {
 			lods: ["full"],
 		},
 		{
+			// What the card actually does for the viewer: their own name in the accent ink.
 			sample: (
-				<span aria-hidden className="font-mono text-[0.5rem] uppercase tracking-wider text-accent">
-					you
+				<span aria-hidden className="text-[0.625rem] font-semibold leading-none text-accent-ink">
+					Aa
 				</span>
 			),
 			label: "You",
+			hint: "Your own name is drawn in blue.",
 			count: hasSelf ? 1 : 0,
-			lods: ["full"],
 		},
 	);
 
@@ -493,17 +502,19 @@ function Section({
 	);
 }
 
+/**
+ * The key, opened in place inside the Options panel. It also had a floating "Key" popover
+ * of its own, which nothing rendered once the key moved into that panel.
+ */
 export function TreeLegend({
 	census,
 	lod,
 	hasSelf,
-	inline = false,
 }: {
 	census: TreeCensus;
 	lod: Lod;
 	/** Whether anybody on this canvas is the viewer, which the "you" rows depend on. */
 	hasSelf: boolean;
-	inline?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const panelId = useId();
@@ -528,7 +539,7 @@ export function TreeLegend({
 				title="What the marks mean"
 				className={cn(
 					"kf-command-button flex min-h-11 items-center gap-1.5 rounded-md border px-2.5",
-					"bg-surface/90 font-mono text-[0.625rem] uppercase tracking-wider backdrop-blur-sm",
+					"bg-surface font-mono text-[0.625rem] uppercase tracking-wider",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					open
 						? "border-hairline-strong text-accent"
@@ -540,7 +551,7 @@ export function TreeLegend({
 				) : (
 					<KeyRound aria-hidden className="size-3.5" strokeWidth={1.5} />
 				)}
-				{inline ? "What the marks mean" : "Key"}
+				What the marks mean
 			</button>
 
 			{open && (
@@ -557,12 +568,9 @@ export function TreeLegend({
 					 * the list turning into a pan of the tree underneath.
 					 */
 					className={cn(
-						"kf-sheet",
-						inline
-							? "relative mt-2 w-full"
-							: "absolute right-0 top-[calc(100%+0.375rem)] w-[min(17rem,calc(100vw-1.5rem))]",
+						"kf-sheet relative mt-2 w-full",
 						"max-h-[min(60vh,30rem)] overflow-y-auto overscroll-contain rounded-md",
-						"border border-hairline-strong bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
+						"border border-hairline-strong bg-surface",
 					)}
 				>
 					<Section

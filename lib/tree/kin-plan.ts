@@ -63,7 +63,7 @@ export const ROLE_SEX: Record<KinRole, Sex> = {
 };
 
 /** How each role attaches, which is what decides the union rule. */
-export type KinDirection = "parent" | "partner" | "child" | "sibling";
+type KinDirection = "parent" | "partner" | "child" | "sibling";
 
 export const ROLE_DIRECTION: Record<KinRole, KinDirection> = {
 	father: "parent",
@@ -80,7 +80,7 @@ export const ROLE_DIRECTION: Record<KinRole, KinDirection> = {
 };
 
 /** One union as the planner needs to see it. */
-export type UnionShape = {
+type UnionShape = {
 	id: string;
 	partnerAId: string | null;
 	partnerBId: string | null;
@@ -102,7 +102,7 @@ export type FamilyShape = {
  * A plan rather than direct calls so the decision is separable from the writing: every
  * branch below is a rule about families, and none of them needs a connection to be tested.
  */
-export type KinPlan = {
+type KinPlan = {
 	/**
 	 * The sex the ONE new person gets.
 	 *

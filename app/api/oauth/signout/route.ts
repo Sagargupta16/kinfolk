@@ -39,9 +39,19 @@ export async function POST(request: NextRequest) {
 	// decided on -- the worst possible time to refuse.
 	if (!token) return NextResponse.json({ ok: true }, { headers: cors });
 
-	// Deleted by exact token, so a caller can only ever end the session it holds.
-	// There is no user id in play, which means one token cannot revoke another's.
-	await db.delete(sessions).where(eq(sessions.sessionToken, token));
+	try {
+		// Deleted by exact token, so a caller can only ever end the session it holds.
+		// There is no user id in play, which means one token cannot revoke another's.
+		await db.delete(sessions).where(eq(sessions.sessionToken, token));
+	} catch {
+		// Never the error object: a failed query's message carries its bound
+		// parameters, which here is the live token the caller is trying to revoke.
+		console.error("[oauth] signout failed");
+		return NextResponse.json(
+			{ error: "Could not sign out. Try again." },
+			{ status: 500, headers: cors },
+		);
+	}
 
 	return NextResponse.json({ ok: true }, { headers: cors });
 }

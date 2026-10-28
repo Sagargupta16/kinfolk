@@ -1,10 +1,13 @@
 /**
  * The tree. One page, two data sources.
  *
- * Resolution order is deliberate: a real session wins over the demo cookie, so
+ * Resolution order is deliberate: a real session wins over the demo COOKIE, so
  * signing in from inside the demo shows your own (possibly empty) tree rather
- * than silently keeping sample data on screen. Somebody with neither is sent to
- * sign-in, where the demo is offered.
+ * than silently keeping sample data on screen. An explicit `?demo=1` -- what the
+ * sample buttons and /demo send -- wins over the session, the same as in the SPA
+ * and the tree API: somebody signed in who asks for the sample family gets the
+ * sample, not their own family. Somebody with neither is sent to sign-in, where
+ * the demo is offered.
  */
 
 import { cookies } from "next/headers";
@@ -18,7 +21,7 @@ import type { TreeView } from "@/lib/tree/view";
 
 export const metadata = { title: "Your graph -- Kinfolk" };
 
-type SearchParams = Promise<{ combined?: string; relations?: string }>;
+type SearchParams = Promise<{ combined?: string; relations?: string; demo?: string }>;
 
 export default async function TreePage({ searchParams }: { searchParams: SearchParams }) {
 	const params = await searchParams;
@@ -29,7 +32,9 @@ export default async function TreePage({ searchParams }: { searchParams: SearchP
 		showRelations: params.relations !== "0",
 	};
 
-	const session = await sessionOrNull();
+	const askedForDemo = params.demo === "1";
+	// Not read at all for an explicit demo: the sample needs no session or database.
+	const session = askedForDemo ? null : await sessionOrNull();
 	const userId = session?.user?.id;
 
 	let view: TreeView | null = null;
@@ -45,7 +50,7 @@ export default async function TreePage({ searchParams }: { searchParams: SearchP
 		if (!view) return <EmptyTree name={session?.user?.name ?? null} />;
 	} else {
 		const store = await cookies();
-		if (!store.get(DEMO_COOKIE)) redirect("/signin");
+		if (!askedForDemo && !store.get(DEMO_COOKIE)) redirect("/signin");
 		view = buildDemoView(options);
 	}
 

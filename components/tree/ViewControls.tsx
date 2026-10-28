@@ -66,6 +66,8 @@ export function ViewControls({
 								"flex min-h-11 min-w-11 items-center justify-center gap-1.5 border-r border-hairline px-2.5 last:border-r-0",
 								"font-mono text-[0.625rem] uppercase tracking-wider",
 								"transition-colors duration-(--duration-fast) ease-(--ease-out)",
+								// Inside the group's clipped edge, or the 2px ring is cut to two thin lines.
+								"focus-visible:-outline-offset-2!",
 								mode === value
 									? "bg-surface-raised text-accent-ink"
 									: "text-ink-faint hover:bg-surface-raised hover:text-ink",

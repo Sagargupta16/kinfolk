@@ -19,6 +19,7 @@ import type { Degree } from "@/lib/tree/density";
 import type { FlowNode } from "@/lib/tree/graph";
 import { searchPeople } from "@/lib/tree/search";
 import { cn } from "@/lib/utils";
+import { useEscapeClose } from "./escape";
 import { SearchEmpty } from "./TreeStates";
 
 /** Why a row is in the list, when it is not the obvious reason. */
@@ -139,11 +140,37 @@ export function TreeSearch({
 
 	const showList = open && query.trim().length >= 2;
 
+	/*
+	 * The list closes when anything else takes over: a press outside it, focus leaving it,
+	 * or Escape from wherever focus is. It used to close only on a pick or on Escape inside
+	 * the input, so after typing and tapping the canvas it stayed over the tree -- and the
+	 * next Escape closed the panel behind it instead.
+	 */
+	const rootRef = useRef<HTMLDivElement>(null);
+	useEscapeClose(showList, () => setOpen(false));
+	useEffect(() => {
+		const root = rootRef.current;
+		if (!showList || !root) return;
+		const dismiss = (event: PointerEvent) => {
+			if (!root.contains(event.target as Node)) setOpen(false);
+		};
+		// Tab from the input to a row stays inside, so only a real departure closes.
+		const leave = (event: FocusEvent) => {
+			if (!root.contains(event.relatedTarget as Node | null)) setOpen(false);
+		};
+		document.addEventListener("pointerdown", dismiss);
+		root.addEventListener("focusout", leave);
+		return () => {
+			document.removeEventListener("pointerdown", dismiss);
+			root.removeEventListener("focusout", leave);
+		};
+	}, [showList]);
+
 	return (
-		<div className="relative w-full">
+		<div ref={rootRef} className="relative w-full">
 			<div
 				className={cn(
-					"kf-search-control flex items-center gap-2 rounded-md border bg-surface/90 pl-2.5 pr-1 backdrop-blur-sm",
+					"kf-search-control flex items-center gap-2 rounded-md border bg-surface pl-2.5 pr-1",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					showList ? "border-hairline-strong" : "border-hairline",
 				)}
@@ -171,7 +198,7 @@ export function TreeSearch({
 					// there is already one to its right, and two would be a choice nobody
 					// asked to make.
 					className={cn(
-						"h-11 min-w-0 flex-1 bg-transparent text-sm text-ink outline-none",
+						"h-11 min-w-0 flex-1 bg-transparent text-base text-ink outline-none",
 						"placeholder:text-ink-faint [&::-webkit-search-cancel-button]:hidden",
 					)}
 				/>

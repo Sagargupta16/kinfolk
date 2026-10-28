@@ -19,10 +19,10 @@ export function DemoBanner() {
 			<p className="min-w-0 flex-1 truncate text-xs leading-relaxed text-ink-muted">
 				<span className="text-ink">Sample data.</span>{" "}
 				<span className="hidden sm:inline">
-					Two families who each recorded the same grandparents, then agreed they were the same
-					people.
+					Queen Victoria's and Christian IX's families, from Wikidata: each recorded its own, and
+					where they married into each other they agreed on the same people.
 				</span>
-				<span className="sm:hidden">Not your records.</span>
+				<span className="sm:hidden">Two royal families, from Wikidata.</span>
 			</p>
 
 			<div className="flex shrink-0 items-center gap-1">

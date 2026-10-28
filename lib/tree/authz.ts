@@ -1,15 +1,15 @@
 /**
  * Who may CHANGE a graph, as opposed to who may see one.
  *
- * Deliberately separate from `accessibleTrees()` in load.ts, which answers the read
- * question and grants `member` to anyone with a row. Writes need a narrower answer: a
+ * Deliberately separate from `treeAccessForUser()` in read-access.ts, which answers the
+ * read question and grants access to anyone with a row. Writes need a narrower answer: a
  * `viewer` grant can see a graph and must not edit it, and a tree reached only through
  * an accepted person link must never be editable at all -- that link means "we agree
  * this is the same human", not "you may rewrite my records".
  *
- * Every mutation goes through `assertCanEdit()`. Reusing the read helper for writes is
- * the mistake this file exists to prevent, because it would silently let a linked
- * relative edit your side of the graph.
+ * Every mutation goes through `assertCanEditTree()` or a lookup built on it. Reusing the
+ * read helper for writes is the mistake this file exists to prevent, because it would
+ * silently let a linked relative edit your side of the graph.
  */
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "../db/client";
@@ -47,6 +47,24 @@ export async function editableTreeIds(userId: string): Promise<string[]> {
 export async function assertCanEditTree(userId: string, treeId: string): Promise<void> {
 	const allowed = await editableTreeIds(userId);
 	if (!allowed.includes(treeId)) throw new NotAllowedError();
+}
+
+/**
+ * Throws unless this user OWNS this tree.
+ *
+ * Narrower than a write grant on purpose. An editor shapes the family's records; who may
+ * read them is the owner's decision, so inviting, withdrawing an invite and removing a
+ * member check this rather than `assertCanEditTree`.
+ */
+export async function assertOwnsTree(userId: string, treeId: string): Promise<void> {
+	const [tree] = await db
+		.select({ ownerId: trees.ownerId })
+		.from(trees)
+		.where(eq(trees.id, treeId))
+		.limit(1);
+	if (tree?.ownerId !== userId) {
+		throw new NotAllowedError("Only the owner of this graph can change who has access.");
+	}
 }
 
 /**

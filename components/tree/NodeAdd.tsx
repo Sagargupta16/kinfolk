@@ -13,7 +13,7 @@
  * as "this is who you are editing"; every card wearing them would be 350 buttons on a
  * 117-person tree, and on a phone there is no hover to reveal them on demand anyway.
  */
-import { ViewportPortal } from "@xyflow/react";
+import { useStore, ViewportPortal } from "@xyflow/react";
 import { Loader2, Mars, Plus, Venus } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -61,12 +61,13 @@ const NOUN: Record<AddTarget["direction"], string> = {
  * gutter BETWEEN two cards, which no single card owns, and a portal pans and zooms with the
  * graph for free -- the same mechanism the generation rails use.
  *
- * Sized against the LIVE zoom, passed in as a number: everything in the viewport is scaled, so
- * a 44px target is 44 SCREEN pixels only if it is divided by the zoom it is about to be
- * multiplied by. A prop rather than the `--kf-zoom` CSS variable the fold chevrons read,
+ * Sized against the LIVE zoom, read from the store here: everything in the viewport is scaled,
+ * so a 44px target is 44 SCREEN pixels only if it is divided by the zoom it is about to be
+ * multiplied by. A number rather than the `--kf-zoom` CSS variable the fold chevrons read,
  * because the box is asymmetric (see `hitBox`) and that arithmetic is clearer in a pure
- * function than in nested `calc()`. Re-rendering on a wheel tick is cheap here: there are at
- * most five of these, where the reason the cards avoid it is that there are 117.
+ * function than in nested `calc()`. Re-rendering on a wheel tick is cheap HERE: there are at
+ * most five of these. Subscribed in this component rather than handed down by the canvas,
+ * which re-rendered its whole tree once per zoom frame to pass the number along.
  *
  * The layer is keyed by the person, so choosing somebody new replays the handles' entrance:
  * they pop in one after another and ping a few times, which is how a person picked on a
@@ -75,7 +76,6 @@ const NOUN: Record<AddTarget["direction"], string> = {
 export function NodeAddControls({
 	slots,
 	card,
-	zoom,
 	openKey,
 	onOpen,
 }: {
@@ -86,11 +86,11 @@ export function NodeAddControls({
 	 * before it could touch the next household.
 	 */
 	card: { width: number; height: number; rowGap: number; pill: number; reach: number };
-	zoom: number;
 	/** The slot whose strip is open, which wears the close mark. */
 	openKey?: string | null;
 	onOpen: (slot: AddSlot) => void;
 }) {
+	const zoom = useStore((state) => state.transform[2]);
 	const subject = slots[0]?.target.subjectId;
 
 	/*
@@ -178,11 +178,14 @@ export function NodeAddControls({
 export function NodeAddStrip({
 	slot,
 	onDone,
+	onFailed,
 	onClose,
 }: {
 	slot: AddSlot;
 	/** Called after a successful write with the new row's id and the name as typed. */
 	onDone: (added: { id?: string; name: string }) => void;
+	/** A failure that arrived after the strip was closed, for the canvas to report. */
+	onFailed?: (message: string) => void;
 	onClose: () => void;
 }) {
 	return (
@@ -196,6 +199,7 @@ export function NodeAddStrip({
 				key={`${slot.target.subjectId}:${slot.key}`}
 				target={slot.target}
 				onDone={onDone}
+				onFailed={onFailed}
 				onClose={onClose}
 			/>
 		</NodeStrip>
@@ -205,10 +209,12 @@ export function NodeAddStrip({
 function AddForm({
 	target,
 	onDone,
+	onFailed,
 	onClose,
 }: {
 	target: AddTarget;
 	onDone: (added: { id?: string; name: string }) => void;
+	onFailed?: (message: string) => void;
 	onClose: () => void;
 }) {
 	const nameId = useId();
@@ -220,11 +226,22 @@ function AddForm({
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<{ text: string; at: number } | null>(null);
 	const shake = useShake<HTMLFormElement>(error?.at);
-
-	// The name is the typing; focus it at once so a keyboard user never reaches for the mouse.
+	/*
+	 * Whether the strip is still open when a write settles. A tap on the canvas, a new pick
+	 * or Escape can close it mid-write, and an error stored in this unmounted form would be
+	 * shown nowhere -- so a late failure goes to the canvas, which reports it as a toast.
+	 */
+	const mounted = useRef(true);
 	useEffect(() => {
-		nameRef.current?.focus();
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
 	}, []);
+	const fail = (text: string) => {
+		if (mounted.current) setError({ text, at: Date.now() });
+		else onFailed?.(text);
+	};
 
 	/**
 	 * Enter walks the form instead of submitting it.
@@ -270,18 +287,15 @@ function AddForm({
 		try {
 			const result = await addRelative(data);
 			if (!result.ok) {
-				setError({ text: result.error, at: Date.now() });
+				fail(result.error);
 				return;
 			}
 			onDone({ id: result.id, name });
 			onClose();
 		} catch {
-			setError({
-				text: "Could not save that relative. Check your connection and try again.",
-				at: Date.now(),
-			});
+			fail("Could not save that relative. Check your connection and try again.");
 		} finally {
-			setPending(false);
+			if (mounted.current) setPending(false);
 		}
 	}
 
@@ -306,6 +320,9 @@ function AddForm({
 				<input
 					id={nameId}
 					ref={nameRef}
+					// The name is the typing: the strip focuses this as soon as it is on screen, so
+					// a keyboard user never reaches for the mouse.
+					data-autofocus=""
 					name="name"
 					required
 					maxLength={120}
@@ -359,7 +376,7 @@ function AddForm({
 							<label
 								key={choice.id}
 								className={cn(
-									"flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-hairline px-3",
+									"flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-hairline px-3 py-1.5",
 									"text-[0.8125rem] text-ink-muted has-checked:border-accent/50 has-checked:text-accent-ink",
 								)}
 							>
@@ -376,7 +393,10 @@ function AddForm({
 									}}
 									className="accent-(--color-accent)"
 								/>
-								<span className="min-w-0 truncate">{choice.label}</span>
+								{/* Wrapped, never truncated: the words that tell two families apart --
+								    "(adoptive)", "with Casey", "(1 of 2)" -- come last, so a truncated
+								    label reads the same as its neighbour. */}
+								<span className="min-w-0 break-words leading-snug">{choice.label}</span>
 							</label>
 						))}
 					</div>

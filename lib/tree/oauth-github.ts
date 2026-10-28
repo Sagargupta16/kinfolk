@@ -60,13 +60,34 @@ export function authorizeUrl(state: string, redirectUri: string): string {
 }
 
 /**
+ * How long any one GitHub call may take. A stalled response would otherwise hold the
+ * callback open until the platform's function limit, with the visitor watching a
+ * spinner the whole time.
+ */
+const GITHUB_TIMEOUT_MS = 10_000;
+
+/**
+ * A code traded for a token, or why GitHub refused.
+ *
+ * The reason is GitHub's own error code (or `http_<status>`), because the three ways
+ * this fails need three different answers: a spent code is the visitor's to retry, a
+ * rejected client secret or redirect is ours to fix, and an outage is nobody's. When
+ * every refusal was `null`, a rotated secret broke every sign-in while telling each
+ * visitor their code was bad, and left nothing in the logs.
+ */
+type CodeExchange = { ok: true; accessToken: string } | { ok: false; reason: string };
+
+/** A spent, forged or expired code: the one refusal a fresh sign-in fixes. */
+export const SPENT_CODE = "bad_verification_code";
+
+/**
  * Trade a code for an access token.
  *
  * `redirect_uri` is sent again because GitHub checks it matches the one that
  * started the flow -- omitting it is the classic cause of a `redirect_uri_mismatch`
  * at exchange time rather than at authorise time, which is confusing to debug.
  */
-export async function exchangeCode(code: string, redirectUri: string): Promise<string | null> {
+export async function exchangeCode(code: string, redirectUri: string): Promise<CodeExchange> {
 	const response = await fetch(TOKEN, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -76,13 +97,19 @@ export async function exchangeCode(code: string, redirectUri: string): Promise<s
 			code,
 			redirect_uri: redirectUri,
 		}),
+		signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
 	});
-	if (!response.ok) return null;
+	if (!response.ok) return { ok: false, reason: `http_${response.status}` };
 
 	// GitHub answers 200 with `{error: "bad_verification_code"}` for a spent or
 	// forged code, so the status alone is not the check.
 	const body = (await response.json()) as { access_token?: string; error?: string };
-	return body.access_token ?? null;
+	if (body.access_token) return { ok: true, accessToken: body.access_token };
+	// Only a bare error code is kept: it is logged, and a free-form string from
+	// upstream has no business in a log line.
+	const reason =
+		typeof body.error === "string" && /^[a-z_]{1,64}$/.test(body.error) ? body.error : "no_token";
+	return { ok: false, reason };
 }
 
 /**
@@ -95,13 +122,10 @@ export async function exchangeCode(code: string, redirectUri: string): Promise<s
  * assuming the first call is enough.
  */
 export async function fetchProfile(accessToken: string): Promise<GitHubProfile | null> {
-	const headers = {
-		Authorization: `Bearer ${accessToken}`,
-		Accept: "application/vnd.github+json",
-		"User-Agent": "kinfolk",
-	};
-
-	const response = await fetch(`${API}/user`, { headers });
+	const response = await fetch(`${API}/user`, {
+		headers: githubHeaders(accessToken),
+		signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+	});
 	if (!response.ok) return null;
 	const user = (await response.json()) as {
 		id?: number;
@@ -112,27 +136,54 @@ export async function fetchProfile(accessToken: string): Promise<GitHubProfile |
 	};
 	if (!user.id || !user.login) return null;
 
-	let email = user.email ?? null;
-	if (!email) {
-		const emails = await fetch(`${API}/user/emails`, { headers });
-		if (emails.ok) {
-			const list = (await emails.json()) as {
-				email: string;
-				primary: boolean;
-				verified: boolean;
-			}[];
-			// Primary and verified first. An unverified address is somebody's claim
-			// rather than a proven identity, and this one is used to match invites.
-			const best = list.find((e) => e.primary && e.verified) ?? list.find((e) => e.verified);
-			email = best?.email ?? null;
-		}
-	}
-
 	return {
 		providerAccountId: String(user.id),
 		login: user.login,
 		name: user.name ?? null,
-		email,
+		// A public profile email is always one GitHub has verified, so only its absence
+		// needs the fallback.
+		email: user.email ?? (await verifiedEmail(accessToken)),
 		avatarUrl: user.avatar_url ?? null,
 	};
+}
+
+function githubHeaders(accessToken: string): Record<string, string> {
+	return {
+		Authorization: `Bearer ${accessToken}`,
+		Accept: "application/vnd.github+json",
+		"User-Agent": "kinfolk",
+	};
+}
+
+/**
+ * The account's best VERIFIED address: primary first, then any verified one.
+ *
+ * An unverified address is somebody's claim rather than a proven identity, and this one
+ * is used to match invites. Auth.js's own GitHub provider takes the primary or the first
+ * address without asking, so auth.ts uses this for the server-rendered sign-in too.
+ */
+async function verifiedEmail(accessToken: string): Promise<string | null> {
+	const response = await fetch(`${API}/user/emails`, {
+		headers: githubHeaders(accessToken),
+		signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+	});
+	if (!response.ok) return null;
+	const list = (await response.json()) as { email: string; primary: boolean; verified: boolean }[];
+	const best = list.find((e) => e.primary && e.verified) ?? list.find((e) => e.verified);
+	return best?.email ?? null;
+}
+
+/**
+ * The raw `/user` profile Auth.js maps into a user, with the address chosen by
+ * `verifiedEmail` rather than by Auth.js's unverified pick.
+ */
+export async function githubUserinfo(accessToken: string): Promise<Record<string, unknown>> {
+	const response = await fetch(`${API}/user`, {
+		headers: githubHeaders(accessToken),
+		signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+	});
+	if (!response.ok) throw new Error(`GitHub /user answered ${response.status}`);
+	const profile = (await response.json()) as Record<string, unknown>;
+	if (!profile.email) profile.email = await verifiedEmail(accessToken);
+	return profile;
 }

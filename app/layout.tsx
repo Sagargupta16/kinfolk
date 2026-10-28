@@ -44,11 +44,11 @@ export const viewport: Viewport = {
 	 */
 	width: "device-width",
 	initialScale: 1,
-	/** Both, so the fixed toolbars stay on the right surface as the scheme changes. */
-	themeColor: [
-		{ media: "(prefers-color-scheme: dark)", color: "#0b1012" },
-		{ media: "(prefers-color-scheme: light)", color: "#f5f7f8" },
-	],
+	/*
+	 * No `themeColor` here. Next renders it as a pair of metas keyed to the OS scheme,
+	 * which ignores the Light or Dark choice made in the app, so THEME_SCRIPT writes one
+	 * meta from the stored choice instead and `applyScheme` keeps it current.
+	 */
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

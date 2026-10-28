@@ -5,10 +5,18 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { contactState } from "@/lib/tree/contact-state";
 import { CONTACT_KINDS, CONTACT_VISIBILITY, type ContactState } from "@/lib/tree/contacts";
-import { addContact, deleteContact, type Result, updateContact } from "@/lib/tree/edit-actions";
+import { addContact, deleteContact, updateContact } from "@/lib/tree/edit-actions";
+import type { Result } from "@/lib/tree/result";
+import { cn } from "@/lib/utils";
 import { AppearanceMenu } from "../ui/AppearanceMenu";
 
-const field = "min-h-11 w-full rounded-lg border border-hairline bg-canvas px-3 text-sm text-ink";
+// 16px text: iOS Safari zooms the page into any smaller field.
+const field = "min-h-11 w-full rounded-lg border border-hairline bg-canvas px-3 text-base text-ink";
+/**
+ * The plain button. Variants go through `cn`, never a template literal: this string
+ * carries `text-ink`, and appending `text-canvas` beside it left both classes in place
+ * for stylesheet order to decide -- which painted "Save detail" ink on an ink fill.
+ */
 const button =
 	"inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-hairline px-3 text-sm text-ink hover:bg-surface-raised disabled:opacity-60";
 
@@ -142,7 +150,8 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 												{state.editable && (
 													<button
 														type="button"
-														className={button}
+														// 44 wide too: an icon in this padding is 42.
+														className={cn(button, "min-w-11")}
 														disabled={pending}
 														aria-label={`Edit ${contact.label ?? contact.kind}`}
 														onClick={() => {
@@ -164,7 +173,7 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 															</p>
 															<button
 																type="button"
-																className={`${button} text-danger`}
+																className={cn(button, "text-danger")}
 																disabled={pending}
 																onClick={() => {
 																	const form = new FormData();
@@ -339,7 +348,13 @@ function ContactForm({
 				</select>
 			</div>
 			<div className="flex flex-wrap gap-2">
-				<button type="submit" className={`${button} bg-ink text-canvas`} disabled={pending}>
+				<button
+					type="submit"
+					// The hover is overridden too: the plain button's surface-raised hover under
+					// canvas-coloured text would make the label vanish under the pointer.
+					className={cn(button, "border-ink bg-ink text-canvas hover:bg-ink/85")}
+					disabled={pending}
+				>
 					{pending ? "Saving..." : "Save detail"}
 				</button>
 				<button type="button" className={button} disabled={pending} onClick={onCancel}>

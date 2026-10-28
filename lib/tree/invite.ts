@@ -1,4 +1,4 @@
-export type InviteRole = "viewer" | "editor";
+type InviteRole = "viewer" | "editor";
 
 /** Only roles that may be granted through an invite. */
 export function parseInviteRole(value: unknown): InviteRole | null {

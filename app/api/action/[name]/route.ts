@@ -1,9 +1,9 @@
 /**
  * Every write, reachable from another origin.
  *
- * One route rather than fourteen, because each of these actions already takes a
- * single `FormData` and returns the same `Result`. Fourteen hand-written endpoints
- * would be fourteen places for the auth line, the parse and the error shape to
+ * One route rather than seventeen, because each of these actions already takes a
+ * single `FormData` and returns the same `Result`. Seventeen hand-written endpoints
+ * would be seventeen places for the auth line, the parse and the error shape to
  * drift out of agreement.
  *
  * The actions are NOT re-implemented here and must never be. Each one starts with
@@ -52,10 +52,10 @@ import { invite, removeMember, revokeInvite } from "@/lib/tree/share-actions";
  *   - `enterDemo` / `exitDemo` set and clear an httpOnly cookie on THIS origin,
  *     and a cookie set on the API host is not one the Pages UI can send back. The
  *     demo is reached through `/api/tree?demo=1`, which needs no cookie.
- *   - `editablePeople()` and `leave()` take no form, and `shareState(treeId)`
- *     takes a string and returns a `ShareState` rather than a `Result`. Coercing
- *     them into this shape would mean inventing a form for them to ignore; they
- *     get their own routes when the UI needs them.
+ *   - `leave()` signs out through Auth.js and a cookie this origin owns, which the
+ *     SPA does through `/api/oauth/signout` instead, and `shareState(treeId)` takes a
+ *     string and returns a `ShareState` rather than a `Result`, so it has its own
+ *     route at `/api/share`.
  */
 const ACTIONS: Record<string, (form: FormData) => Promise<Result>> = {
 	addPerson,

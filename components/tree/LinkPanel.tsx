@@ -3,12 +3,15 @@
 import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type SubmitEvent, useEffect, useId, useState, useTransition } from "react";
-import type { Result } from "@/lib/tree/edit-actions";
 import { decideLink, linkState, proposeLink } from "@/lib/tree/link-actions";
 import type { LinkState } from "@/lib/tree/links";
+import type { Result } from "@/lib/tree/result";
 import { useEscapeClose } from "./escape";
 
-const field = "min-h-11 w-full rounded-md border border-hairline bg-canvas px-2.5 text-sm text-ink";
+// 16px text: iOS Safari zooms the page into any smaller field, and this panel sits on a
+// fixed-height canvas.
+const field =
+	"min-h-11 w-full rounded-md border border-hairline bg-canvas px-2.5 text-base text-ink";
 const button =
 	"min-h-11 rounded-md border border-hairline px-3 text-xs text-ink hover:bg-surface-raised disabled:opacity-60";
 const consentText =
@@ -79,17 +82,17 @@ export function LinkPanel({ onClose }: { onClose: () => void }) {
 			aria-labelledby={id}
 			className="kf-sheet flex max-h-[calc(100dvh-6rem)] w-[min(26rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-hairline-strong bg-surface shadow-lg"
 		>
-			<header className="flex items-center gap-3 border-b border-hairline px-4 py-2">
+			<header className="flex items-center gap-3 border-b border-hairline px-4 py-3">
 				<h2 id={id} className="flex-1 text-sm font-medium">
 					Link family records
 				</h2>
 				<button
 					type="button"
-					className="flex size-11 items-center justify-center text-ink-faint"
+					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 					aria-label="Close family links"
 					onClick={onClose}
 				>
-					<X className="size-4" aria-hidden />
+					<X className="size-4" strokeWidth={1.75} aria-hidden />
 				</button>
 			</header>
 			<div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain p-4">

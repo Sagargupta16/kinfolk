@@ -41,7 +41,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import {
 	type CSSProperties,
+	type Dispatch,
 	type ReactNode,
+	type SetStateAction,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -83,7 +85,7 @@ import { neighbourhood } from "@/lib/tree/neighbourhood";
 import { type AddSlot, type AddTarget, addSlots, nodeAffordances } from "@/lib/tree/node-add";
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
 import { collapseUnionEdges, radialLayout } from "@/lib/tree/radial";
-import { indexRelatives } from "@/lib/tree/relatives";
+import { indexRelatives, relativesOf } from "@/lib/tree/relatives";
 import { type SiblingBar, siblingBars } from "@/lib/tree/siblings";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
@@ -331,7 +333,8 @@ function Canvas({
 	closeDetailRequest,
 	onCloseDetailHandled,
 	directory,
-}: Props) {
+	held,
+}: Props & { held: Held }) {
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	/**
 	 * The laid-out family skeleton, written once per layout.
@@ -417,29 +420,6 @@ function Canvas({
 	const viewportHeight = useStore((state) => state.height);
 
 	/**
-	 * The live zoom, published to CSS as `--kf-zoom` on the pane.
-	 *
-	 * Every node is inside the scaled viewport, so a control sized in CSS pixels is NOT
-	 * that size on screen: a `size-11` (44px) fold button measured 35px at 0.785 zoom and
-	 * would be 7px at the 0.15 floor. A touch target has to clear 44 SCREEN pixels, so the
-	 * only honest way to size one inside a transformed layer is to divide by the scale it
-	 * is about to be multiplied by -- which means CSS needs the number.
-	 *
-	 * Written as a custom property rather than passed as a prop, for the reason the pointer
-	 * wash is: a prop would re-render all 117 nodes on every wheel tick, and React Flow
-	 * answers a render by re-measuring.
-	 */
-	const zoom = useStore((state) => state.transform[2]);
-
-	useEffect(() => {
-		// On the viewport itself, which is the element the nodes live inside, so the value is
-		// in scope for every card without threading a ref through ReactFlow (which does not
-		// forward one).
-		const viewport = document.querySelector<HTMLElement>(".react-flow__viewport");
-		viewport?.style.setProperty("--kf-zoom", String(zoom));
-	}, [zoom]);
-
-	/**
 	 * The person whose relations are lit. Relation edges cannot be hovered themselves:
 	 * they render above the cards so their labels stay readable, which means they must not
 	 * intercept pointer events.
@@ -487,19 +467,13 @@ function Canvas({
 			const desktopRail = panel.offsetLeft > 0;
 			const flow = document.querySelector<HTMLElement>(".react-flow");
 			const flowTop = flow?.getBoundingClientRect().top ?? 0;
-			const topInset = desktopRail
-				? 0
-				: Math.max(
-						0,
-						...[
-							".kf-search-dock",
-							".kf-editor-dock",
-							'[aria-label="Current person and recently viewed"]',
-						].map((selector) => {
-							const element = document.querySelector<HTMLElement>(selector);
-							return element ? element.getBoundingClientRect().bottom - flowTop : 0;
-						}),
-					);
+			// The viewing docket is the one piece of chrome inside the canvas's top edge; the
+			// search box and the editor moved out of the canvas, so measuring them read 0.
+			const docket = document.querySelector<HTMLElement>(
+				'[aria-label="Current person and recently viewed"]',
+			);
+			const topInset =
+				desktopRail || !docket ? 0 : Math.max(0, docket.getBoundingClientRect().bottom - flowTop);
 			const mobileOffset = Math.max(0, panel.offsetHeight - topInset) / (2 * zoom);
 
 			void setCenter(
@@ -511,7 +485,7 @@ function Canvas({
 
 		return () => cancelAnimationFrame(frame);
 	}, [detailId, measured, getNodes, getZoom, lod, setCenter]);
-	const [trail, setTrail] = useState<string[]>(() => (viewedId ? [viewedId] : []));
+	const { trail, setTrail } = held;
 	const [helpOpen, setHelpOpen] = useState(false);
 	/**
 	 * The one strip open on the canvas: adding from a pressed `+`, or editing the viewed card.
@@ -546,10 +520,23 @@ function Canvas({
 		const timer = window.setTimeout(() => setSavedName(null), 5000);
 		return () => window.clearTimeout(timer);
 	}, [savedName]);
+	/** A write that failed after its strip had already been closed. */
+	const [failure, setFailure] = useState<string | null>(null);
+	useEffect(() => {
+		if (!failure) return;
+		const timer = window.setTimeout(() => setFailure(null), 7000);
+		return () => window.clearTimeout(timer);
+	}, [failure]);
+	/*
+	 * Where the toasts stand. On a phone an open strip is docked along the bottom edge, and
+	 * relatives are added in runs, so a toast at the bottom sat on the strip's Son and
+	 * Daughter answers for five seconds after every add. With a strip open there, it goes up.
+	 */
+	const toastPlace = strip ? "max-sm:top-3 sm:bottom-4" : "bottom-4";
 	// Refreshing the server route after a write is what keeps fusion, kinship and the layout
 	// derived from the database rather than from a client-side guess about what changed.
 	const router = useRouter();
-	const [collapsed, setCollapsed] = useState<Collapsed>(NOTHING_COLLAPSED);
+	const { collapsed, setCollapsed } = held;
 
 	const selfNodeId = useMemo(
 		() =>
@@ -568,12 +555,16 @@ function Canvas({
 	 * the far side of the canvas, and the "immediate family" box would span the whole tree
 	 * -- the very thing this fallback exists to avoid.
 	 */
+	/** Which node ids are union dots, built once per data change rather than per hover. */
+	const unionIds = useMemo(
+		() => new Set(sourceNodes.filter((n) => n.type === "union").map((n) => n.id)),
+		[sourceNodes],
+	);
 	const homeIds = useMemo(() => {
 		if (!selfNodeId) return null;
-		const unionIds = new Set(sourceNodes.filter((n) => n.type === "union").map((n) => n.id));
 		const family = sourceEdges.filter((edge) => edge.layout);
 		return neighbourhood(family, selfNodeId, (id) => unionIds.has(id)).nodeIds;
-	}, [selfNodeId, sourceNodes, sourceEdges]);
+	}, [selfNodeId, unionIds, sourceEdges]);
 
 	/**
 	 * The edges the viewer has ENABLED, which is neither what layout gets nor what is
@@ -593,16 +584,31 @@ function Canvas({
 	 * the graph. See lib/tree/collapse.ts for why this is reachability and not
 	 * subtraction.
 	 */
-	const visibleIds = useMemo(
-		() =>
-			visibleAfterCollapse(sourceNodes, sourceEdges, collapsed, [
-				...(selfNodeId ? [selfNodeId] : []),
-				...(viewedId ? [viewedId] : []),
-				...collapsed.descendants,
-				...collapsed.ancestors,
-			]),
-		[sourceNodes, sourceEdges, collapsed, selfNodeId, viewedId],
+	/*
+	 * Kept by CONTENT, not by computation. The viewed person is an anchor, so picking
+	 * somebody recomputes this set -- and with anything folded a fresh Set, even an
+	 * identical one, flowed into the laid-out arrays and re-ran ELK and the framing on
+	 * every pick (a click must stay cheap). Only a change in who is visible may relayout.
+	 */
+	const foldAnchors = useMemo(
+		() => [
+			...(selfNodeId ? [selfNodeId] : []),
+			...(viewedId ? [viewedId] : []),
+			...collapsed.descendants,
+			...collapsed.ancestors,
+		],
+		[selfNodeId, viewedId, collapsed],
 	);
+	const visibleCache = useRef<Set<string> | null>(null);
+	const visibleIds = useMemo(() => {
+		const next = visibleAfterCollapse(sourceNodes, sourceEdges, collapsed, foldAnchors);
+		const previous = visibleCache.current;
+		if (previous && previous.size === next.size && [...next].every((id) => previous.has(id))) {
+			return previous;
+		}
+		visibleCache.current = next;
+		return next;
+	}, [sourceNodes, sourceEdges, collapsed, foldAnchors]);
 
 	/** The graph actually laid out: everything, unless something is folded. */
 	const laidOutNodes = useMemo(
@@ -647,10 +653,25 @@ function Canvas({
 	const orbitFocusId = view === "orbit" ? (viewedId ?? selfNodeId ?? null) : null;
 
 	const folds = useMemo(() => foldable(sourceEdges), [sourceEdges]);
-	const hidden = useMemo(
-		() => hiddenCounts(sourceNodes, sourceEdges, collapsed),
-		[sourceNodes, sourceEdges, collapsed],
-	);
+	/*
+	 * Counted with the canvas's own anchors, so a "+N" badge never counts somebody the canvas
+	 * still shows. The anchors include the viewed person, and these counts reach the layout,
+	 * so the result is kept by content like `visibleIds`: a pick must not re-run ELK.
+	 */
+	const hiddenCache = useRef<Map<string, number> | null>(null);
+	const hidden = useMemo(() => {
+		const next = hiddenCounts(sourceNodes, sourceEdges, collapsed, foldAnchors);
+		const previous = hiddenCache.current;
+		if (
+			previous &&
+			previous.size === next.size &&
+			[...next].every(([id, count]) => previous.get(id) === count)
+		) {
+			return previous;
+		}
+		hiddenCache.current = next;
+		return next;
+	}, [sourceNodes, sourceEdges, collapsed, foldAnchors]);
 
 	/** For the detail panel, which needs roles rather than a highlight set. */
 	const relativeIndex = useMemo(
@@ -667,14 +688,17 @@ function Canvas({
 	useEffect(() => {
 		if (!viewedId || !people.has(viewedId)) return;
 		setTrail((current) => pushTrail(current, viewedId));
-	}, [people, viewedId]);
+	}, [people, viewedId, setTrail]);
 
 	/** Whose relations are revealed: the pinned person, else the hovered one. */
 	const revealedId = pinnedId ?? focusedId;
 
-	const fold = useCallback((personId: string, direction: "descendants" | "ancestors") => {
-		setCollapsed((current) => toggleCollapse(current, personId, direction));
-	}, []);
+	const fold = useCallback(
+		(personId: string, direction: "descendants" | "ancestors") => {
+			setCollapsed((current) => toggleCollapse(current, personId, direction));
+		},
+		[setCollapsed],
+	);
 
 	/**
 	 * Every source row's name, sex and fused card, for the `+` handles.
@@ -718,8 +742,21 @@ function Canvas({
 			subjectSex: (source ?? person.primary).sex,
 			unions: (editableUnions ?? []).filter((union) => union.treeId === target.treeId),
 			people: sourceIndex,
+			// Parents the canvas already DRAWS, from either family: a linked family's record of
+			// both parents leaves no slot for this one to fill.
+			drawnParents: relativesOf(relativeIndex, viewedId).parents.length,
 		});
-	}, [canEdit, view, lod, viewedId, people, editableTreeIds, editableUnions, sourceIndex]);
+	}, [
+		canEdit,
+		view,
+		lod,
+		viewedId,
+		people,
+		editableTreeIds,
+		editableUnions,
+		sourceIndex,
+		relativeIndex,
+	]);
 
 	useEffect(() => {
 		if (!closeDetailRequest) return;
@@ -838,7 +875,7 @@ function Canvas({
 						...radialLayout(laidOutNodes, laidOutEdges, orbitFocusId, lod),
 						bands: [] as GenerationBand[],
 					})
-				: layoutGraph(laidOutNodes, laidOutEdges, lod);
+				: layoutGraph(laidOutNodes, laidOutEdges, lod, selfNodeId);
 
 		// ELK is async and imported lazily, so a fast second data change can resolve out of
 		// order. The flag drops stale layouts.
@@ -1069,6 +1106,8 @@ function Canvas({
 
 				/** Laid-out boxes by id, for the marriage-line rail below. */
 				const boxes = new Map(positioned.map((node) => [node.id, node]));
+				// Built once per layout, not copied out of the map for every partner edge.
+				const personBoxes = positioned.filter((node) => node.type === "person");
 
 				/**
 				 * The marriage line's coordinates, for partner edges only.
@@ -1096,9 +1135,8 @@ function Canvas({
 					if (tBox.type === "person") {
 						const left = Math.min(sourceMidX, targetMidX);
 						const right = Math.max(sourceMidX, targetMidX);
-						const crossesCard = [...boxes.values()].some(
+						const crossesCard = personBoxes.some(
 							(box) =>
-								box.type === "person" &&
 								box.id !== edge.source &&
 								box.id !== edge.target &&
 								railY >= box.position.y &&
@@ -1194,10 +1232,16 @@ function Canvas({
 				setLayoutEpoch((epoch) => epoch + 1);
 				setPhase("ready");
 			})
-			.catch(() => {
+			.catch((error: unknown) => {
 				// ELK is a lazy dynamic import, so the realistic failure is a dropped connection
 				// on first layout -- which a retry fixes without a reload. Swallowing it would
-				// leave the canvas on "Arranging the graph" forever.
+				// leave the canvas on "Arranging the graph" forever. Logged by name only: the
+				// same catch covers a fault in the passes after ELK, which a retry cannot fix
+				// and which an empty console would hide.
+				console.error(
+					"[kinfolk] layout failed:",
+					error instanceof Error ? `${error.name}: ${error.message}` : "unknown error",
+				);
 				if (!cancelled) setPhase("error");
 			});
 
@@ -1211,6 +1255,8 @@ function Canvas({
 		// every hover.
 		familyFlowEdges,
 		selfId,
+		// A string that changes only with the data, so it adds no relayout of its own.
+		selfNodeId,
 		lod,
 		view,
 		// Null outside orbit mode by construction, so a click in tree mode cannot re-run ELK.
@@ -1461,8 +1507,37 @@ function Canvas({
 			);
 			return true;
 		},
-		[getNodes, getZoom, lod, onViewedChange, setCenter, setNodes],
+		[getNodes, getZoom, lod, onViewedChange, setCenter, setNodes, setTrail],
 	);
+
+	/*
+	 * Travel from inside the canvas -- a relative in the profile, a breadcrumb -- even to
+	 * somebody a fold hides or the orbit leaves out. `travelTo` alone returned false for an
+	 * unplaced person, so tapping a folded child in their mother's profile did nothing at
+	 * all. Making them the viewed person anchors them, which brings them back on the next
+	 * layout, and the travel completes from there.
+	 */
+	const [pendingTravel, setPendingTravel] = useState<{ id: string; openDetail: boolean } | null>(
+		null,
+	);
+	const goToPerson = useCallback(
+		(id: string, openDetail = false) => {
+			if (travelTo(id, { openDetail })) return;
+			onViewedChange?.(id);
+			setPendingTravel({ id, openDetail });
+		},
+		[travelTo, onViewedChange],
+	);
+	useEffect(() => {
+		if (!pendingTravel || !measured) return;
+		void layoutEpoch;
+		if (!people.has(pendingTravel.id)) {
+			setPendingTravel(null);
+			return;
+		}
+		if (travelTo(pendingTravel.id, { openDetail: pendingTravel.openDetail }))
+			setPendingTravel(null);
+	}, [pendingTravel, measured, layoutEpoch, travelTo, people]);
 
 	useEffect(() => {
 		if (!goTo || !measured) return;
@@ -1518,6 +1593,18 @@ function Canvas({
 		setStrip(null);
 	}, [viewedId]);
 
+	// The People tab covers the canvas; a strip left open would float over it, anchored to
+	// a card nobody can see, and still accept a save.
+	const showingDirectory = Boolean(directory);
+	useEffect(() => {
+		if (showingDirectory) setStrip(null);
+	}, [showingDirectory]);
+	// Opening a profile, from the `p` key or anywhere else, closes the strip: on a phone the
+	// two share the bottom of the screen, and the strip painted over the sheet it opened.
+	useEffect(() => {
+		if (detailId) setStrip(null);
+	}, [detailId]);
+
 	/**
 	 * Unfold whatever would hide the person just added.
 	 *
@@ -1550,7 +1637,7 @@ function Canvas({
 				),
 			);
 		},
-		[viewedId, affordances, sourceIndex],
+		[viewedId, affordances, sourceIndex, setCollapsed],
 	);
 
 	/**
@@ -1567,9 +1654,8 @@ function Canvas({
 	 */
 	const lit = useMemo(() => {
 		if (!revealedId) return null;
-		const unionIds = new Set(sourceNodes.filter((n) => n.type === "union").map((n) => n.id));
 		return neighbourhood(enabledEdges, revealedId, (id) => unionIds.has(id));
-	}, [revealedId, sourceNodes, enabledEdges]);
+	}, [revealedId, unionIds, enabledEdges]);
 
 	/**
 	 * Apply focus and the depth tilt by rewriting className only. Deliberately its own
@@ -1613,10 +1699,31 @@ function Canvas({
 		return () => window.clearTimeout(timer);
 	}, [updatedId]);
 
-	// A deleted card stays shrunk until the refreshed graph no longer holds it.
+	/*
+	 * A deleted card stays shrunk until the refreshed graph has been laid out, then the flag
+	 * goes whatever happened. Waiting for the fused id to vanish was not enough: deleting MY
+	 * row of a person another family also records leaves their row under the same fused id,
+	 * and that card stayed at opacity 0 for good.
+	 */
+	const leftAt = useRef<number | null>(null);
 	useEffect(() => {
-		if (leavingId && !people.has(leavingId)) setLeavingId(null);
-	}, [leavingId, people]);
+		if (!leavingId) {
+			leftAt.current = null;
+			return;
+		}
+		if (leftAt.current === null) leftAt.current = layoutEpoch;
+		else if (layoutEpoch > leftAt.current) setLeavingId(null);
+	}, [leavingId, layoutEpoch]);
+
+	/*
+	 * A pin or focus on somebody who is no longer in the graph -- deleted, or re-fused under
+	 * another id when a link was accepted -- would leave every other card dimmed around a
+	 * person who is not there, and a hover cannot lift a pin.
+	 */
+	useEffect(() => {
+		if (pinnedId && !people.has(pinnedId)) setPinnedId(null);
+		if (focusedId && !people.has(focusedId)) setFocusedId(null);
+	}, [pinnedId, focusedId, people]);
 
 	/** Keep the durable viewed state explicit in card data, selection and the overview. */
 	useEffect(() => {
@@ -1712,9 +1819,10 @@ function Canvas({
 	 * demo, an invited viewer) keeps tap-to-read: there are no handles to reach, and the
 	 * profile is what a reader came for. Clicking the same card again there closes it.
 	 *
-	 * Union dots are skipped for the NAMING and the panel only: a junction is not somebody
-	 * you can relate to, and reporting one would put "Unknown" in a picker. It still
-	 * focuses, since hovering a dot lighting up the couple it joins is useful.
+	 * Union dots are skipped for the viewed person and the panel only: a junction is not
+	 * somebody you can relate to, and making one the subject would put "Unknown" on the
+	 * viewing docket. It still focuses, since hovering a dot lighting up the couple it joins
+	 * is useful.
 	 */
 	const pick = useCallback(
 		(event: unknown, node: Node) => {
@@ -1752,7 +1860,7 @@ function Canvas({
 				setDetailId((current) => (current === node.id ? null : node.id));
 			}
 		},
-		[focus, onViewedChange, canEdit, viewedId, editable],
+		[focus, onViewedChange, canEdit, viewedId, editable, setTrail],
 	);
 
 	/**
@@ -1773,7 +1881,7 @@ function Canvas({
 			.filter((node) => node.type === "person" && node.position.y === anchorNode.position.y)
 			.map((node) => node.id);
 		if (row.length > 0) setCollapsed((current) => collapseGeneration(current, row));
-	}, [viewedId, revealedId, selfNodeId, getNodes]);
+	}, [viewedId, revealedId, selfNodeId, getNodes, setCollapsed]);
 
 	const onAction = useCallback(
 		(action: ShortcutAction) => {
@@ -1861,6 +1969,7 @@ function Canvas({
 			viewedId,
 			canEdit,
 			editable,
+			setCollapsed,
 		],
 	);
 
@@ -1990,6 +2099,7 @@ function Canvas({
 				    would write the `-props` variable React Flow checks FIRST, overriding it.
 				    Geometry stays here, since it is not a design token. */}
 					<Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+					<ZoomVariable />
 					<GenerationRails bands={bands} />
 					<NodeAddControls
 						slots={slots}
@@ -2001,7 +2111,6 @@ function Canvas({
 							// narrows this further to the free space actually beside the card.
 							reach: Math.round(NODE_METRICS[lod].gap * 1.75) - 6,
 						}}
-						zoom={zoom}
 						openKey={strip?.kind === "add" ? strip.slot.key : null}
 						// The open `+` is also its close: pressing it again folds the strip back in.
 						onOpen={(slot) =>
@@ -2051,7 +2160,7 @@ function Canvas({
 								onClick={() => void fitView({ padding: FIT_PADDING, duration: travelDuration() })}
 							>
 								<Maximize2 className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-								All
+								<span className="max-sm:sr-only">All</span>
 							</TravelButton>
 
 							{/*
@@ -2062,14 +2171,14 @@ function Canvas({
 							{viewedId && (
 								<TravelButton onClick={frameViewed}>
 									<LocateFixed className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-									Current
+									<span className="max-sm:sr-only">Current</span>
 								</TravelButton>
 							)}
 
 							{selfNodeId && selfNodeId !== viewedId && (
 								<TravelButton onClick={frameSelf}>
 									<Crosshair className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-									You
+									<span className="max-sm:sr-only">You</span>
 								</TravelButton>
 							)}
 						</div>
@@ -2090,7 +2199,7 @@ function Canvas({
 				)}
 			>
 				<div className="pointer-events-auto min-w-0 max-w-full">
-					<TreeBreadcrumbs trail={trailPeople} onGoTo={(id) => travelTo(id)} />
+					<TreeBreadcrumbs trail={trailPeople} onGoTo={(id) => goToPerson(id)} />
 				</div>
 			</div>
 
@@ -2107,7 +2216,7 @@ function Canvas({
 				onClose={() => setDetailId(null)}
 				// Travelling from the panel keeps the panel open on the NEW person, which is what
 				// makes it a way to walk the family: parents to their parents to their siblings.
-				onGoTo={(id) => travelTo(id, { openDetail: true })}
+				onGoTo={(id) => goToPerson(id, true)}
 			/>
 
 			{/*
@@ -2138,6 +2247,7 @@ function Canvas({
 							setCreatedPersonId(id ?? null);
 							router.refresh();
 						}}
+						onFailed={setFailure}
 						onClose={() => setStrip(null)}
 					/>
 				)}
@@ -2157,6 +2267,7 @@ function Canvas({
 							router.refresh();
 						}}
 						onLeaving={(leaving) => setLeavingId(leaving ? strip.personId : null)}
+						onFailed={setFailure}
 						onProfile={() => {
 							setStrip(null);
 							setDetailId(strip.personId);
@@ -2173,9 +2284,30 @@ function Canvas({
 						animate={{ opacity: 1, y: 0 }}
 						exit={{ opacity: 0 }}
 						transition={{ duration: 0.2 }}
-						className="pointer-events-none absolute bottom-4 left-1/2 z-50 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl border border-hairline-strong bg-surface px-4 py-3 text-center text-sm text-ink"
+						className={cn(
+							"pointer-events-none absolute left-1/2 z-50 w-max max-w-[calc(100%-2rem)] -translate-x-1/2",
+							"rounded-xl border border-hairline-strong bg-surface px-4 py-3 text-center text-sm text-ink",
+							toastPlace,
+						)}
 					>
 						{savedName} is now part of your family tree.
+					</motion.p>
+				)}
+				{/* A write that failed after its strip was closed: nowhere else would say so. */}
+				{failure && (
+					<motion.p
+						role="alert"
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: 0.2 }}
+						className={cn(
+							"pointer-events-none absolute left-1/2 z-50 w-max max-w-[calc(100%-2rem)] -translate-x-1/2",
+							"rounded-xl border border-danger/40 bg-surface px-4 py-3 text-center text-sm text-danger",
+							toastPlace,
+						)}
+					>
+						{failure}
 					</motion.p>
 				)}
 			</AnimatePresence>
@@ -2185,13 +2317,20 @@ function Canvas({
 	);
 }
 
+/**
+ * One of the travel buttons in the bottom-right corner.
+ *
+ * Icons only on a phone: with their labels the row was about 240px of a 375px canvas, plus
+ * the Map toggle beside it, and a tap on a card underneath went to a button instead. The
+ * label stays in the accessible name, so nothing is lost to a screen reader.
+ */
 function TravelButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
 			className={cn(
-				"kf-glass pointer-events-auto flex min-h-11 items-center gap-2 rounded-lg px-3",
+				"kf-glass pointer-events-auto flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg px-3 max-sm:px-0",
 				"font-mono text-[0.625rem] uppercase tracking-wider text-ink-muted",
 				"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 				"hover:border-hairline-strong hover:text-ink",
@@ -2201,6 +2340,50 @@ function TravelButton({ onClick, children }: { onClick: () => void; children: Re
 		</button>
 	);
 }
+
+/**
+ * The live zoom, published to CSS as `--kf-zoom` on the viewport.
+ *
+ * Every node is inside the scaled viewport, so a control sized in CSS pixels is NOT that
+ * size on screen: a `size-11` (44px) fold button measured 35px at 0.785 zoom and would be
+ * 7px at the 0.15 floor. A touch target has to clear 44 SCREEN pixels, so the only honest
+ * way to size one inside a transformed layer is to divide by the scale it is about to be
+ * multiplied by -- which means CSS needs the number.
+ *
+ * A custom property rather than a prop, for the reason the pointer wash is: a prop would
+ * re-render every node on every wheel tick, and React Flow answers a render by
+ * re-measuring. And a component of its own, because the subscription re-renders whoever
+ * holds it on every zoom frame: held by the canvas, that was the whole 1,900-line canvas
+ * and its unmemoised panels, once per frame of every pinch.
+ */
+function ZoomVariable() {
+	const zoom = useStore((state) => state.transform[2]);
+	useEffect(() => {
+		// On the viewport itself, which is the element the nodes live inside, so the value is
+		// in scope for every card without threading a ref through ReactFlow (which does not
+		// forward one).
+		document
+			.querySelector<HTMLElement>(".react-flow__viewport")
+			?.style.setProperty("--kf-zoom", String(zoom));
+	}, [zoom]);
+	return null;
+}
+
+/**
+ * Canvas state that must outlive the provider remount below.
+ *
+ * The provider is keyed by detail level and arrangement, so pressing `d` or switching to
+ * orbit builds a fresh canvas. Folds and the visited trail lived inside it, so that
+ * silently unfolded every branch and reset the breadcrumbs to one name -- while the viewed
+ * person, lifted to the stage for exactly this remount, survived it. Both are held here,
+ * above the key.
+ */
+type Held = {
+	collapsed: Collapsed;
+	setCollapsed: Dispatch<SetStateAction<Collapsed>>;
+	trail: string[];
+	setTrail: Dispatch<SetStateAction<string[]>>;
+};
 
 /**
  * Provider wrapper: `useReactFlow` requires context above the canvas.
@@ -2214,9 +2397,12 @@ function TravelButton({ onClick, children }: { onClick: () => void; children: Re
  * in the other and the canvas would open looking at empty space.
  */
 export function TreeCanvas(props: Props) {
+	const [collapsed, setCollapsed] = useState<Collapsed>(NOTHING_COLLAPSED);
+	const [trail, setTrail] = useState<string[]>(() => (props.viewedId ? [props.viewedId] : []));
+	const held = useMemo(() => ({ collapsed, setCollapsed, trail, setTrail }), [collapsed, trail]);
 	return (
 		<ReactFlowProvider key={`${props.lod ?? "full"}:${props.view ?? "tree"}`}>
-			<Canvas {...props} />
+			<Canvas {...props} held={held} />
 		</ReactFlowProvider>
 	);
 }

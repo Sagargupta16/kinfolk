@@ -23,7 +23,9 @@ export async function enterDemo() {
 		path: "/",
 		secure: process.env.NODE_ENV === "production",
 	});
-	redirect("/tree");
+	// Asked for by name, so it wins over a session: a signed-in person pressing "Explore the
+	// sample family" saw their OWN family, because /tree resolves a session first.
+	redirect("/tree?demo=1");
 }
 
 export async function exitDemo() {

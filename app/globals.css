@@ -490,25 +490,21 @@ body {
 	stroke-linecap: butt;
 }
 
-/* Adoptive and step parentage: recorded differently, so drawn differently. */
-.react-flow .react-flow__edge.is-inferred .react-flow__edge-path {
-	stroke-dasharray: 4 4;
-}
-
 /*
  * The skeleton drawing itself on.
  *
  * The dasharray lives INSIDE the keyframes rather than on the rule, so
  * `animation-fill-mode: backwards` reverts it: an edge waiting out its delay is a
- * solid line at full length, not a dashed one. A large literal rather than
- * `pathLength` because these paths are hand-built and their length is unknown here.
+ * solid line at full length, not a dashed one. In units of `pathLength`, which
+ * FamilyEdge sets to 1 on every path: a large literal such as 4000 covered the whole
+ * line after 1/4000 of the animation, so every edge popped in instead of drawing.
  */
 @keyframes kf-draw {
 	from {
-		stroke-dasharray: 0 4000;
+		stroke-dasharray: 0 1;
 	}
 	to {
-		stroke-dasharray: 4000 0;
+		stroke-dasharray: 1 0;
 	}
 }
 
@@ -526,19 +522,19 @@ body {
  */
 @keyframes kf-redraw-0 {
 	from {
-		stroke-dasharray: 0 4000;
+		stroke-dasharray: 0 1;
 	}
 	to {
-		stroke-dasharray: 4000 0;
+		stroke-dasharray: 1 0;
 	}
 }
 
 @keyframes kf-redraw-1 {
 	from {
-		stroke-dasharray: 0 4000;
+		stroke-dasharray: 0 1;
 	}
 	to {
-		stroke-dasharray: 4000 0;
+		stroke-dasharray: 1 0;
 	}
 }
 
@@ -780,8 +776,16 @@ body {
 /* Generation rails                                                           */
 /* -------------------------------------------------------------------------- */
 
+/*
+ * Behind the family lines. The z-index alone did nothing: without a position it does
+ * not apply, so the rails painted over every drop line and bracket in the viewport
+ * portal, and a rail's tint dropped a bracket below the 3:1 floor in the light scheme.
+ */
 .kf-rails {
+	position: absolute;
+	inset: 0;
 	z-index: -1;
+	pointer-events: none;
 }
 
 .kf-rail {
@@ -845,18 +849,6 @@ body {
 	animation-delay: var(--kf-delay, 0ms);
 }
 
-@keyframes kf-rise {
-	from {
-		opacity: 0;
-		transform: translateY(8px);
-	}
-}
-
-.kf-rise {
-	animation: kf-rise var(--duration-base) var(--ease-out) backwards;
-	animation-delay: var(--kf-delay, 0ms);
-}
-
 .kf-card {
 	position: relative;
 	transition:
@@ -870,10 +862,15 @@ body {
  * The ticket overhangs into the reserved generation gap, so it is unmistakable without
  * changing the fixed node box ELK and React Flow measure.
  */
+/*
+ * Starts past the ancestors' fold pill, which sits centred at 16% across the top edge
+ * (FOLD_AT): at 0.65rem the flag painted over it, so a folded branch lost its chevron and
+ * count on exactly the card being edited.
+ */
 .kf-viewing-flag {
 	position: absolute;
 	top: -0.55rem;
-	left: 0.65rem;
+	left: calc(16% + 1.125rem);
 	z-index: 20;
 	border: 1px solid color-mix(in oklab, var(--color-accent) 72%, var(--color-canvas));
 	border-radius: 0.2rem;
@@ -1015,11 +1012,18 @@ body {
 	height: 62%;
 }
 
-.kf-node-add:hover .kf-node-add__pill,
 .kf-node-add:focus-visible .kf-node-add__pill {
 	background: var(--color-accent);
 	color: var(--color-canvas);
 	transform: scale(1.15);
+}
+
+@media (hover: hover) {
+	.kf-node-add:hover .kf-node-add__pill {
+		background: var(--color-accent);
+		color: var(--color-canvas);
+		transform: scale(1.15);
+	}
 }
 
 .kf-node-add:focus-visible {
@@ -1258,11 +1262,13 @@ body {
 		transform var(--duration-fast) var(--ease-out);
 }
 
-.kf-add-role:hover {
-	border-color: var(--color-accent);
-	background: color-mix(in oklab, var(--color-accent) 12%, var(--color-surface));
-	color: var(--color-accent-ink);
-	transform: translateY(-1px);
+@media (hover: hover) {
+	.kf-add-role:hover {
+		border-color: var(--color-accent);
+		background: color-mix(in oklab, var(--color-accent) 12%, var(--color-surface));
+		color: var(--color-accent-ink);
+		transform: translateY(-1px);
+	}
 }
 
 .kf-add-role:active {
@@ -1292,11 +1298,18 @@ body {
 	color: var(--color-ink-muted);
 }
 
-.kf-add-role--danger:hover,
 .kf-add-role--confirm {
 	border-color: var(--color-danger);
 	background: color-mix(in oklab, var(--color-danger) 8%, var(--color-surface));
 	color: var(--color-danger);
+}
+
+@media (hover: hover) {
+	.kf-add-role--danger:hover {
+		border-color: var(--color-danger);
+		background: color-mix(in oklab, var(--color-danger) 8%, var(--color-surface));
+		color: var(--color-danger);
+	}
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1336,9 +1349,14 @@ body {
  * read -- so focus straightens it, which doubles as the strongest possible "this one"
  * signal because it is the only card facing the viewer squarely.
  */
-.kf-depth.kf-lit .kf-card,
-.kf-depth .kf-card:hover {
+.kf-depth.kf-lit .kf-card {
 	transform: perspective(var(--kf-perspective, 900px)) rotateX(0deg) translateZ(18px);
+}
+
+@media (hover: hover) {
+	.kf-depth .kf-card:hover {
+		transform: perspective(var(--kf-perspective, 900px)) rotateX(0deg) translateZ(18px);
+	}
 }
 
 /*
@@ -1377,8 +1395,10 @@ body {
 	pointer-events: none;
 }
 
-.kf-card:hover::before {
-	opacity: 1;
+@media (hover: hover) {
+	.kf-card:hover::before {
+		opacity: 1;
+	}
 }
 
 /*
@@ -1522,9 +1542,11 @@ body {
 	border-bottom: none;
 }
 
-.react-flow .react-flow__controls-button:hover {
-	background: var(--color-surface-raised);
-	color: var(--color-ink);
+@media (hover: hover) {
+	.react-flow .react-flow__controls-button:hover {
+		background: var(--color-surface-raised);
+		color: var(--color-ink);
+	}
 }
 
 .react-flow .react-flow__controls-button svg {
@@ -1716,8 +1738,7 @@ body {
 }
 
 .kf-primary-action,
-.kf-secondary-action,
-.kf-text-action {
+.kf-secondary-action {
 	display: inline-flex;
 	min-height: 3rem;
 	align-items: center;
@@ -1740,9 +1761,11 @@ body {
 	color: #fff;
 }
 
-.kf-primary-action:hover {
-	border-color: #1d4ed8;
-	background: #1d4ed8;
+@media (hover: hover) {
+	.kf-primary-action:hover {
+		border-color: #1d4ed8;
+		background: #1d4ed8;
+	}
 }
 
 .kf-secondary-action {
@@ -1751,13 +1774,10 @@ body {
 	color: var(--color-ink);
 }
 
-.kf-secondary-action:hover {
-	border-color: var(--color-ink-faint);
-}
-
-.kf-text-action {
-	padding-inline: 0.5rem;
-	color: var(--color-ink-muted);
+@media (hover: hover) {
+	.kf-secondary-action:hover {
+		border-color: var(--color-ink-faint);
+	}
 }
 
 .kf-primary-action:active,
@@ -2075,6 +2095,11 @@ body {
 	gap: 0.75rem;
 }
 
+/* A link is a target: 44px tall, where the line of footer text alone was about 17. */
+.kf-brand-footer a {
+	min-height: 2.75rem;
+}
+
 .kf-brand-footer strong {
 	font-family: var(--font-display);
 	font-size: 1.2rem;
@@ -2092,9 +2117,14 @@ body {
 	background: var(--color-surface);
 }
 
+/*
+ * Above the canvas's own floating layers (the add/edit strip and the toasts sit at 50
+ * in the same stacking context), so the Options popover and the search results it
+ * drops over the canvas are never painted underneath an open strip.
+ */
 .kf-workspace-toolbar {
 	position: relative;
-	z-index: 45;
+	z-index: 60;
 	display: flex;
 	align-items: center;
 	gap: 0.75rem;
@@ -2133,10 +2163,12 @@ body {
 	color: var(--color-ink);
 }
 
-.kf-workspace-tabs button:hover,
-.kf-options-trigger:hover {
-	background: var(--color-surface-raised);
-	color: var(--color-ink);
+@media (hover: hover) {
+	.kf-workspace-tabs button:hover,
+	.kf-options-trigger:hover {
+		background: var(--color-surface-raised);
+		color: var(--color-ink);
+	}
 }
 
 .kf-toolbar-search {
@@ -2165,7 +2197,8 @@ body {
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	border: 1px solid var(--color-hairline-strong);
-	border-radius: 1.25rem;
+	/* rounded-2xl, the radius every floating panel and popover shares. */
+	border-radius: 1rem;
 	background: var(--color-surface);
 	padding: 0.5rem 1rem 1rem;
 	box-shadow: var(--kf-shadow-panel);
@@ -2183,8 +2216,10 @@ body {
 	color: var(--color-ink);
 }
 
-.kf-share-trigger:hover {
-	background: var(--color-surface-raised);
+@media (hover: hover) {
+	.kf-share-trigger:hover {
+		background: var(--color-surface-raised);
+	}
 }
 
 .kf-view-options h2 {
@@ -2239,8 +2274,10 @@ body {
 	text-align: left;
 }
 
-.kf-options-actions > button:hover {
-	color: var(--color-accent-ink);
+@media (hover: hover) {
+	.kf-options-actions > button:hover {
+		color: var(--color-accent-ink);
+	}
 }
 
 .kf-profile-tabs {
@@ -2332,13 +2369,20 @@ body {
 	transition: background-color 160ms, transform 160ms var(--ease-out);
 }
 
-.kf-directory-person:hover,
 .kf-directory-person[aria-pressed="true"] {
 	background: var(--color-surface);
 }
 
-.kf-directory-person:hover > svg {
-	transform: translate(2px, -2px);
+@media (hover: hover) {
+	.kf-directory-person:hover {
+		background: var(--color-surface);
+	}
+}
+
+@media (hover: hover) {
+	.kf-directory-person:hover > svg {
+		transform: translate(2px, -2px);
+	}
 }
 
 .kf-directory-person > svg {
@@ -2494,8 +2538,7 @@ body {
 	letter-spacing: -0.025em;
 }
 
-.kf-workspace-eyebrow,
-.kf-command-dock__label {
+.kf-workspace-eyebrow {
 	margin-bottom: 0.2rem;
 	font-family: var(--font-mono);
 	font-size: 0.5625rem;
@@ -2514,9 +2557,21 @@ body {
 	transition: background-color var(--duration-fast), border-color var(--duration-fast);
 }
 
-.kf-header-control:hover {
-	border-color: var(--color-hairline-strong);
+/*
+ * The pressed toggle. Here rather than as a `bg-surface-raised` utility on the element:
+ * this file is unlayered, so the rule above beat that utility and the active "Social
+ * links" or "All trees" toggle never looked pressed.
+ */
+.kf-header-control[aria-current="true"],
+.kf-header-control[aria-pressed="true"] {
 	background: var(--color-surface-raised);
+}
+
+@media (hover: hover) {
+	.kf-header-control:hover {
+		border-color: var(--color-hairline-strong);
+		background: var(--color-surface-raised);
+	}
 }
 
 .kf-demo-banner {
@@ -2532,26 +2587,6 @@ body {
 	border-color: var(--color-hairline-strong);
 	background: var(--color-surface);
 	box-shadow: var(--kf-shadow-card);
-}
-
-.kf-command-dock {
-	padding: 0.4rem;
-	border: 1px solid var(--color-hairline);
-	border-radius: 1rem;
-	background: var(--color-surface);
-	box-shadow: var(--kf-shadow-card);
-}
-
-.kf-command-dock__label {
-	align-self: stretch;
-	padding: 0.4rem 0.5rem;
-	text-align: left;
-}
-
-.kf-command-dock .kf-command-group,
-.kf-command-dock .kf-command-button {
-	background: var(--color-surface);
-	box-shadow: none;
 }
 
 .kf-sheet {
@@ -2578,8 +2613,10 @@ body {
 	border: 1px solid transparent;
 }
 
-.kf-sheet-row:hover {
-	border-color: var(--color-hairline);
+@media (hover: hover) {
+	.kf-sheet-row:hover {
+		border-color: var(--color-hairline);
+	}
 }
 
 .kf-share-sheet {
@@ -2715,14 +2752,6 @@ body {
 	.kf-workspace-identity h1 {
 		font-family: var(--font-sans);
 		font-size: 0.8125rem;
-	}
-
-	.kf-search-dock {
-		width: min(18rem, calc(100% - 11rem));
-	}
-
-	.kf-command-dock {
-		padding: 0.3rem;
 	}
 
 	.kf-sheet--rail {

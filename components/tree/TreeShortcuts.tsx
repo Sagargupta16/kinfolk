@@ -140,10 +140,10 @@ export function ShortcutSheet({ open, onClose }: { open: boolean; onClose: () =>
 							<button
 								type="button"
 								onClick={onClose}
-								aria-label="Close"
-								className="flex size-8 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
+								aria-label="Close keyboard shortcuts"
+								className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 							>
-								<X className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<X className="size-4" strokeWidth={1.75} aria-hidden="true" />
 							</button>
 						</div>
 
