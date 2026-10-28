@@ -518,6 +518,45 @@ body {
 }
 
 /*
+ * After a write, the lines of the families that moved draw themselves on again. Hidden
+ * from the moment the cards start gliding (the `backwards` fill holds the empty first
+ * frame through `--kf-redraw-delay`), then drawn as the cards come to rest, so a line is
+ * never seen joining two cards that are still on their way. `kf-draw` stays first with its
+ * own parameters, for the same reason `kf-enter` does on the cards.
+ */
+@keyframes kf-redraw-0 {
+	from {
+		stroke-dasharray: 0 4000;
+	}
+	to {
+		stroke-dasharray: 4000 0;
+	}
+}
+
+@keyframes kf-redraw-1 {
+	from {
+		stroke-dasharray: 0 4000;
+	}
+	to {
+		stroke-dasharray: 4000 0;
+	}
+}
+
+.react-flow .react-flow__edge.kf-draw.kf-redraw-0 .react-flow__edge-path {
+	animation:
+		kf-draw var(--duration-slow) var(--ease-out) backwards,
+		kf-redraw-0 var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms), var(--kf-redraw-delay, 0ms);
+}
+
+.react-flow .react-flow__edge.kf-draw.kf-redraw-1 .react-flow__edge-path {
+	animation:
+		kf-draw var(--duration-slow) var(--ease-out) backwards,
+		kf-redraw-1 var(--duration-slow) var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms), var(--kf-redraw-delay, 0ms);
+}
+
+/*
  * A lit family edge carries a travelling pulse, and it is a SECOND path rather than a
  * dash on the first.
  *
@@ -850,6 +889,15 @@ body {
 	text-transform: uppercase;
 	transform: rotate(-1deg);
 	pointer-events: none;
+	/* Drops onto the card it marks, each time somebody new is picked. */
+	animation: kf-flag-in var(--duration-base) var(--ease-out) backwards;
+}
+
+@keyframes kf-flag-in {
+	from {
+		opacity: 0;
+		transform: translateY(-6px) rotate(-7deg);
+	}
 }
 
 .react-flow__node.kf-viewed .kf-card {
@@ -904,12 +952,18 @@ body {
 	}
 }
 
+/*
+ * When somebody is picked, the handles pop in one after another, 45ms apart (`--kf-i` is
+ * the slot's index), then ping three times and rest. The ping is how a person picked on a
+ * phone, where nothing hovers, learns where their relatives can go; three 1.6s pings end
+ * inside 5s, so the canvas falls still on its own. `--intro` is that window, opened by
+ * NodeAddControls only for a new pick, never for the remount a write causes.
+ */
 .kf-node-add__pill {
 	position: absolute;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	animation: kf-node-add-in var(--duration-base) var(--ease-spring) backwards;
 	border: 1px solid color-mix(in oklab, var(--color-accent) 60%, var(--color-hairline-strong));
 	border-radius: 9999px;
 	background: var(--color-surface-raised);
@@ -918,7 +972,42 @@ body {
 	transition:
 		background-color var(--duration-fast) var(--ease-out),
 		color var(--duration-fast) var(--ease-out),
-		transform var(--duration-fast) var(--ease-spring);
+		transform var(--duration-base) var(--ease-spring);
+}
+
+@keyframes kf-node-add-ping {
+	0% {
+		opacity: 0;
+		transform: scale(1);
+	}
+	12% {
+		opacity: 0.55;
+	}
+	70%,
+	100% {
+		opacity: 0;
+		transform: scale(2.1);
+	}
+}
+
+.kf-node-add__pill::after {
+	content: "";
+	position: absolute;
+	inset: -1px;
+	border: 1.5px solid var(--color-accent);
+	border-radius: inherit;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.kf-node-add-layer--intro .kf-node-add__pill {
+	animation: kf-node-add-in var(--duration-base) var(--ease-spring) backwards;
+	animation-delay: calc(var(--kf-i, 0) * 45ms);
+}
+
+.kf-node-add-layer--intro .kf-node-add__pill::after {
+	animation: kf-node-add-ping 1.6s var(--ease-out) 3;
+	animation-delay: calc(420ms + var(--kf-i, 0) * 45ms);
 }
 
 .kf-node-add__pill > svg {
@@ -943,6 +1032,153 @@ body {
 		0 0 0 4px var(--color-accent);
 }
 
+/*
+ * The open `+` turns into the strip's close mark: a quarter turn of a plus is a cross.
+ * After the hover rule on purpose -- same specificity, so source order keeps the cross
+ * while the pointer rests on it.
+ */
+.kf-node-add[aria-expanded="true"] .kf-node-add__pill {
+	background: var(--color-accent);
+	color: var(--color-canvas);
+	transform: rotate(45deg) scale(1.12);
+}
+
+.kf-node-add[aria-expanded="true"] .kf-node-add__pill::after {
+	animation: none;
+}
+
+/*
+ * A write from the canvas, as one storyboard (the clock is in TreeCanvas: REDRAW_MS,
+ * ARRIVE_MS). Every rule animates the node's OWN element (`> *`), never the wrapper React
+ * Flow positions, and lists `kf-enter` first with its exact original parameters: a card's
+ * entrance finished long ago, and keeping its name in place is what stops a relayout from
+ * replaying it. Two keyframe names alternate, so a card moved by two writes in a row
+ * glides both times.
+ */
+
+/* Cards that existed glide to their new place from where they were on screen. */
+@keyframes kf-glide-0 {
+	from {
+		transform: translate(var(--kf-glide-x, 0), var(--kf-glide-y, 0));
+	}
+}
+
+@keyframes kf-glide-1 {
+	from {
+		transform: translate(var(--kf-glide-x, 0), var(--kf-glide-y, 0));
+	}
+}
+
+.react-flow__node.kf-glide-0 > * {
+	animation:
+		kf-enter var(--duration-slow) var(--ease-out) backwards,
+		kf-glide-0 440ms var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms), 0ms;
+}
+
+.react-flow__node.kf-glide-1 > * {
+	animation:
+		kf-enter var(--duration-slow) var(--ease-out) backwards,
+		kf-glide-1 440ms var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms), 0ms;
+}
+
+/*
+ * The new relative comes out of the `+` they were added from: from that point, small, to
+ * their place, settling through a 4% overshoot. The overshoot is a keyframe eased out on
+ * both legs, not a bouncing curve.
+ */
+@keyframes kf-born {
+	0% {
+		opacity: 0;
+		transform: translate(var(--kf-from-x, 0), var(--kf-from-y, 0)) scale(0.3);
+	}
+	18% {
+		opacity: 1;
+	}
+	80% {
+		transform: translate(0, 0) scale(1.04);
+	}
+	100% {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* A ring ripples out from where they landed. */
+@keyframes kf-ripple {
+	0% {
+		opacity: 0.7;
+		transform: scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(1.22);
+	}
+}
+
+.react-flow__node.kf-born > * {
+	animation:
+		kf-enter var(--duration-slow) var(--ease-out) backwards,
+		kf-born 560ms var(--ease-out) backwards;
+	animation-delay: var(--kf-delay, 0ms), 120ms;
+}
+
+.react-flow__node.kf-born > *::after {
+	content: "";
+	position: absolute;
+	inset: -3px;
+	border: 2px solid var(--color-accent);
+	border-radius: calc(var(--radius-node) + 3px);
+	opacity: 0;
+	pointer-events: none;
+	animation: kf-ripple 760ms var(--ease-out) 620ms;
+}
+
+/* An edit made in place: one light sweep across the card, so the change is seen to land. */
+@keyframes kf-sweep {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(100%);
+	}
+}
+
+.react-flow__node.kf-updated .kf-card::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: linear-gradient(
+		100deg,
+		transparent 25%,
+		color-mix(in oklab, var(--color-accent) 26%, transparent) 50%,
+		transparent 75%
+	);
+	pointer-events: none;
+	animation: kf-sweep 900ms var(--ease-in-out) both;
+}
+
+/*
+ * A deleted person shrinks away before the record goes, so the card and the record leave
+ * together. Held at its end until the refreshed graph removes the node; a refused delete
+ * drops the class and the card is simply back.
+ */
+@keyframes kf-leave {
+	to {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+}
+
+.react-flow__node.kf-leaving > * {
+	animation:
+		kf-enter var(--duration-slow) var(--ease-out) backwards,
+		kf-leave 220ms cubic-bezier(0.55, 0, 1, 0.45) forwards;
+	animation-delay: var(--kf-delay, 0ms), 0ms;
+}
+
 /* A person just added, so the eye finds where the new card landed. */
 .react-flow__node.kf-new .kf-card {
 	animation: kf-new-card 2.4s var(--ease-out);
@@ -959,20 +1195,29 @@ body {
 }
 
 /*
- * The add sheet: one name, one optional year, two answers.
+ * The card strip: the fields and the answers, and nothing else -- no heading row, no label
+ * row, no close button (the open `+` is the close, and so is a tap on the canvas).
  *
+ * Pinned to the canvas corner and moved by transform from NodeStrip, so following a pan
+ * never re-lays it out. On a narrow canvas it docks along the bottom edge.
+ */
+.kf-strip {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: min(21rem, calc(100% - 1.5rem));
+	border-radius: 0.875rem;
+}
+
+.kf-strip--docked {
+	width: calc(100% - 1.5rem);
+}
+
+/*
  * Inputs are 16px, not the 14px used elsewhere: iOS Safari zooms the whole page into any
  * focused input smaller than that, which on a canvas app throws the viewport somewhere
  * the person never asked to go.
  */
-.kf-add-label {
-	display: block;
-	margin-bottom: 0.375rem;
-	font-size: 0.6875rem;
-	font-weight: 500;
-	color: var(--color-ink-muted);
-}
-
 .kf-add-field {
 	min-height: 2.75rem;
 	width: 100%;
@@ -1033,6 +1278,25 @@ body {
 	cursor: wait;
 	opacity: 0.6;
 	transform: none;
+}
+
+/* Save: the one blue action of the edit strip. */
+.kf-add-role--primary {
+	border-color: color-mix(in oklab, var(--color-accent) 60%, var(--color-hairline-strong));
+	background: color-mix(in oklab, var(--color-accent) 14%, var(--color-surface));
+	color: var(--color-accent-ink);
+}
+
+/* Delete is quiet until a pointer asks for it; the confirm row's button says it outright. */
+.kf-add-role--danger {
+	color: var(--color-ink-muted);
+}
+
+.kf-add-role--danger:hover,
+.kf-add-role--confirm {
+	border-color: var(--color-danger);
+	background: color-mix(in oklab, var(--color-danger) 8%, var(--color-surface));
+	color: var(--color-danger);
 }
 
 /* -------------------------------------------------------------------------- */

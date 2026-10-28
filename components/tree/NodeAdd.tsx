@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Grow the family from the card itself: a `+` above, beside and below, and one small sheet.
+ * Grow the family from the card itself: a `+` above, beside and below, and one small strip.
  *
  * Replaces the old quick-add, which opened a picker of nine roles and then a form with a
  * surname, a year, a gender, a living status, a partnership status and a batch counter. The
  * canvas already says where a relative goes -- parents above, partners beside, children
- * below -- so the control's POSITION is the relationship, and the sheet only has to collect
+ * below -- so the control's POSITION is the relationship, and the strip only has to collect
  * what the picture cannot: a name, and which of the two gendered words is true.
  *
  * The controls are drawn for the VIEWED person only. One card wearing its `+` handles reads
@@ -14,14 +14,22 @@
  * 117-person tree, and on a phone there is no hover to reveal them on demand anyway.
  */
 import { ViewportPortal } from "@xyflow/react";
-import { GitBranch, Loader2, Mars, Plus, Venus, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { Loader2, Mars, Plus, Venus } from "lucide-react";
+import { motion } from "motion/react";
+import {
+	type CSSProperties,
+	type KeyboardEvent,
+	useEffect,
+	useId,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { addRelative } from "@/lib/tree/edit-actions";
 import { type KinRole, ROLE_SEX, splitName } from "@/lib/tree/kin-plan";
-import { type AddSlot, type AddTarget, hitBox } from "@/lib/tree/node-add";
+import { type AddSlot, type AddTarget, hitBox, shortSubject, stripSide } from "@/lib/tree/node-add";
 import { cn } from "@/lib/utils";
-import { useEscapeClose } from "./escape";
+import { NodeStrip, stripRow, useShake } from "./NodeStrip";
 
 const ROLE_LABEL: Record<KinRole, string> = {
 	father: "Father",
@@ -37,10 +45,13 @@ const ROLE_LABEL: Record<KinRole, string> = {
 	sibling: "Sibling",
 };
 
-const HEADING: Record<AddTarget["direction"], string> = {
-	parent: "Add a parent",
-	partner: "Add a partner",
-	child: "Add a child",
+/** The handles' intro: the last ping (420ms + up to four 45ms steps + three 1.6s pings) ends inside it. */
+const INTRO_MS = 5400;
+
+const NOUN: Record<AddTarget["direction"], string> = {
+	parent: "parent",
+	partner: "partner",
+	child: "child",
 };
 
 /**
@@ -56,11 +67,16 @@ const HEADING: Record<AddTarget["direction"], string> = {
  * because the box is asymmetric (see `hitBox`) and that arithmetic is clearer in a pure
  * function than in nested `calc()`. Re-rendering on a wheel tick is cheap here: there are at
  * most five of these, where the reason the cards avoid it is that there are 117.
+ *
+ * The layer is keyed by the person, so choosing somebody new replays the handles' entrance:
+ * they pop in one after another and ping a few times, which is how a person picked on a
+ * phone learns where their relatives can go. The open `+` turns into a close mark.
  */
 export function NodeAddControls({
 	slots,
 	card,
 	zoom,
+	openKey,
 	onOpen,
 }: {
 	slots: AddSlot[];
@@ -71,29 +87,66 @@ export function NodeAddControls({
 	 */
 	card: { width: number; height: number; rowGap: number; pill: number; reach: number };
 	zoom: number;
-	onOpen: (target: AddTarget) => void;
+	/** The slot whose strip is open, which wears the close mark. */
+	openKey?: string | null;
+	onOpen: (slot: AddSlot) => void;
 }) {
+	const subject = slots[0]?.target.subjectId;
+
+	/*
+	 * The entrance and the pings belong to PICKING somebody, not to every remount. A write
+	 * relays the canvas out and remounts these buttons, and replaying the invitation then
+	 * competed with the new relative's arrival in the very frames the eye is following it. So
+	 * they run inside a window opened when the subject changes; a remount outside it simply
+	 * appears. Set before paint, so the first frame of a new pick already animates.
+	 */
+	const [intro, setIntro] = useState<string | null>(null);
+	const introduced = useRef<string | undefined>(undefined);
+	useLayoutEffect(() => {
+		if (!subject || subject === introduced.current) return;
+		introduced.current = subject;
+		setIntro(subject);
+	}, [subject]);
+	useEffect(() => {
+		if (!intro) return;
+		const timer = window.setTimeout(() => setIntro(null), INTRO_MS);
+		return () => window.clearTimeout(timer);
+	}, [intro]);
+
 	if (slots.length === 0) return null;
 
 	return (
 		<ViewportPortal>
-			<div className="kf-node-add-layer">
-				{slots.map((slot) => {
+			<div
+				key={subject}
+				className={cn("kf-node-add-layer", intro === subject && "kf-node-add-layer--intro")}
+			>
+				{slots.map((slot, index) => {
 					const box = hitBox(slot, card, zoom);
+					const open = slot.key === openKey;
 					return (
 						<button
 							key={slot.key}
 							type="button"
-							aria-label={slot.label}
+							aria-label={open ? `Close: ${slot.label}` : slot.label}
+							aria-expanded={open}
 							title={slot.label}
 							data-kind={slot.kind}
 							className="kf-node-add nodrag nopan"
-							style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+							style={
+								{
+									left: box.left,
+									top: box.top,
+									width: box.width,
+									height: box.height,
+									"--kf-i": index,
+								} as CSSProperties
+							}
 							onClick={(event) => {
 								// The pane underneath would otherwise read this as a click on empty
 								// canvas and clear the viewed person.
 								event.stopPropagation();
-								onOpen(slot.target);
+								onOpen(slot);
 							}}
 							// React Flow starts a pan on pointerdown; without this, pressing the `+`
 							// drags the canvas instead of firing the click.
@@ -121,32 +174,31 @@ export function NodeAddControls({
 	);
 }
 
-/** The sheet, mounted once by the canvas. */
-export function NodeAddSheet({
-	target,
+/** The add strip, grown out of the `+` that opened it. Mounted by the canvas. */
+export function NodeAddStrip({
+	slot,
 	onDone,
 	onClose,
 }: {
-	target: AddTarget | null;
+	slot: AddSlot;
 	/** Called after a successful write with the new row's id and the name as typed. */
 	onDone: (added: { id?: string; name: string }) => void;
 	onClose: () => void;
 }) {
 	return (
-		<AnimatePresence>
-			{target && (
-				<div className="pointer-events-none absolute inset-0 z-50 flex items-end justify-center p-3 sm:items-center">
-					<div className="pointer-events-auto">
-						<AddForm
-							key={`${target.subjectId}:${target.direction}:${target.unionId ?? ""}`}
-							target={target}
-							onDone={onDone}
-							onClose={onClose}
-						/>
-					</div>
-				</div>
-			)}
-		</AnimatePresence>
+		<NodeStrip
+			anchor={{ x: slot.x, y: slot.y }}
+			side={stripSide(slot)}
+			label={slot.label}
+			onClose={onClose}
+		>
+			<AddForm
+				key={`${slot.target.subjectId}:${slot.key}`}
+				target={slot.target}
+				onDone={onDone}
+				onClose={onClose}
+			/>
+		</NodeStrip>
 	);
 }
 
@@ -159,7 +211,6 @@ function AddForm({
 	onDone: (added: { id?: string; name: string }) => void;
 	onClose: () => void;
 }) {
-	const titleId = useId();
 	const nameId = useId();
 	const yearId = useId();
 	const nameRef = useRef<HTMLInputElement>(null);
@@ -167,10 +218,8 @@ function AddForm({
 	const firstRoleRef = useRef<HTMLButtonElement>(null);
 	const firstChoiceRef = useRef<HTMLInputElement>(null);
 	const [pending, setPending] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	// Through the shared stack (escape.ts): this sheet opens on top, so it closes first.
-	useEscapeClose(true, onClose);
+	const [error, setError] = useState<{ text: string; at: number } | null>(null);
+	const shake = useShake<HTMLFormElement>(error?.at);
 
 	// The name is the typing; focus it at once so a keyboard user never reaches for the mouse.
 	useEffect(() => {
@@ -196,7 +245,7 @@ function AddForm({
 		const data = new FormData(form);
 		const name = String(data.get("name") ?? "").trim();
 		if (!name) {
-			setError("Type their name first.");
+			setError({ text: "Type their name first.", at: Date.now() });
 			nameRef.current?.focus();
 			return;
 		}
@@ -209,7 +258,7 @@ function AddForm({
 		/*
 		 * The two columns as well as the one field, for a deploy in flight.
 		 *
-		 * Pages and the API publish independently, so for a few minutes this sheet can talk to
+		 * Pages and the API publish independently, so for a few minutes this strip can talk to
 		 * the previous API, which reads only `givenName` / `familyName` -- and given only `name`
 		 * it stored the numbered placeholder "Child 1" while the toast showed the typed name.
 		 * The current API lets `name` win, so posting both is correct against either.
@@ -221,182 +270,149 @@ function AddForm({
 		try {
 			const result = await addRelative(data);
 			if (!result.ok) {
-				setError(result.error);
+				setError({ text: result.error, at: Date.now() });
 				return;
 			}
 			onDone({ id: result.id, name });
 			onClose();
 		} catch {
-			setError("Could not save that relative. Check your connection and try again.");
+			setError({
+				text: "Could not save that relative. Check your connection and try again.",
+				at: Date.now(),
+			});
 		} finally {
 			setPending(false);
 		}
 	}
 
 	return (
-		<motion.div
-			role="dialog"
-			aria-modal="false"
-			aria-labelledby={titleId}
-			initial={{ opacity: 0, y: 8, scale: 0.98 }}
-			animate={{ opacity: 1, y: 0, scale: 1 }}
-			exit={{ opacity: 0, y: 8, scale: 0.98 }}
-			transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-			className="kf-glass kf-add-sheet w-[min(21rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl"
+		<form
+			ref={shake}
+			onSubmit={(event) => {
+				event.preventDefault();
+				const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+				const role = submitter?.value as KinRole | undefined;
+				if (role && Object.hasOwn(ROLE_SEX, role)) void submit(event.currentTarget, role);
+			}}
+			aria-busy={pending}
+			className="space-y-2 p-2"
 		>
-			<div className="flex items-center gap-3 border-b border-hairline px-3 py-2.5">
-				<div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent-ink">
-					<GitBranch className="size-4" strokeWidth={1.75} aria-hidden="true" />
-				</div>
-				<div className="min-w-0 flex-1">
-					<h2 id={titleId} className="text-[0.9375rem] font-medium leading-tight text-ink">
-						{HEADING[target.direction]}
-					</h2>
-					{/* Whose relative, named: a sheet saying "Add a parent" with no name attached is
-					    how a father lands on the wrong person. */}
-					<p className="truncate text-[0.75rem] text-ink-muted">of {target.subjectName}</p>
-				</div>
-				<button
-					type="button"
-					onClick={onClose}
-					aria-label="Close"
-					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
-				>
-					<X className="size-4" strokeWidth={1.75} aria-hidden="true" />
-				</button>
-			</div>
+			<motion.div variants={stripRow} className="grid grid-cols-[minmax(0,1fr)_5rem] gap-2">
+				{/* Labels for assistive technology; the placeholder carries them on screen, which
+				    is what lets the strip have no label row at all. */}
+				<label htmlFor={nameId} className="sr-only">
+					Name of {target.subjectName}'s {NOUN[target.direction]}
+				</label>
+				<input
+					id={nameId}
+					ref={nameRef}
+					name="name"
+					required
+					maxLength={120}
+					autoComplete="off"
+					autoCapitalize="words"
+					enterKeyHint="next"
+					// "Morgan and Alex's child": whose relative, short enough for a phone. Measured: the
+					// longer "Name of ..." form was cut off in both the desktop and the docked strip.
+					placeholder={`${shortSubject(target.subjectName)}'s ${NOUN[target.direction]}`}
+					onKeyDown={(event) => advance(event, () => yearRef.current?.focus())}
+					className="kf-add-field"
+				/>
+				<label htmlFor={yearId} className="sr-only">
+					Year born, optional
+				</label>
+				{/* A YEAR, optional. Written to the fuzzy column, because coercing "1952" into
+				    1952-01-01 invents a birthday nobody recorded. It also orders siblings
+				    eldest first on the canvas. */}
+				<input
+					id={yearId}
+					ref={yearRef}
+					name="birthYear"
+					inputMode="numeric"
+					maxLength={4}
+					autoComplete="off"
+					enterKeyHint="next"
+					placeholder="Born"
+					onKeyDown={(event) =>
+						advance(event, () =>
+							// A family still to choose comes before the answers.
+							(firstChoiceRef.current ?? firstRoleRef.current)?.focus(),
+						)
+					}
+					className="kf-add-field tabular"
+				/>
+			</motion.div>
 
-			<form
-				onSubmit={(event) => {
-					event.preventDefault();
-					const submitter = (event.nativeEvent as SubmitEvent)
-						.submitter as HTMLButtonElement | null;
-					const role = submitter?.value as KinRole | undefined;
-					if (role && Object.hasOwn(ROLE_SEX, role)) void submit(event.currentTarget, role);
-				}}
-				aria-busy={pending}
-				className="space-y-3 p-3"
-			>
-				<div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2">
-					<div className="min-w-0">
-						<label htmlFor={nameId} className="kf-add-label">
-							Name
-						</label>
-						<input
-							id={nameId}
-							ref={nameRef}
-							name="name"
-							required
-							maxLength={120}
-							autoComplete="off"
-							autoCapitalize="words"
-							enterKeyHint="next"
-							placeholder="Full name"
-							onKeyDown={(event) => advance(event, () => yearRef.current?.focus())}
-							className="kf-add-field"
-						/>
-					</div>
-					<div>
-						<label htmlFor={yearId} className="kf-add-label">
-							Born <span className="font-normal text-ink-faint">year</span>
-						</label>
-						{/* A YEAR, optional. Written to the fuzzy column, because coercing "1952" into
-						    1952-01-01 invents a birthday nobody recorded. It also orders siblings
-						    eldest first on the canvas. */}
-						<input
-							id={yearId}
-							ref={yearRef}
-							name="birthYear"
-							inputMode="numeric"
-							maxLength={4}
-							autoComplete="off"
-							enterKeyHint="next"
-							placeholder="Year"
-							onKeyDown={(event) =>
-								advance(event, () =>
-									// A family still to choose comes before the answers.
-									(firstChoiceRef.current ?? firstRoleRef.current)?.focus(),
-								)
-							}
-							className="kf-add-field tabular"
-						/>
-					</div>
-				</div>
-
-				{/*
-				 * Which family, when more than one qualifies -- and NOTHING pre-chosen.
-				 *
-				 * `planKin` refuses to guess between a birth and an adoptive family, and a default
-				 * radio would make that guess for it on every submit. `required` blocks the answer
-				 * buttons until one is picked, and Enter on a radio walks on rather than submitting,
-				 * for the same reason Enter in the name field does.
-				 */}
-				{target.choices && target.choices.length > 1 && (
-					<fieldset>
-						<legend className="kf-add-label">Which family</legend>
-						<div className="space-y-1">
-							{target.choices.map((choice, index) => (
-								<label
-									key={choice.id}
-									className={cn(
-										"flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-hairline px-3",
-										"text-[0.8125rem] text-ink-muted has-checked:border-accent/50 has-checked:text-accent-ink",
-									)}
-								>
-									<input
-										type="radio"
-										name="unionId"
-										ref={index === 0 ? firstChoiceRef : undefined}
-										value={choice.id}
-										required
-										onKeyDown={(event) => {
-											if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-											event.preventDefault();
-											firstRoleRef.current?.focus();
-										}}
-										className="accent-(--color-accent)"
-									/>
-									<span className="min-w-0 truncate">{choice.label}</span>
-								</label>
-							))}
-						</div>
-					</fieldset>
-				)}
-
-				{error && (
-					<p
-						role="alert"
-						className="rounded-md border border-danger/35 bg-danger/5 px-3 py-2 text-[0.75rem] leading-snug text-danger"
-					>
-						{error}
-					</p>
-				)}
-
-				{/* The two answers ARE the submit buttons: one press records the role and the sex. */}
-				<div className="grid grid-cols-2 gap-2">
-					{target.roles.map((role, index) => {
-						const Icon = ROLE_SEX[role] === "female" ? Venus : Mars;
-						return (
-							<button
-								key={role}
-								ref={index === 0 ? firstRoleRef : undefined}
-								type="submit"
-								name="role"
-								value={role}
-								disabled={pending}
-								className="kf-add-role"
-							>
-								{pending ? (
-									<Loader2 className="size-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
-								) : (
-									<Icon className="size-4" strokeWidth={2} aria-hidden="true" />
+			{/*
+			 * Which family, when more than one qualifies -- and NOTHING pre-chosen.
+			 *
+			 * `planKin` refuses to guess between a birth and an adoptive family, and a default
+			 * radio would make that guess for it on every submit. `required` blocks the answer
+			 * buttons until one is picked, and Enter on a radio walks on rather than submitting,
+			 * for the same reason Enter in the name field does.
+			 */}
+			{target.choices && target.choices.length > 1 && (
+				<motion.fieldset variants={stripRow}>
+					<legend className="sr-only">Which family</legend>
+					<div className="space-y-1">
+						{target.choices.map((choice, index) => (
+							<label
+								key={choice.id}
+								className={cn(
+									"flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-hairline px-3",
+									"text-[0.8125rem] text-ink-muted has-checked:border-accent/50 has-checked:text-accent-ink",
 								)}
-								{ROLE_LABEL[role]}
-							</button>
-						);
-					})}
-				</div>
-			</form>
-		</motion.div>
+							>
+								<input
+									type="radio"
+									name="unionId"
+									ref={index === 0 ? firstChoiceRef : undefined}
+									value={choice.id}
+									required
+									onKeyDown={(event) => {
+										if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+										event.preventDefault();
+										firstRoleRef.current?.focus();
+									}}
+									className="accent-(--color-accent)"
+								/>
+								<span className="min-w-0 truncate">{choice.label}</span>
+							</label>
+						))}
+					</div>
+				</motion.fieldset>
+			)}
+
+			{error && (
+				<p role="alert" className="px-1 text-[0.75rem] leading-snug text-danger">
+					{error.text}
+				</p>
+			)}
+
+			{/* The two answers ARE the submit buttons: one press records the role and the sex. */}
+			<motion.div variants={stripRow} className="grid grid-cols-2 gap-2">
+				{target.roles.map((role, index) => {
+					const Icon = ROLE_SEX[role] === "female" ? Venus : Mars;
+					return (
+						<button
+							key={role}
+							ref={index === 0 ? firstRoleRef : undefined}
+							type="submit"
+							name="role"
+							value={role}
+							disabled={pending}
+							className="kf-add-role"
+						>
+							{pending ? (
+								<Loader2 className="size-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+							) : (
+								<Icon className="size-4" strokeWidth={2} aria-hidden="true" />
+							)}
+							{ROLE_LABEL[role]}
+						</button>
+					);
+				})}
+			</motion.div>
+		</form>
 	);
 }

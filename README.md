@@ -33,7 +33,9 @@ The [review and verification report](docs/verification-0.4.0.md) records the 0.4
 74 passing regression cases, and browser checks.
 **0.5.0** adds screenshots, link previews, a Deploy button with a self-hosting guide, and a
 layout benchmark. **0.6.0** adds relatives from `+` handles on the viewed card through one
-small sheet, and removes the add and connect forms; see the [changelog](CHANGELOG.md).
+small sheet, and removes the add and connect forms. **0.7.0** keeps every edit on the card:
+a tap only picks a person, the `+` and a second tap open one small strip beside the card,
+and the tree moves to make room for each new relative; see the [changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -64,14 +66,17 @@ actions, and purposeful motion. Choose **Tree** for the family structure or **Pe
 for a searchable directory. Profiles separate **Family**, **About**, and **Contact**.
 Appearance includes a persistent Full/Reduced motion choice, with Full as the default.
 
-The family grows from the cards themselves. The person you are viewing carries a **+**
-above their card for a parent, beside it for a partner, and below it for a child; a couple
-shares one **+** under the pair. Each opens the same small sheet: a name, an optional
-birth year, and two answers (Father or Mother, Husband or Wife, Son or Daughter), so the
-button you press records the relationship and the sex at once. Siblings are added as
-children of their parents, and a birth year orders siblings eldest first, so each
-generation reads as a timeline. A connection can be removed from the person's
-**Connections** section without deleting either person or changing structural family links.
+The family grows from the cards themselves. Tap a person to pick them: their card carries a
+**+** above it for a parent, beside it for a partner, and below it for a child; a couple
+shares one **+** under the pair. Each opens a small strip right at the card, with no header:
+a name, an optional birth year, and two answers (Father or Mother, Husband or Wife, Son or
+Daughter), so the button you press records the relationship and the sex at once. The new
+relative comes out of that **+** into their place while the cards around them glide aside.
+Tap the picked card again to fix their name or year, open their full profile, or delete
+them. Siblings are added as children of their parents, and a birth year orders siblings
+eldest first, so each generation reads as a timeline. A connection can be removed from the
+person's **Connections** section without deleting either person or changing structural
+family links.
 
 Contact values stay on a separate authorized page. **Share** manages invitations;
 **Link family records** in the account menu proposes a match for the other owner's consent.
@@ -267,6 +272,8 @@ connections, person editing, sign-in, sharing by invite, record-link proposals a
 private contact editing, deletion of unclaimed records, and demo mode. Most of this has
 been live since 0.4.0 (2026-09-10). 0.6.0 moves adding relatives onto `+` handles on the
 viewed card and removes the panel for connecting existing people; its server actions remain.
+0.7.0 moves editing a person's name and year onto their card too, and opens the profile only
+when asked for.
 
 Photo uploads still need an approved private-storage provider and authentication flow.
 Avatars use initials. Profiles linked to an account cannot be deleted; other deletion

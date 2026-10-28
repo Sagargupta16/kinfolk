@@ -80,7 +80,7 @@ import {
 	type PositionedNode,
 } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
-import { type AddTarget, addSlots, nodeAffordances } from "@/lib/tree/node-add";
+import { type AddSlot, type AddTarget, addSlots, nodeAffordances } from "@/lib/tree/node-add";
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
 import { collapseUnionEdges, radialLayout } from "@/lib/tree/radial";
 import { indexRelatives } from "@/lib/tree/relatives";
@@ -88,7 +88,8 @@ import { type SiblingBar, siblingBars } from "@/lib/tree/siblings";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
-import { NodeAddControls, NodeAddSheet } from "./NodeAdd";
+import { NodeAddControls, NodeAddStrip } from "./NodeAdd";
+import { NodeEditStrip } from "./NodeEdit";
 import { PersonDetail } from "./PersonDetail";
 import { PersonNode, UnionNode } from "./PersonNode";
 import { pushTrail, TreeBreadcrumbs } from "./TreeBreadcrumbs";
@@ -114,6 +115,16 @@ function travelDuration(milliseconds = 280): number {
 const ROW_STAGGER_MS = 70;
 /** Ceiling on the stagger: a deep tree must not take a second to appear. */
 const MAX_STAGGER_MS = 420;
+
+/*
+ * The clock of a write from the canvas, one storyboard (the times are matched in
+ * globals.css): cards glide to their new places over 440ms; at REDRAW_MS a moved family's
+ * lines start drawing back on; the new relative leaves the `+` at 120ms and lands at about
+ * ARRIVE_MS, when its own lines and any new junction appear; a ring ripples out from it as
+ * it settles. Under 1.5s end to end, the budget for an entrance.
+ */
+const REDRAW_MS = 260;
+const ARRIVE_MS = 560;
 
 /**
  * Zoom below which each level of detail stops being worth reading.
@@ -255,11 +266,16 @@ type Props = {
 	editableTreeIds?: readonly string[];
 	editableUnions?: UnionWithChildren[];
 	/**
-	 * A person to travel to, set by search. An object rather than a bare id so asking for
-	 * the SAME person twice still moves: after panning away, searching the name you just
-	 * searched has to bring you back, and a plain string would compare equal.
+	 * A person to travel to, set by search, the People directory or the feed. An object rather
+	 * than a bare id so asking for the SAME person twice still moves: after panning away,
+	 * searching the name you just searched has to bring you back, and a plain string would
+	 * compare equal.
+	 *
+	 * `profile` says whether arriving opens their profile. The directory and the feed are
+	 * reading surfaces, so they do; search is how somebody finds a person to work on, so on an
+	 * editable canvas it only travels and selects, and the card's own handles take over.
 	 */
-	goTo?: { id: string } | null;
+	goTo?: { id: string; profile: boolean } | null;
 	/**
 	 * Acknowledge a handled travel, so the request cannot replay.
 	 *
@@ -498,17 +514,32 @@ function Canvas({
 	const [trail, setTrail] = useState<string[]>(() => (viewedId ? [viewedId] : []));
 	const [helpOpen, setHelpOpen] = useState(false);
 	/**
-	 * Which `+` was pressed: what it adds, for whom, and into which family.
+	 * The one strip open on the canvas: adding from a pressed `+`, or editing the viewed card.
 	 *
-	 * The target carries the subject's NAME so the sheet can say whose relative it is adding
-	 * without looking the person back up -- a sheet headed "Add a parent" with no name attached
-	 * is how a father gets recorded against the wrong person.
+	 * The add strip keeps the whole SLOT, not only its target: the slot's point is where the
+	 * strip grows from, and where the new relative will be seen to come out of. Its accessible
+	 * name says whose relative it adds -- "Add a parent" with no name attached is how a father
+	 * gets recorded against the wrong person.
 	 */
-	const [addTarget, setAddTarget] = useState<AddTarget | null>(null);
+	const [strip, setStrip] = useState<
+		{ kind: "add"; slot: AddSlot } | { kind: "edit"; personId: string } | null
+	>(null);
 	/** The source row just written, until the relayout that contains it can light it up. */
 	const [createdPersonId, setCreatedPersonId] = useState<string | null>(null);
 	/** The fused id of the card currently wearing the "just added" flash. */
 	const [newId, setNewId] = useState<string | null>(null);
+	/** The card just edited in place, which a light sweeps across once. */
+	const [updatedId, setUpdatedId] = useState<string | null>(null);
+	/** The card shrinking away while its delete is in flight. */
+	const [leavingId, setLeavingId] = useState<string | null>(null);
+	/**
+	 * The relative being born, read by the NEXT layout: their source id and the `+` they came
+	 * out of. A ref, not state, because the layout effect must not depend on it -- it is a fact
+	 * about the write, consumed once by the layout that contains the new card.
+	 */
+	const pendingBirth = useRef<{ personId: string; from: { x: number; y: number } } | null>(null);
+	/** Alternates the glide keyframes, so a card moved by two writes in a row glides twice. */
+	const glideCount = useRef(0);
 	const [savedName, setSavedName] = useState<string | null>(null);
 	useEffect(() => {
 		if (!savedName) return;
@@ -835,6 +866,113 @@ function Canvas({
 				 */
 				const placedIds = new Set(positioned.map((node) => node.id));
 
+				/*
+				 * After a write from the canvas the family MOVES to make room instead of jumping.
+				 *
+				 * Every card that existed and has a new place glides there from where it was on
+				 * SCREEN -- a FLIP on the card's own element, because React Flow owns the wrapper's
+				 * transform -- the new relative flies out of the `+` it was added from, and the
+				 * lines that changed draw back on as the cards come to rest. The viewed card holds
+				 * still: the viewport moves in THIS commit by exactly as far as that card moved, so
+				 * its glide is zero and every other card's is measured from the picture the person
+				 * was looking at. Doing the hold here rather than after measurement is what stops a
+				 * frame of new positions under the old viewport, which a glide would make visible.
+				 */
+				const anchor = writeAnchor.current;
+				const heldNode =
+					anchor && Date.now() < anchor.until
+						? positioned.find((node) => node.id === anchor.id)
+						: undefined;
+				const shift =
+					anchor && heldNode
+						? { x: heldNode.position.x - anchor.x, y: heldNode.position.y - anchor.y }
+						: null;
+				const before = new Map(positionedRef.current.map((node) => [node.id, node.position]));
+				const gliding = shift !== null && before.size > 0;
+				if (anchor && heldNode && shift) {
+					if (shift.x !== 0 || shift.y !== 0) {
+						const viewport = getViewport();
+						void setViewport({
+							x: viewport.x - shift.x * viewport.zoom,
+							y: viewport.y - shift.y * viewport.zoom,
+							zoom: viewport.zoom,
+						});
+					}
+					writeAnchor.current = { ...anchor, x: heldNode.position.x, y: heldNode.position.y };
+				}
+
+				const parity = glideCount.current % 2;
+				const moves = new Map<string, { className: string; vars: Record<string, string> }>();
+				const changed = new Set<string>();
+				const birth = pendingBirth.current;
+				let born = false;
+				if (gliding && shift) {
+					for (const node of positioned) {
+						const was = before.get(node.id);
+						if (
+							!was &&
+							birth &&
+							node.type === "person" &&
+							node.data.sources.some((source) => source.id === birth.personId)
+						) {
+							// Out of the `+`: its point moved with the held card, by `shift`.
+							const fromX = birth.from.x + shift.x - (node.position.x + node.width / 2);
+							const fromY = birth.from.y + shift.y - (node.position.y + node.height / 2);
+							moves.set(node.id, {
+								className: " kf-born",
+								// The entrance runs at once, entirely under the birth, so no tail of it
+								// shows after the relative has landed.
+								vars: {
+									"--kf-from-x": `${fromX}px`,
+									"--kf-from-y": `${fromY}px`,
+									"--kf-delay": "0ms",
+								},
+							});
+							changed.add(node.id);
+							born = true;
+						} else if (!was) {
+							// Anything else new -- the junction of a new couple -- appears as the new
+							// relative lands, rather than ahead of them.
+							moves.set(node.id, { className: "", vars: { "--kf-delay": `${ARRIVE_MS}ms` } });
+							changed.add(node.id);
+						} else {
+							const dx = was.x - node.position.x + shift.x;
+							const dy = was.y - node.position.y + shift.y;
+							if (Math.hypot(dx, dy) <= 1) continue;
+							moves.set(node.id, {
+								className: ` kf-glide-${parity}`,
+								vars: { "--kf-glide-x": `${dx}px`, "--kf-glide-y": `${dy}px` },
+							});
+							changed.add(node.id);
+						}
+					}
+				}
+				// Consumed by the layout that contains the new card, and only by that one.
+				if (born) pendingBirth.current = null;
+				if (changed.size > 0) glideCount.current += 1;
+
+				/*
+				 * Which lines redraw: any touching a card that moved or arrived, and every line of
+				 * a family whose children moved -- the sibling bracket is drawn by one of them, and
+				 * it changes shape when any child moves.
+				 */
+				const rethread = new Set<string>();
+				if (changed.size > 0) {
+					const families = new Set(
+						familyFlowEdges
+							.filter((edge) => changed.has(edge.target) || changed.has(edge.source))
+							.map((edge) => edge.source),
+					);
+					for (const edge of familyFlowEdges) {
+						if (changed.has(edge.source) || changed.has(edge.target) || families.has(edge.source)) {
+							rethread.add(edge.id);
+						}
+					}
+				}
+				const arriving = new Set(
+					positioned.filter((node) => !before.has(node.id)).map((node) => node.id),
+				);
+
 				setNodes(
 					positioned.map((node) => ({
 						id: node.id,
@@ -884,9 +1022,12 @@ function Canvas({
 						// transform, so a JS-driven entrance would fight it. Focus and the depth
 						// tilt are className flags applied in their own effect below: the base is
 						// written here, the flags survive a relayout by being reapplied on epoch.
-						className: "kf-enter",
+						// `kf-enter` stays first on every layout: a card's entrance has long finished,
+						// and keeping its name in place is what stops a relayout from replaying it.
+						className: `kf-enter${moves.get(node.id)?.className ?? ""}`,
 						style: {
 							"--kf-delay": `${delays.get(node.id) ?? 0}ms`,
+							...moves.get(node.id)?.vars,
 						} as CSSProperties,
 					})),
 				);
@@ -1023,10 +1164,25 @@ function Canvas({
 												},
 											}
 										: { data: { ...anchor, ...(rail ?? {}) } }),
-								className: withFlag("kf-draw", edge.className, true),
+								className: withFlag(
+									`kf-redraw-${parity}`,
+									withFlag("kf-draw", edge.className, true),
+									rethread.has(edge.id),
+								),
 								style: {
 									...edge.style,
 									"--kf-delay": `${delay}ms`,
+									// A line to a new relative waits for them to land; a moved family's
+									// lines start as its cards near rest.
+									...(rethread.has(edge.id)
+										? {
+												"--kf-redraw-delay": `${
+													arriving.has(edge.source) || arriving.has(edge.target)
+														? ARRIVE_MS
+														: REDRAW_MS
+												}ms`,
+											}
+										: {}),
 								} as CSSProperties,
 							};
 						}),
@@ -1068,6 +1224,9 @@ function Canvas({
 		attempt,
 		setNodes,
 		setFamilyEdges,
+		// Stable callbacks from React Flow, for the write hold above; never a reason to re-run.
+		getViewport,
+		setViewport,
 	]);
 
 	/**
@@ -1310,8 +1469,10 @@ function Canvas({
 		// A travel requested from an older projection stays pending until the relayout
 		// actually contains its target. `layoutEpoch` is the retry trigger.
 		void layoutEpoch;
-		if (travelTo(goTo.id, { openDetail: true })) onGoToHandled?.();
-	}, [goTo, measured, layoutEpoch, travelTo, onGoToHandled]);
+		// Search on a read-only canvas still opens the profile: with no handles there, reading
+		// is the only thing a found person offers.
+		if (travelTo(goTo.id, { openDetail: goTo.profile || !canEdit })) onGoToHandled?.();
+	}, [goTo, measured, layoutEpoch, travelTo, onGoToHandled, canEdit]);
 
 	/*
 	 * Light up a person just added, once a layout that contains them has landed.
@@ -1345,16 +1506,16 @@ function Canvas({
 	}, [newId]);
 
 	/*
-	 * A sheet belongs to the person whose `+` opened it, so selecting somebody else closes it.
+	 * A strip belongs to the person whose card opened it, so selecting somebody else closes it.
 	 *
-	 * Left open it would still say whose relative it adds -- the heading names them -- but the
-	 * handles have moved to another card, and a sheet for one person beside the handles of
-	 * another is two subjects on screen at once. The id is read in the body because identity
-	 * change IS the trigger, the same pattern the detail panel uses.
+	 * Left open it would still be anchored to the old card, but the handles have moved to
+	 * another one, and a strip for one person beside the handles of another is two subjects on
+	 * screen at once. The id is read in the body because identity change IS the trigger, the
+	 * same pattern the detail panel uses.
 	 */
 	useEffect(() => {
 		void viewedId;
-		setAddTarget(null);
+		setStrip(null);
 	}, [viewedId]);
 
 	/**
@@ -1438,10 +1599,24 @@ function Canvas({
 				next = withFlag("kf-dim", next, Boolean(lit) && !lit?.nodeIds.has(node.id));
 				next = withFlag("kf-lit", next, node.id === revealedId);
 				next = withFlag("kf-new", next, node.id === newId);
+				next = withFlag("kf-updated", next, node.id === updatedId);
+				next = withFlag("kf-leaving", next, node.id === leavingId);
 				return next === node.className ? node : { ...node, className: next };
 			}),
 		);
-	}, [lit, revealedId, depth, newId, layoutEpoch, setNodes]);
+	}, [lit, revealedId, depth, newId, updatedId, leavingId, layoutEpoch, setNodes]);
+
+	// The sweep runs once; clearing the flag lets the next edit of the same card run it again.
+	useEffect(() => {
+		if (!updatedId) return;
+		const timer = window.setTimeout(() => setUpdatedId(null), 1200);
+		return () => window.clearTimeout(timer);
+	}, [updatedId]);
+
+	// A deleted card stays shrunk until the refreshed graph no longer holds it.
+	useEffect(() => {
+		if (leavingId && !people.has(leavingId)) setLeavingId(null);
+	}, [leavingId, people]);
 
 	/** Keep the durable viewed state explicit in card data, selection and the overview. */
 	useEffect(() => {
@@ -1502,6 +1677,9 @@ function Canvas({
 		setFocusedId(null);
 		setPinnedId(null);
 		setDetailId(null);
+		// A tap on the canvas around an open strip dismisses it, which is why the strip needs no
+		// close button of its own.
+		setStrip(null);
 		setNodes((current) =>
 			current.map((node) => {
 				const selected = node.type === "person" && node.id === viewedId;
@@ -1510,12 +1688,29 @@ function Canvas({
 		);
 	}, [setNodes, viewedId]);
 
+	/** Whether this viewer may write a person's own row: an edit strip, or only a profile. */
+	const editable = useCallback(
+		(personId: string) => {
+			const person = people.get(personId);
+			return Boolean(person && editTarget(person, editableTreeIds).editable);
+		},
+		[people, editableTreeIds],
+	);
+
 	/**
-	 * A click focuses, PINS, opens the panel and names the person.
+	 * A click focuses, PINS and names the person -- and on an editable canvas that is all.
 	 *
 	 * Pinning is what makes a revealed relation followable: without it the lines vanish the
-	 * moment the pointer leaves the card. Clicking the same card again unpins, so the
-	 * gesture is its own undo.
+	 * moment the pointer leaves the card.
+	 *
+	 * A family you can edit is built from the cards, so a tap PICKS somebody: they become the
+	 * viewed person and their `+` handles appear, and nothing else opens. The profile used to
+	 * open on every tap -- a panel of Family, About and Contact sections covering half a phone
+	 * -- which put a box of sections between a person and their own handles. A second tap on
+	 * the viewed card edits it in place; a person whose rows belong to another family opens
+	 * their profile instead, since there is nothing of theirs to edit. A read-only canvas (the
+	 * demo, an invited viewer) keeps tap-to-read: there are no handles to reach, and the
+	 * profile is what a reader came for. Clicking the same card again there closes it.
 	 *
 	 * Union dots are skipped for the NAMING and the panel only: a junction is not somebody
 	 * you can relate to, and reporting one would put "Unknown" in a picker. It still
@@ -1524,14 +1719,40 @@ function Canvas({
 	const pick = useCallback(
 		(event: unknown, node: Node) => {
 			focus(event, node);
-			setPinnedId((current) => (current === node.id ? null : node.id));
-			if (node.type !== "person") return;
+			if (node.type !== "person") {
+				setPinnedId((current) => (current === node.id ? null : node.id));
+				return;
+			}
 
-			onViewedChange?.(node.id);
-			setDetailId((current) => (current === node.id ? null : node.id));
-			setTrail((current) => pushTrail(current, node.id));
+			if (!canEdit) {
+				setPinnedId((current) => (current === node.id ? null : node.id));
+				onViewedChange?.(node.id);
+				setDetailId((current) => (current === node.id ? null : node.id));
+				setTrail((current) => pushTrail(current, node.id));
+				return;
+			}
+
+			if (node.id !== viewedId) {
+				setPinnedId(node.id);
+				onViewedChange?.(node.id);
+				setDetailId(null);
+				setTrail((current) => pushTrail(current, node.id));
+				return;
+			}
+
+			// The second tap on the person already carrying the handles.
+			setPinnedId(node.id);
+			if (editable(node.id)) {
+				setStrip((current) =>
+					current?.kind === "edit" && current.personId === node.id
+						? null
+						: { kind: "edit", personId: node.id },
+				);
+			} else {
+				setDetailId((current) => (current === node.id ? null : node.id));
+			}
 		},
-		[focus, onViewedChange],
+		[focus, onViewedChange, canEdit, viewedId, editable],
 	);
 
 	/**
@@ -1592,6 +1813,16 @@ function Canvas({
 					// in; from the first handle, Tab walks the rest.
 					document.querySelector<HTMLButtonElement>(".kf-node-add")?.focus();
 					break;
+				case "edit":
+					// The keyboard's second tap: the edit strip on the viewed card, when it is yours.
+					if (viewedId && canEdit && editable(viewedId)) {
+						setStrip({ kind: "edit", personId: viewedId });
+					}
+					break;
+				case "profile":
+					// Taps no longer open the profile on an editable canvas, so it needs a key.
+					if (viewedId) setDetailId((current) => (current === viewedId ? null : viewedId));
+					break;
 				case "theme": {
 					// Reads the LIVE attribute rather than component state, because the theme is
 					// owned by <html> and the header's own control writes it too. Anything else
@@ -1627,12 +1858,38 @@ function Canvas({
 			helpOpen,
 			clear,
 			foldGeneration,
+			viewedId,
+			canEdit,
+			editable,
 		],
 	);
 
 	useShortcuts(onAction);
 
 	const detailPerson = detailId ? (people.get(detailId) ?? null) : null;
+
+	/** The edit strip's person, and the point it grows from: the card's right edge. */
+	const editPerson = strip?.kind === "edit" ? (people.get(strip.personId) ?? null) : null;
+	const editBox =
+		strip?.kind === "edit"
+			? positionedRef.current.find((node) => node.id === strip.personId)
+			: undefined;
+	const editAnchor = editBox
+		? { x: editBox.position.x + editBox.width, y: editBox.position.y + editBox.height / 2 }
+		: null;
+
+	/** Before a write: hold the viewed card where it is on screen through the relayout. */
+	const holdViewed = () => {
+		const held = positionedRef.current.find((node) => node.id === viewedId);
+		if (held && viewedId) {
+			writeAnchor.current = {
+				id: viewedId,
+				x: held.position.x,
+				y: held.position.y,
+				until: Date.now() + 8000,
+			};
+		}
+	};
 	const trailPeople = useMemo(
 		() => trail.map((id) => people.get(id)).filter((p): p is FusedPerson => Boolean(p)),
 		[trail, people],
@@ -1745,7 +2002,15 @@ function Canvas({
 							reach: Math.round(NODE_METRICS[lod].gap * 1.75) - 6,
 						}}
 						zoom={zoom}
-						onOpen={setAddTarget}
+						openKey={strip?.kind === "add" ? strip.slot.key : null}
+						// The open `+` is also its close: pressing it again folds the strip back in.
+						onOpen={(slot) =>
+							setStrip((current) =>
+								current?.kind === "add" && current.slot.key === slot.key
+									? null
+									: { kind: "add", slot },
+							)
+						}
 					/>
 
 					{/*
@@ -1846,32 +2111,60 @@ function Canvas({
 			/>
 
 			{/*
-			 * The add sheet, mounted ONCE here rather than per card.
+			 * The one strip, mounted ONCE here rather than per card, inside a presence so it
+			 * folds back into the control that opened it when it closes.
 			 *
 			 * `router.refresh()` on success rather than a local mutation: the write happened on
 			 * the server, so the server is what knows the new graph -- and re-deriving fusion,
 			 * kinship and layout from a client-side guess is how the canvas and the database
 			 * start disagreeing.
 			 */}
-			<NodeAddSheet
-				target={addTarget}
-				onDone={({ id, name }) => {
-					const held = positionedRef.current.find((node) => node.id === viewedId);
-					if (held && viewedId) {
-						writeAnchor.current = {
-							id: viewedId,
-							x: held.position.x,
-							y: held.position.y,
-							until: Date.now() + 8000,
-						};
-					}
-					if (addTarget) revealAdded(addTarget);
-					setSavedName(name);
-					setCreatedPersonId(id ?? null);
-					router.refresh();
-				}}
-				onClose={() => setAddTarget(null)}
-			/>
+			<AnimatePresence>
+				{strip?.kind === "add" && (
+					<NodeAddStrip
+						key={`add:${strip.slot.key}`}
+						slot={strip.slot}
+						onDone={({ id, name }) => {
+							holdViewed();
+							// Remembered for the layout that contains them: they come out of this `+`.
+							if (id) {
+								pendingBirth.current = {
+									personId: id,
+									from: { x: strip.slot.x, y: strip.slot.y },
+								};
+							}
+							revealAdded(strip.slot.target);
+							setSavedName(name);
+							setCreatedPersonId(id ?? null);
+							router.refresh();
+						}}
+						onClose={() => setStrip(null)}
+					/>
+				)}
+				{strip?.kind === "edit" && editPerson && editAnchor && (
+					<NodeEditStrip
+						key={`edit:${strip.personId}`}
+						person={editPerson}
+						editableTreeIds={editableTreeIds}
+						anchor={editAnchor}
+						side="right"
+						onSaved={(change) => {
+							if (change === "updated") {
+								// A new birth year reorders siblings, so an edit can move cards too.
+								holdViewed();
+								setUpdatedId(strip.personId);
+							}
+							router.refresh();
+						}}
+						onLeaving={(leaving) => setLeavingId(leaving ? strip.personId : null)}
+						onProfile={() => {
+							setStrip(null);
+							setDetailId(strip.personId);
+						}}
+						onClose={() => setStrip(null)}
+					/>
+				)}
+			</AnimatePresence>
 			<AnimatePresence>
 				{savedName && (
 					<motion.p

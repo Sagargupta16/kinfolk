@@ -28,6 +28,8 @@ export type ShortcutAction =
 	| "generation"
 	| "expandAll"
 	| "add"
+	| "edit"
+	| "profile"
 	| "clear"
 	| "theme"
 	| "help";
@@ -43,6 +45,8 @@ const BINDINGS: { keys: string[]; action: ShortcutAction; label: string }[] = [
 	{ keys: ["g"], action: "generation", label: "Fold the selected generation" },
 	{ keys: ["e"], action: "expandAll", label: "Expand everything again" },
 	{ keys: ["a"], action: "add", label: "Add a relative: jump to the + handles" },
+	{ keys: ["r"], action: "edit", label: "Edit the selected person's name and year" },
+	{ keys: ["p"], action: "profile", label: "Open or close the selected person's profile" },
 	{ keys: ["t"], action: "theme", label: "Switch light and dark" },
 	{ keys: ["Escape"], action: "clear", label: "Clear selection and close panels" },
 	{ keys: ["?"], action: "help", label: "Show this list" },
