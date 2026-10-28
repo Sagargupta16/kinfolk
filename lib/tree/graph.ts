@@ -39,9 +39,24 @@ export type TreeSlice = {
 	unions: UnionWithChildren[];
 	/** Non-parentage edges: cousins, friends, colleagues, mentors. */
 	relations?: PersonRelation[];
-	/** Keyed by person id. Callers pass only details the viewer may see. */
+	/**
+	 * Keyed by person id. Callers pass only details the viewer may see. Full rows, values
+	 * included, because fusion compares values to merge two families' copies of one number;
+	 * the fused graph keeps only the channel (see `ContactChannel`).
+	 */
 	contacts?: Record<string, ContactDetail[]>;
 };
+
+/**
+ * A contact as the canvas holds it: which channel exists, never what it says.
+ *
+ * The value is dropped at fusion, before anything is projected, because everything past
+ * this file reaches a browser -- as client-component props on the server-rendered page and
+ * as the `/api/tree` JSON for the SPA -- and the canvas only ever draws the channel. A value
+ * is read on the contact page, which loads it after a deliberate visit and checks access on
+ * that read. Carrying values here sent every visible phone number to every page load.
+ */
+export type ContactChannel = Omit<ContactDetail, "value">;
 
 /** An accepted `person_links` row, reduced to the pair. */
 export type AcceptedLink = { personAId: string; personBId: string };
@@ -59,9 +74,9 @@ export type FusedPerson = {
 	contributingTreeIds: string[];
 	/**
 	 * Deduped across every contributing row: two families holding the same phone
-	 * number should show it once, not twice.
+	 * number should show it once, not twice. Channels only, never values.
 	 */
-	contacts: ContactDetail[];
+	contacts: ContactChannel[];
 	/**
 	 * The strongest verification any contributing row claims, plus whether the rows
 	 * agree. Derived at fusion time rather than stored, because corroboration is a
@@ -70,7 +85,7 @@ export type FusedPerson = {
 	trust: Trust;
 };
 
-export type Trust = {
+type Trust = {
 	/** Strongest claim among the sources; `disputed` wins outright when present. */
 	level: Verification;
 	/** How many distinct families independently assert this person. */
@@ -215,8 +230,10 @@ export function fuseTrees(
  * Same channel + same value is the same contact, regardless of which family
  * recorded it. Kept in first-seen order, and a primary flag from any source
  * wins so a merged card still knows which number to show first.
+ *
+ * The value is compared here and then dropped: this is the last point that may read it.
  */
-function dedupeContacts(details: ContactDetail[]): ContactDetail[] {
+function dedupeContacts(details: ContactDetail[]): ContactChannel[] {
 	const byKey = new Map<string, ContactDetail>();
 
 	for (const detail of details) {
@@ -229,7 +246,7 @@ function dedupeContacts(details: ContactDetail[]): ContactDetail[] {
 		if (detail.isPrimary && !existing.isPrimary) byKey.set(key, detail);
 	}
 
-	return [...byKey.values()];
+	return [...byKey.values()].map(({ value: _value, ...channel }) => channel);
 }
 
 /**
@@ -277,7 +294,7 @@ const VERIFICATION_RANK: Record<Verification, number> = {
  * legitimately across families ("Katharina" / "Catherine") and flagging that as a
  * disagreement would mark most merged rows as suspect.
  */
-export function trustOf(members: Person[]): Trust {
+function trustOf(members: Person[]): Trust {
 	const corroborators = new Set(members.map((m) => m.treeId)).size;
 	const conflicted = hasDateConflict(members);
 
@@ -328,6 +345,13 @@ function pickPrimary(members: Person[], primaryTreeId?: string): Person {
  * half-siblings by definition never share one. So a union with an unknown
  * partner merges only into a union with the same known partner AND a child in
  * common.
+ *
+ * That rule is applied TRANSITIVELY, by union-find over the shared children. Applied
+ * pairwise in arrival order it was first-match: three records of one father with children
+ * [a], [a, b] and [b, c] became one family when the middle record arrived second, and two
+ * families sharing child b when it arrived last -- so the shape of somebody's family
+ * depended on the order the trees were loaded in. A merged single-parent family keeps the
+ * smallest union id, for the reason a fused person keeps the smallest member id.
  */
 function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 	const byKey = new Map<string, UnionWithChildren>();
@@ -351,43 +375,124 @@ function dedupeUnions(unions: UnionWithChildren[]): UnionWithChildren[] {
 
 		// Sort endpoints: partner order is not meaningful, so (A,B) and (B,A)
 		// describe the same partnership.
-		const key = [union.partnerAId, union.partnerBId].sort().join("::");
+		const key = pairKey(union);
 		const existing = byKey.get(key);
 		if (!existing) {
 			byKey.set(key, union);
 			continue;
 		}
 		mergeChildren(existing, union);
+		settleStanding(existing, union);
+	}
+	const full = [...byKey.values()];
+
+	// Partial records of one family: the same known partner (or none, for a bare sibling
+	// junction) and a child in common, followed transitively.
+	const families = new DisjointSet();
+	const holder = new Map<string, string>();
+	for (const union of partial) {
+		families.find(union.id);
+		const partner = union.partnerAId ?? union.partnerBId ?? "";
+		for (const childId of union.childIds) {
+			const key = `${partner}::${childId}`;
+			const first = holder.get(key);
+			if (first) families.union(first, union.id);
+			else holder.set(key, union.id);
+		}
+	}
+	const groups = new Map<string, UnionWithChildren[]>();
+	for (const union of partial) {
+		const root = families.find(union.id);
+		const group = groups.get(root);
+		if (group) group.push(union);
+		else groups.set(root, [union]);
+	}
+
+	// Each full union's own children, read before any partial is absorbed, so which couple
+	// absorbs a family never depends on which family was absorbed first.
+	const recorded = new Map(full.map((union) => [union, new Set(union.childIds)]));
+	const fullByPartner = new Map<string, UnionWithChildren[]>();
+	for (const union of full) {
+		for (const partnerId of [union.partnerAId, union.partnerBId]) {
+			if (!partnerId) continue;
+			const existing = fullByPartner.get(partnerId);
+			if (existing) existing.push(union);
+			else fullByPartner.set(partnerId, [union]);
+		}
 	}
 
 	const merged: UnionWithChildren[] = [];
-	const full = [...byKey.values()];
-	for (const union of partial) {
-		const knownPartner = union.partnerAId ?? union.partnerBId;
+	for (const members of groups.values()) {
+		// Smallest id first: the same order the union-find chose its root by.
+		const records = [...members].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+		const children = new Set(records.flatMap((union) => union.childIds));
+		const knownPartner = records[0]?.partnerAId ?? records[0]?.partnerBId;
+
 		// A partial can also be a FULL union's echo: one family recorded both
 		// parents, the other only one. Same known partner plus a shared child is the
-		// same family either way, so the full record absorbs the partial one --
-		// otherwise the couple's junction is drawn twice.
-		const sameFamily =
-			full.find(
-				(candidate) =>
-					(candidate.partnerAId === knownPartner || candidate.partnerBId === knownPartner) &&
-					candidate.childIds.some((id) => union.childIds.includes(id)),
-			) ??
-			merged.find(
-				(candidate) =>
-					(candidate.partnerAId ?? candidate.partnerBId) === knownPartner &&
-					candidate.childIds.some((id) => union.childIds.includes(id)),
-			);
-
-		if (sameFamily) {
-			mergeChildren(sameFamily, union);
+		// same family either way, so the full record absorbs the partial ones --
+		// otherwise the couple's junction is drawn twice. Should two couples qualify, the
+		// one sharing more children wins, then the lower pair of ids.
+		let echo: UnionWithChildren | undefined;
+		let shared = 0;
+		for (const candidate of knownPartner ? (fullByPartner.get(knownPartner) ?? []) : []) {
+			let count = 0;
+			for (const childId of recorded.get(candidate) ?? []) if (children.has(childId)) count += 1;
+			if (count === 0) continue;
+			if (count > shared || (count === shared && echo && pairKey(candidate) < pairKey(echo))) {
+				echo = candidate;
+				shared = count;
+			}
+		}
+		if (echo) {
+			for (const union of records) mergeChildren(echo, union);
 			continue;
 		}
-		merged.push({ ...union });
+
+		const [first, ...rest] = records;
+		if (!first) continue;
+		const family = { ...first };
+		for (const union of rest) mergeChildren(family, union);
+		merged.push(family);
 	}
 
 	return [...full, ...merged];
+}
+
+/** The id-sorted pair of a full union, so (A, B) and (B, A) are one couple. */
+function pairKey(union: UnionWithChildren): string {
+	return [union.partnerAId, union.partnerBId].sort().join("::");
+}
+
+/**
+ * How much a union status says, for settling two records of one couple.
+ *
+ * `unknown` says nothing, so any recorded status outranks it. A partnership that has not
+ * ended outranks one that has: two rows for one couple in one tree is a couple who split up
+ * and found each other again, and the later partnership is the one that describes them now.
+ * A marriage outranks an unmarried partnership for the same reason. Ranked rather than
+ * first-wins, so the merged status does not depend on the order the trees arrived in.
+ */
+const STATUS_WEIGHT: Record<UnionWithChildren["status"], number> = {
+	unknown: 0,
+	separated: 1,
+	divorced: 1,
+	partnered: 2,
+	married: 3,
+	widowed: 3,
+};
+
+/**
+ * Take the partnership's standing -- status and the dates and place that go with it -- from
+ * whichever record says more. Only between two records of the SAME couple: a single-parent
+ * record says nothing about a couple's standing, so absorbing one never changes it.
+ */
+function settleStanding(target: UnionWithChildren, source: UnionWithChildren): void {
+	if (STATUS_WEIGHT[source.status] <= STATUS_WEIGHT[target.status]) return;
+	target.status = source.status;
+	target.startDate = source.startDate;
+	target.endDate = source.endDate;
+	target.place = source.place;
 }
 
 function mergeChildren(target: UnionWithChildren, source: UnionWithChildren): void {
@@ -432,6 +537,12 @@ export type FlowEdge = {
 	relationTreeId?: string;
 	/** Pre-rendered label ("cousin", "mentor"), read A -> B. */
 	label?: string;
+	/**
+	 * The relation row's own label, when its owner typed one ("best man"). Kept apart from
+	 * `label` so a reader at either end can tell a typed label, which reads the same from
+	 * both, from the kind's default, which has to be turned round for the B end.
+	 */
+	customLabel?: string;
 	/** Symmetric relations draw no arrowhead. */
 	directed?: boolean;
 	/**
@@ -487,8 +598,9 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 		// A couple with no children RECORDED, both partners visible: one edge, no
 		// junction.
 		//
-		// `childIds` rather than the visible subset, and a test pins the difference.
-		// Filtering by visibility first meant a couple whose only child sits in a tree
+		// `childIds` rather than the visible subset, and the difference was once pinned by
+		// a test in the suite removed in 0.2.0. Filtering by visibility first meant a couple
+		// whose only child sits in a tree
 		// the viewer cannot see collapsed to a direct edge -- so the graph's SHAPE
 		// depended on who was looking, and the same family drew differently for two
 		// people. A projection may hide a node; it must not restructure the family
@@ -565,6 +677,7 @@ export function toFlowGraph(graph: FusedGraph): { nodes: FlowNode[]; edges: Flow
 			relationId: relation.id,
 			relationTreeId: relation.treeId,
 			label: relation.label ?? spec.label,
+			...(relation.label ? { customLabel: relation.label } : {}),
 			directed: !spec.symmetric,
 			closeness: closenessOf(relation.kind, relation),
 			ended: Boolean(relation.endDate),
@@ -589,7 +702,7 @@ export function visibleEdges(edges: FlowEdge[], showRelations: boolean): FlowEdg
 }
 
 /** Display name with sensible fallbacks; genealogy data is often partial. */
-export function displayName(person: Person): string {
+export function displayName(person: Pick<Person, "givenName" | "familyName" | "nickname">): string {
 	const parts = [person.givenName, person.familyName].filter(Boolean);
 	if (parts.length > 0) return parts.join(" ");
 	if (person.nickname) return person.nickname;
@@ -598,14 +711,32 @@ export function displayName(person: Person): string {
 
 /** "1890 - 1954", "b. 1890", "" -- whatever the data supports. */
 export function lifespan(person: Person): string {
-	const birth = year(person.birthDate) ?? person.birthDateApprox;
-	const death = year(person.deathDate) ?? person.deathDateApprox;
+	const birth = birthYear(person);
+	const death = deathYear(person);
 	if (birth && death) return `${birth} - ${death}`;
 	if (birth) return `b. ${birth}`;
 	if (death) return `d. ${death}`;
 	return "";
 }
 
-function year(value: string | null): string | null {
+/**
+ * The year a person was born, as every surface writes it: the exact date's year, else the
+ * approximate text as recorded ("about 1890"), else null.
+ *
+ * One rule for the card, the panel and the layout's sibling order, which each kept their own
+ * copy. The approximate text is returned whole because "about" is the information --
+ * flattening it to 1890 would assert a precision nobody recorded. A caller that needs a
+ * number (sorting, the generation rails) takes the first four-digit run of this.
+ */
+export function birthYear(person: Pick<Person, "birthDate" | "birthDateApprox">): string | null {
+	return dateYear(person.birthDate) ?? person.birthDateApprox;
+}
+
+/** The year a person died, by the same rule as `birthYear`. */
+export function deathYear(person: Pick<Person, "deathDate" | "deathDateApprox">): string | null {
+	return dateYear(person.deathDate) ?? person.deathDateApprox;
+}
+
+function dateYear(value: string | null): string | null {
 	return value ? value.slice(0, 4) : null;
 }

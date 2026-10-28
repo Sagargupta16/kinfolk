@@ -1,63 +1,22 @@
 /**
- * The workspace around the canvas: identity, stats, view toggles, demo banner.
+ * The workspace around the canvas: identity, stats, demo banner.
  *
- * A server component wrapping the client canvas, so the toggles are plain links
- * that change `searchParams`. That keeps the view shareable and survivable across
- * a reload, and it means switching to mine-only genuinely re-fetches a smaller
- * dataset rather than hiding nodes the browser already received.
+ * A server component wrapping the client canvas. The view toggles live in the stage's
+ * Options panel (see ScopeToggle.tsx): mine-only is still a link that changes
+ * `searchParams`, because it genuinely re-fetches a smaller dataset rather than hiding
+ * nodes the browser already received, while social links only change what is drawn.
  */
-import { GitMerge, Link2 } from "lucide-react";
 import Link from "next/link";
 import { AppearanceMenu } from "@/components/ui/AppearanceMenu";
 import type { TreeView } from "@/lib/tree/view";
-import { cn } from "@/lib/utils";
 import { AccountBar } from "./AccountBar";
 import { DemoBanner } from "./DemoBanner";
 import { EmptyFamily } from "./EmptyFamily";
 import { TreeStage } from "./TreeStage";
 
-function Toggle({
-	href,
-	active,
-	label,
-	hint,
-	Icon,
-}: {
-	href: string;
-	active: boolean;
-	label: string;
-	hint: string;
-	Icon: typeof Link2;
-}) {
-	return (
-		<Link
-			href={href}
-			scroll={false}
-			aria-current={active ? "true" : undefined}
-			aria-label={label}
-			title={hint}
-			className={cn(
-				"kf-header-control flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-xs font-medium",
-				"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-				active
-					? "border-hairline-strong bg-surface-raised text-accent-ink"
-					: "border-hairline text-ink-muted hover:border-hairline-strong hover:text-ink",
-			)}
-		>
-			<Icon className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
-			<span>{label}</span>
-		</Link>
-	);
-}
-
 export function TreeWorkspace({ view }: { view: TreeView }) {
 	const { stats } = view;
 
-	// Toggles are URL state, so each link is the current view with one flag flipped.
-	const combinedHref = view.isCombined ? "/tree?combined=0" : "/tree";
-	const relationsHref = view.showRelations
-		? `/tree?relations=0${view.isCombined ? "" : "&combined=0"}`
-		: `/tree${view.isCombined ? "" : "?combined=0"}`;
 	const context = view.isDemo
 		? `${stats.people} people, sample family`
 		: view.isCombined && stats.trees > 1
@@ -117,30 +76,8 @@ export function TreeWorkspace({ view }: { view: TreeView }) {
 						editableTreeId={view.editableTreeId}
 						editableTreeIds={view.editableTreeIds}
 						editableUnions={view.editableUnions}
-						scopeControls={
-							<div key="scope-controls" className="grid grid-cols-2 gap-2">
-								<Toggle
-									key="relations"
-									href={relationsHref}
-									active={view.showRelations}
-									label="Social links"
-									hint={view.showRelations ? "Hide social connections" : "Show social connections"}
-									Icon={Link2}
-								/>
-								<Toggle
-									key="combined"
-									href={combinedHref}
-									active={view.isCombined}
-									label={view.isCombined ? "All trees" : "My tree"}
-									hint={
-										view.isCombined
-											? "Show only your own family tree"
-											: "Show every family tree shared with you"
-									}
-									Icon={GitMerge}
-								/>
-							</div>
-						}
+						isCombined={view.isCombined}
+						isDemo={view.isDemo}
 					/>
 				)}
 			</div>

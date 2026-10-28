@@ -20,10 +20,11 @@
 			// The same `@/` the Next app uses, so a shared component's own imports
 			// resolve unchanged.
 			"@/*": ["../*"],
-			// Three modules are REPLACED rather than reused. next/link and
-			// next/navigation do not exist outside Next, and the server actions cannot
-			// run in a browser, so each has a shim with an identical surface. Mapping
-			// them here rather than editing eight components is what keeps one canvas.
+			// Seven modules are REPLACED rather than reused. next/link and
+			// next/navigation do not exist outside Next, and the five server-action
+			// modules cannot run in a browser, so each has a shim with an identical
+			// surface. Mapping them here rather than editing every component that
+			// imports them is what keeps one canvas.
 			"next/link": ["./src/shims/next-link.tsx"],
 			"next/navigation": ["./src/shims/next-navigation.ts"],
 			"@/lib/tree/edit-actions": ["./src/shims/edit-actions.ts"],

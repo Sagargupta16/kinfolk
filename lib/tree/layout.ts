@@ -9,7 +9,8 @@
  * Union nodes are sized near-zero so they read as a junction dot rather than a
  * box, which is what makes a couple look like a couple.
  */
-import type { FlowEdge, FlowNode } from "./graph";
+import type { ElkNode } from "elkjs/lib/elk-api";
+import { birthYear, type FlowEdge, type FlowNode } from "./graph";
 
 /**
  * How much of a person is drawn.
@@ -77,8 +78,6 @@ export const NODE_METRICS: Record<Lod, Metrics> = {
 	dot: { width: 56, height: 34, gap: 30, rowGap: 44 },
 };
 
-export const PERSON_WIDTH = NODE_METRICS.full.width;
-export const PERSON_HEIGHT = NODE_METRICS.full.height;
 const UNION_SIZE = 12;
 
 export type PositionedNode = FlowNode & {
@@ -113,7 +112,7 @@ export type GenerationBand = {
 	years?: { from: number; to: number };
 };
 
-export type LayoutResult = {
+type LayoutResult = {
 	nodes: PositionedNode[];
 	bands: GenerationBand[];
 	/** The box every node fits inside. See `graphExtent`. */
@@ -136,7 +135,7 @@ export type Box = { x: number; y: number; width: number; height: number };
  * 1512x488 as dots (3.1:1), so one fixed box would spend most of its area on empty
  * space at whichever level it was not tuned for.
  */
-export function graphExtent(nodes: PositionedNode[]): Box {
+function graphExtent(nodes: PositionedNode[]): Box {
 	if (nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
 
 	let left = Number.POSITIVE_INFINITY;
@@ -156,13 +155,68 @@ export function graphExtent(nodes: PositionedNode[]): Box {
 	return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+/** The one method of ELK this file uses, whichever thread it runs on. */
+type ElkEngine = { layout: (graph: ElkNode) => Promise<ElkNode> };
+
+/** ELK on this thread: the bundled build, for Node (tests, the bench) and as a fallback. */
+let inThread: Promise<ElkEngine> | null = null;
+function threadElk(): Promise<ElkEngine> {
+	inThread ??= import("elkjs/lib/elk.bundled.js").then(({ default: ELK }) => new ELK());
+	return inThread;
+}
+
+/** The worker could not start, as distinct from ELK refusing a graph. */
+class WorkerUnavailable extends Error {}
+
 /**
- * ELK ships as a bundled worker-less build; importing it lazily keeps it out of
- * the initial page payload since layout only runs once the graph is loaded.
+ * ELK in a Web Worker, built once and reused across every layout.
+ *
+ * It used to be a fresh in-thread instance per layout, and ELK is the cost here: 97% of a
+ * layout is spent inside it, and at 1,000 people that froze the page for over five seconds.
+ * A worker keeps the canvas responsive while it runs.
+ *
+ * If the worker cannot start -- a blocked or missing script -- `elk-api` would wait on it
+ * forever and the canvas would never leave its loading state, so its first error rejects
+ * every layout in flight and later ones run on this thread instead.
  */
-async function loadElk() {
-	const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
-	return new ELK();
+let worker: Promise<ElkEngine | null> | null = null;
+function workerElk(): Promise<ElkEngine | null> {
+	worker ??= (async () => {
+		if (typeof Worker === "undefined") return null;
+		const { default: ELK } = await import("elkjs/lib/elk-api.js");
+		let fail: (error: Error) => void = () => {};
+		const failed = new Promise<never>((_, reject) => {
+			fail = reject;
+		});
+		// Every layout races this, so a rejection nobody is awaiting yet must not surface.
+		failed.catch(() => {});
+		const elk = new ELK({
+			workerFactory: () => {
+				const instance = new Worker(new URL("./elk-worker.ts", import.meta.url), {
+					type: "module",
+				});
+				instance.addEventListener("error", () => {
+					fail(new WorkerUnavailable("The layout worker could not start."));
+				});
+				return instance;
+			},
+		});
+		return { layout: (graph: ElkNode) => Promise.race([elk.layout(graph), failed]) };
+	})().catch(() => null);
+	return worker;
+}
+
+async function runElk(graph: ElkNode): Promise<ElkNode> {
+	const engine = await workerElk();
+	if (engine) {
+		try {
+			return await engine.layout(graph);
+		} catch (error) {
+			if (!(error instanceof WorkerUnavailable)) throw error;
+			worker = Promise.resolve(null);
+		}
+	}
+	return (await threadElk()).layout(graph);
 }
 
 /**
@@ -633,11 +687,13 @@ function alignPedigreeRows(
 	}
 }
 
-/** A person's birth year, from the exact date or the fuzzy text ("about 1890"). */
-export function birthYearOf(node: FlowNode): number | null {
+/**
+ * A person's birth year as a number: the first four-digit run of `birthYear`, the same
+ * year the card and the panel print, so "about 1890" orders as 1890.
+ */
+function birthYearOf(node: FlowNode): number | null {
 	if (node.type !== "person") return null;
-	const person = node.data.primary;
-	const match = /\d{4}/.exec(person.birthDate ?? person.birthDateApprox ?? "");
+	const match = /\d{4}/.exec(birthYear(node.data.primary) ?? "");
 	return match ? Number(match[0]) : null;
 }
 
@@ -650,7 +706,10 @@ export function birthYearOf(node: FlowNode): number | null {
  * row order meant siblings stood in the order somebody happened to type them -- measured,
  * 28 of the sample tree's 48 adjacent sibling pairs were eldest-first, a coin toss. A birth
  * year is optional, so it orders only where it exists: siblings with a year come first, by
- * year, and the rest keep the order they were entered in.
+ * year, and the rest keep the order they were entered in -- read from when each was first
+ * recorded, then the id, NOT from the input order. The input order is whatever order the
+ * database returned rows in, and Postgres returns a heap in physical order, which an UPDATE
+ * changes: renaming a sibling could move them along the row.
  *
  * Depth-first rather than one global sort, because a generation is read FAMILY by family:
  * sorting the whole row by birth year would interleave cousins from different households and
@@ -695,6 +754,14 @@ export function pedigreeOrder(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] 
 		const node = byId.get(id);
 		return node ? birthYearOf(node) : null;
 	};
+	/** When each person was first recorded: the earliest of their rows, for a fused person. */
+	const enteredAt = new Map<string, number>();
+	for (const node of nodes) {
+		if (node.type !== "person") continue;
+		enteredAt.set(node.id, Math.min(...node.data.sources.map((row) => row.createdAt.getTime())));
+	}
+	const byEntry = (a: string, b: string) =>
+		(enteredAt.get(a) ?? 0) - (enteredAt.get(b) ?? 0) || a.localeCompare(b);
 	const eldestFirst = (ids: string[]) =>
 		[...ids].sort((a, b) => {
 			const ay = yearOf(a);
@@ -702,7 +769,7 @@ export function pedigreeOrder(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] 
 			if (ay !== null && by !== null && ay !== by) return ay - by;
 			if (ay !== null && by === null) return -1;
 			if (ay === null && by !== null) return 1;
-			return byInput(a, b);
+			return byEntry(a, b);
 		});
 
 	const out: FlowNode[] = [];
@@ -766,11 +833,16 @@ export async function layoutGraph(
 	nodes: FlowNode[],
 	edges: FlowEdge[],
 	lod: Lod = "full",
+	/**
+	 * The viewer's node id. Only placement of people with no family edge and no placed
+	 * contact reads it -- they stand on the viewer's row -- so the family skeleton is the
+	 * same for every viewer. Without it they stand on the first family row.
+	 */
+	selfId?: string,
 ): Promise<LayoutResult> {
 	if (nodes.length === 0)
 		return { nodes: [], bands: [], extent: { x: 0, y: 0, width: 0, height: 0 } };
 
-	const elk = await loadElk();
 	const metrics = NODE_METRICS[lod];
 
 	// Model order for ELK only; positions are mapped back by id, so the caller's order is kept.
@@ -833,7 +905,7 @@ export async function layoutGraph(
 			})),
 	};
 
-	const laid = await elk.layout(graph);
+	const laid = await runElk(graph);
 	const positions = new Map<string, Box>(
 		(laid.children ?? []).map((child) => [
 			child.id as string,
@@ -842,7 +914,7 @@ export async function layoutGraph(
 	);
 
 	alignPedigreeRows(nodes, edges, positions, metrics);
-	anchorFamilylessNodes(nodes, edges, positions, metrics.gap);
+	anchorFamilylessNodes(nodes, edges, positions, metrics.gap, selfId);
 	placeUnionJunctions(nodes, edges, positions);
 
 	const positioned = nodes.map((node) => {
@@ -931,13 +1003,18 @@ function placeUnionJunctions(
 	edges: FlowEdge[],
 	positions: Map<string, Box>,
 ): void {
-	/** Partners per union node id. */
+	/** Partners and children per union node id, indexed once rather than filtered per union. */
 	const partners = new Map<string, string[]>();
+	const children = new Map<string, string[]>();
+	const add = (index: Map<string, string[]>, key: string, value: string) => {
+		const existing = index.get(key);
+		if (existing) existing.push(value);
+		else index.set(key, [value]);
+	};
 	for (const edge of edges) {
-		if (!edge.layout || edge.kind !== "partner") continue;
-		const existing = partners.get(edge.target);
-		if (existing) existing.push(edge.source);
-		else partners.set(edge.target, [edge.source]);
+		if (!edge.layout) continue;
+		if (edge.kind === "partner") add(partners, edge.target, edge.source);
+		else if (edge.kind === "child") add(children, edge.source, edge.target);
 	}
 
 	const personBoxes = nodes.flatMap((node) => {
@@ -959,9 +1036,8 @@ function placeUnionJunctions(
 		if (boxes.length === 0) continue;
 
 		const centres = boxes.map((box) => box.x + box.width / 2);
-		const childTops = edges
-			.filter((edge) => edge.layout && edge.kind === "child" && edge.source === node.id)
-			.map((edge) => positions.get(edge.target)?.y)
+		const childTops = (children.get(node.id) ?? [])
+			.map((id) => positions.get(id)?.y)
 			.filter((top): top is number => top !== undefined);
 		const parentBottom = Math.max(...boxes.map((box) => box.y + box.height));
 		const childTop = childTops.length > 0 ? Math.min(...childTops) : null;
@@ -1084,6 +1160,14 @@ function nearestClearPoint(
  * and on that person's row. This runs after layout rather than as an ELK
  * constraint on purpose: the family skeleton must not shift to accommodate a
  * friend, which is the invariant layout.test.ts pins down.
+ *
+ * Somebody who knows nobody placed -- a cluster of friends with no link into the family,
+ * or everybody in a graph with no family edges at all -- has no contact to stand beside.
+ * They used to keep ELK's first layer, a phantom band above the grandparents (measured:
+ * three such friends at y=12 against grandparents at y=124), and a graph of contacts only
+ * was returned untouched, packed by ELK into rows that read as generations. They now stand
+ * on the viewer's row, else the first family row, one cluster at a time: the first of a
+ * cluster is seeded there and the rest anchor beside them as before.
  */
 function anchorFamilylessNodes(
 	nodes: FlowNode[],
@@ -1091,6 +1175,8 @@ function anchorFamilylessNodes(
 	positions: Map<string, Box>,
 	/** Matches elk.spacing.nodeNode, so anchored nodes sit on the same rhythm. */
 	gap: number,
+	/** The viewer's node, whose row is where somebody of unknown generation stands. */
+	selfId?: string,
 ): void {
 	const inFamily = new Set<string>();
 	for (const edge of edges) {
@@ -1100,7 +1186,24 @@ function anchorFamilylessNodes(
 	}
 
 	const floating = nodes.filter((node) => !inFamily.has(node.id));
-	if (floating.length === 0 || floating.length === nodes.length) return;
+	if (floating.length === 0) return;
+
+	/*
+	 * Who each person knows, in edge order, built once. The anchor is the first relation whose
+	 * other end is already placed -- the answer `edges.find` gave, without rescanning every edge
+	 * for every pending person on every pass.
+	 */
+	const known = new Map<string, string[]>();
+	const add = (id: string, other: string) => {
+		const list = known.get(id);
+		if (list) list.push(other);
+		else known.set(id, [other]);
+	};
+	for (const edge of edges) {
+		if (edge.layout) continue;
+		add(edge.source, edge.target);
+		add(edge.target, edge.source);
+	}
 
 	// Anchor to whoever they know who is themselves anchored. Resolved in passes
 	// so a friend-of-a-friend still lands somewhere sensible.
@@ -1112,46 +1215,58 @@ function anchorFamilylessNodes(
 		occupied.set(box.y, Math.max(occupied.get(box.y) ?? 0, box.x + box.width));
 	}
 
-	let progressed = true;
-	while (pending.size > 0 && progressed) {
-		progressed = false;
+	const anchorKnown = () => {
+		let progressed = true;
+		while (pending.size > 0 && progressed) {
+			progressed = false;
 
-		for (const id of [...pending]) {
-			const anchorId = edges.find(
-				(edge) =>
-					!edge.layout &&
-					((edge.source === id && !pending.has(edge.target)) ||
-						(edge.target === id && !pending.has(edge.source))),
-			);
-			if (!anchorId) continue;
+			for (const id of [...pending]) {
+				const otherId = (known.get(id) ?? []).find((other) => !pending.has(other));
+				if (!otherId) continue;
+				const anchor = positions.get(otherId);
+				const box = positions.get(id);
+				if (!anchor || !box) continue;
 
-			const otherId = anchorId.source === id ? anchorId.target : anchorId.source;
-			const anchor = positions.get(otherId);
-			const box = positions.get(id);
-			if (!anchor || !box) continue;
-
-			const rowEnd = occupied.get(anchor.y) ?? anchor.x + anchor.width;
-			box.x = rowEnd + gap;
-			box.y = anchor.y;
-			occupied.set(anchor.y, box.x + box.width);
-			pending.delete(id);
-			progressed = true;
+				const rowEnd = occupied.get(anchor.y) ?? anchor.x + anchor.width;
+				box.x = rowEnd + gap;
+				box.y = anchor.y;
+				occupied.set(anchor.y, box.x + box.width);
+				pending.delete(id);
+				progressed = true;
+			}
 		}
-	}
+	};
+	anchorKnown();
+	if (pending.size === 0) return;
 
-	// Household alignment can move a family onto an isolated person's ELK box.
-	// With no anchored contact, retain their row and move only if that box now
-	// collides. Check vertical extents because their row need not match a family row.
-	const placed = [...positions].filter(([id]) => !pending.has(id)).map(([, box]) => box);
-	for (const id of pending) {
+	/*
+	 * The row somebody of unknown generation stands on: the viewer's, else the first family
+	 * row. With no family at all there is no row yet, and the first person seeded keeps their
+	 * own place and becomes it -- so a graph of contacts reads as one row, not as generations.
+	 */
+	const familyRows = nodes.flatMap((node) => {
+		const box =
+			node.type === "person" && inFamily.has(node.id) ? positions.get(node.id) : undefined;
+		return box ? [box.y] : [];
+	});
+	const selfBox = selfId && inFamily.has(selfId) ? positions.get(selfId) : undefined;
+	let home = selfBox?.y ?? (familyRows.length > 0 ? Math.min(...familyRows) : undefined);
+
+	// The viewer first when they float too, so a graph of contacts grows around them.
+	const queue = [...pending].sort((a, b) => Number(b === selfId) - Number(a === selfId));
+	for (const id of queue) {
+		if (!pending.has(id)) continue;
+		pending.delete(id);
 		const box = positions.get(id);
 		if (!box) continue;
-		const row = placed.filter(
-			(other) => box.y < other.y + other.height && box.y + box.height > other.y,
-		);
-		if (row.some((other) => box.x < other.x + other.width && box.x + box.width > other.x)) {
-			box.x = Math.max(...row.map((other) => other.x + other.width)) + gap;
+		if (home === undefined) {
+			home = box.y;
+		} else {
+			// Past the end of the row, like an anchored friend, so no card is covered.
+			box.x = (occupied.get(home) ?? 0) + gap;
+			box.y = home;
 		}
-		placed.push(box);
+		occupied.set(home, Math.max(occupied.get(home) ?? Number.NEGATIVE_INFINITY, box.x + box.width));
+		anchorKnown();
 	}
 }

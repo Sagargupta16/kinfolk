@@ -7,12 +7,16 @@
  * into a client component. See visibility.ts for the ladder.
  *
  * Read path, in order:
- *   1. which trees may this user see, and at what access level
- *   2. their people, unions, union children, relations, contacts
- *   3. accepted person links among the people actually loaded
- *   4. fuse, project, done
+ *   1. which trees may this user see, at what access level, and through which accepted
+ *      person links -- asked alongside which trees they may write to
+ *   2. their people, unions, union children, relations, contacts, all at once
+ *   3. fuse, project, done
+ *
+ * Three round trips, because every query that does not need another's answer is sent with
+ * it: the read and write grants are independent, and contacts are reached through their
+ * people's tree rather than through the people rows, so they need not wait for them.
  */
-import { eq, inArray } from "drizzle-orm";
+import { eq, getTableColumns, inArray } from "drizzle-orm";
 import { db } from "../db/client";
 import {
 	contactDetails,
@@ -30,7 +34,7 @@ import { treeAccessForUser } from "./read-access";
 import type { TreeView } from "./view";
 import { filterContacts } from "./visibility";
 
-export type LoadOptions = {
+type LoadOptions = {
 	/** False loads only the user's own trees, dropping linked relatives. */
 	combined?: boolean;
 	/** False hides the social overlay. */
@@ -49,23 +53,54 @@ export type LoadOptions = {
 async function loadSlices(treeIds: string[]): Promise<TreeSlice[]> {
 	if (treeIds.length === 0) return [];
 
-	const [treeRows, personRows, unionRows, childRows, relationRows] = await Promise.all([
-		db.select().from(trees).where(inArray(trees.id, treeIds)),
-		db.select().from(people).where(inArray(people.treeId, treeIds)),
-		db.select().from(unions).where(inArray(unions.treeId, treeIds)),
-		// union_children has no treeId, so it is reached through its unions.
-		db
-			.select({
-				unionId: unionChildren.unionId,
-				childId: unionChildren.childId,
-				role: unionChildren.role,
-				treeId: unions.treeId,
-			})
-			.from(unionChildren)
-			.innerJoin(unions, eq(unions.id, unionChildren.unionId))
-			.where(inArray(unions.treeId, treeIds)),
-		db.select().from(personRelations).where(inArray(personRelations.treeId, treeIds)),
-	]);
+	/*
+	 * Rows that feed the layout come back in ENTRY order, oldest first and then by id.
+	 *
+	 * Without an ORDER BY, Postgres returns a heap in physical order, and an UPDATE writes a
+	 * new row version wherever there is room -- so renaming somebody could move them along
+	 * their row of siblings, and a friend could be anchored beside a different contact after an
+	 * unrelated edit. The layout breaks its own ties by entry order too; this keeps everything
+	 * else that walks these lists in arrival order (union children, relation anchors) stable.
+	 */
+	const [treeRows, personRows, unionRows, childRows, relationRows, contactRows] = await Promise.all(
+		[
+			db.select().from(trees).where(inArray(trees.id, treeIds)),
+			db
+				.select()
+				.from(people)
+				.where(inArray(people.treeId, treeIds))
+				.orderBy(people.createdAt, people.id),
+			db
+				.select()
+				.from(unions)
+				.where(inArray(unions.treeId, treeIds))
+				.orderBy(unions.createdAt, unions.id),
+			// union_children has no treeId, so it is reached through its unions.
+			db
+				.select({
+					unionId: unionChildren.unionId,
+					childId: unionChildren.childId,
+					role: unionChildren.role,
+					treeId: unions.treeId,
+				})
+				.from(unionChildren)
+				.innerJoin(unions, eq(unions.id, unionChildren.unionId))
+				.where(inArray(unions.treeId, treeIds))
+				.orderBy(unionChildren.createdAt, unionChildren.childId),
+			db
+				.select()
+				.from(personRelations)
+				.where(inArray(personRelations.treeId, treeIds))
+				.orderBy(personRelations.createdAt, personRelations.id),
+			// contact_details has no treeId either, so it is reached through its people -- in
+			// the same round trip, instead of waiting for the people rows to supply their ids.
+			db
+				.select(getTableColumns(contactDetails))
+				.from(contactDetails)
+				.innerJoin(people, eq(people.id, contactDetails.personId))
+				.where(inArray(people.treeId, treeIds)),
+		],
+	);
 
 	const childIdsByUnion = new Map<string, string[]>();
 	const childRolesByUnion = new Map<string, Record<string, ParentRole[]>>();
@@ -77,12 +112,6 @@ async function loadSlices(treeIds: string[]): Promise<TreeSlice[]> {
 		roles[row.childId] = [row.role];
 		childRolesByUnion.set(row.unionId, roles);
 	}
-
-	const personIds = personRows.map((person) => person.id);
-	const contactRows =
-		personIds.length > 0
-			? await db.select().from(contactDetails).where(inArray(contactDetails.personId, personIds))
-			: [];
 
 	const contactsByPerson = new Map<string, typeof contactRows>();
 	for (const row of contactRows) {
@@ -129,7 +158,11 @@ export async function loadTreeView(
 	userId: string,
 	{ combined = true, showRelations = true, viewer = null }: LoadOptions = {},
 ): Promise<TreeView | null> {
-	const { access, links } = await treeAccessForUser(userId, combined);
+	// Who may write is asked alongside who may read: neither answer depends on the other.
+	const [{ access, links }, writable] = await Promise.all([
+		treeAccessForUser(userId, combined),
+		editableTreeIds(userId),
+	]);
 	if (access.size === 0) return null;
 
 	const ownTreeIds = [...access].filter(([, level]) => level === "member").map(([id]) => id);
@@ -155,11 +188,10 @@ export async function loadTreeView(
 		person.sources.some((source) => source.claimedByUserId === userId),
 	)?.id;
 
-	// Which graph the Add panel writes into. The viewer's OWN first tree, never a linked
-	// one: an accepted person link means "we agree this is the same human", not "you may
-	// edit my records". Recomputed rather than assumed from `access`, because that map
-	// grants `member` for reading and says nothing about write grants.
-	const writable = await editableTreeIds(userId);
+	// Which graph the `+` handles write into (`addRelative`). The viewer's OWN first tree,
+	// never a linked one: an accepted person link means "we agree this is the same human",
+	// not "you may edit my records". Taken from the write grants rather than assumed from
+	// `access`, because that map grants `member` for reading and says nothing about writing.
 	const writableTreeIds = ownTreeIds.filter((id) => writable.includes(id));
 	const editableTreeId = writableTreeIds[0] ?? null;
 

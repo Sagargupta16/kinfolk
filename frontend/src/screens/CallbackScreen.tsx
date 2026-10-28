@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import type { CompletedSignIn } from "../auth";
-import { MessageScreen } from "./States";
+import { FullScreen, MessageScreen } from "./States";
 
 export function CallbackScreen({ complete }: { complete: () => Promise<CompletedSignIn> }) {
 	const [error, setError] = useState<string | null>(null);
@@ -43,10 +43,10 @@ export function CallbackScreen({ complete }: { complete: () => Promise<Completed
 	if (error) return <MessageScreen message={error} />;
 
 	return (
-		<div className="kf-lattice grid min-h-dvh place-items-center bg-canvas p-6">
+		<FullScreen>
 			<p className="font-mono text-xs uppercase tracking-[0.08em] text-ink-faint">
 				Finishing sign in
 			</p>
-		</div>
+		</FullScreen>
 	);
 }

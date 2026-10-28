@@ -143,8 +143,9 @@ describe("recorded parent roles", () => {
 
 	it("preserves the existing sample graph structure", () => {
 		const view = buildDemoView();
-		expect(view.stats.people).toBe(117);
-		expect(view.nodes.filter((node) => node.type === "union")).toHaveLength(34);
+		// The Wikidata sample: Victoria's and Christian IX's families, 12 people shared.
+		expect(view.stats.people).toBe(216);
+		expect(view.nodes.filter((node) => node.type === "union")).toHaveLength(40);
 		const ids = new Set(view.nodes.map((node) => node.id));
 		expect(view.edges.every((edge) => ids.has(edge.source) && ids.has(edge.target))).toBe(true);
 	});

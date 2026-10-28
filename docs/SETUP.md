@@ -1,7 +1,6 @@
 # Setting Kinfolk up locally
 
-This guide describes local setup for 0.4.x. 0.4.0 was released on **2026-09-10**;
-production setup is in [DEPLOYMENT.md](DEPLOYMENT.md).
+This guide describes local setup; production setup is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Four values go in `.env.local`. Nothing else is needed -- no Docker, no local
 Postgres, no accounts beyond Neon and GitHub.
@@ -65,8 +64,8 @@ node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"
 Paste the output as `AUTH_SECRET`. Any 32+ byte random string works; this is
 what encrypts Auth.js's own cookies.
 
-Leave `AUTH_URL` as `http://localhost:3007`. The port comes from
-`.claude/launch.json` at the workspace root, and it has to match section 3.
+Leave `AUTH_URL` as `http://localhost:3007`. The port comes from this repository's own
+`.claude/launch.json`, and it has to match section 3.
 
 ## 3. `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` -- GitHub OAuth app
 

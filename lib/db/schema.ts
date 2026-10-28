@@ -19,7 +19,7 @@
  * That third table is what makes "see how the combined family tree looks"
  * possible without either side losing ownership of their own data.
  */
-import { relations, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
 	boolean,
 	check,
@@ -584,64 +584,15 @@ export const personLinks = pgTable(
 	],
 );
 
-/* -------------------------------------------------------------------------- */
-/* Relations (for Drizzle's relational queries)                               */
-/* -------------------------------------------------------------------------- */
-
-export const usersRelations = relations(users, ({ many }) => ({
-	trees: many(trees),
-	memberships: many(treeMembers),
-}));
-
-export const treesRelations = relations(trees, ({ one, many }) => ({
-	owner: one(users, { fields: [trees.ownerId], references: [users.id] }),
-	people: many(people),
-	unions: many(unions),
-	members: many(treeMembers),
-}));
-
-export const peopleRelations = relations(people, ({ one, many }) => ({
-	tree: one(trees, { fields: [people.treeId], references: [trees.id] }),
-	childOf: many(unionChildren),
-	contacts: many(contactDetails),
-}));
-
-export const contactDetailsRelations = relations(contactDetails, ({ one }) => ({
-	person: one(people, { fields: [contactDetails.personId], references: [people.id] }),
-}));
-
-export const personRelationsRelations = relations(personRelations, ({ one }) => ({
-	tree: one(trees, { fields: [personRelations.treeId], references: [trees.id] }),
-	personA: one(people, { fields: [personRelations.personAId], references: [people.id] }),
-	personB: one(people, { fields: [personRelations.personBId], references: [people.id] }),
-}));
-
-export const unionsRelations = relations(unions, ({ one, many }) => ({
-	tree: one(trees, { fields: [unions.treeId], references: [trees.id] }),
-	partnerA: one(people, { fields: [unions.partnerAId], references: [people.id] }),
-	partnerB: one(people, { fields: [unions.partnerBId], references: [people.id] }),
-	children: many(unionChildren),
-}));
-
-export const unionChildrenRelations = relations(unionChildren, ({ one }) => ({
-	union: one(unions, { fields: [unionChildren.unionId], references: [unions.id] }),
-	child: one(people, { fields: [unionChildren.childId], references: [people.id] }),
-}));
-
 export type User = typeof users.$inferSelect;
 export type Tree = typeof trees.$inferSelect;
 export type Person = typeof people.$inferSelect;
-export type NewPerson = typeof people.$inferInsert;
 export type Union = typeof unions.$inferSelect;
-export type PersonLink = typeof personLinks.$inferSelect;
 export type PersonRelation = typeof personRelations.$inferSelect;
-export type NewPersonRelation = typeof personRelations.$inferInsert;
 export type RelationKind = (typeof relationKindEnum.enumValues)[number];
-export type LivingStatus = (typeof livingStatusEnum.enumValues)[number];
 export type Sex = (typeof sexEnum.enumValues)[number];
 export type ParentRole = (typeof parentRoleEnum.enumValues)[number];
 export type Verification = (typeof verificationEnum.enumValues)[number];
 export type ContactDetail = typeof contactDetails.$inferSelect;
-export type NewContactDetail = typeof contactDetails.$inferInsert;
 export type ContactKind = (typeof contactKindEnum.enumValues)[number];
 export type Visibility = (typeof visibilityEnum.enumValues)[number];

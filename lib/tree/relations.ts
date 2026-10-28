@@ -198,18 +198,3 @@ export function closenessOf(
 	if (stored === 1 || stored === 2 || stored === 3) return stored;
 	return RELATION_KINDS[kind].closeness;
 }
-
-/** Grouped for pickers, so the editor does not show 17 flat options. */
-export function kindsByCategory(): Record<RelationCategory, RelationKind[]> {
-	const grouped: Record<RelationCategory, RelationKind[]> = {
-		kin: [],
-		social: [],
-		professional: [],
-		care: [],
-		other: [],
-	};
-	for (const [kind, spec] of Object.entries(RELATION_KINDS)) {
-		grouped[spec.category].push(kind as RelationKind);
-	}
-	return grouped;
-}

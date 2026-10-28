@@ -11,12 +11,12 @@
  * live here rather than at the two call sites, because a serialiser and a parser
  * that disagree fail in exactly the same invisible way.
  *
- * Contact VALUES are not a concern here: `lib/tree/visibility.ts` strips them
- * while the view is being assembled, so a view reaching this file has already
- * been filtered. This must never become the place that filtering happens -- by
- * the time a view is being serialised, the decision about who may see what has
- * already been made, and re-deciding it here would put the same rule in two
- * places.
+ * Contact VALUES are not a concern here: a view never holds one. `lib/tree/visibility.ts`
+ * drops the rows a viewer may not see at all, and `fuseTrees` then keeps only which
+ * channel each remaining row is (`ContactChannel` in graph.ts), so a view reaching this
+ * file carries nothing to leak. This must never become the place that filtering happens
+ * -- by the time a view is being serialised, the decision about who may see what has
+ * already been made, and re-deciding it here would put the same rule in two places.
  */
 import type { Person, Union } from "../db/schema";
 import type { FlowNode, FusedPerson, UnionWithChildren } from "./graph";

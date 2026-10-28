@@ -18,7 +18,7 @@ import { livingStatusEnum, sexEnum } from "../db/schema";
 import { birthYearColumns, splitName } from "./kin-plan";
 
 /** Free-text columns a form may edit. Order is documentation, not behaviour. */
-const TEXT_FIELDS = [
+export const TEXT_FIELDS = [
 	"givenName",
 	"familyName",
 	// The field the destructive version dropped. Search matches on it, so losing it silently
@@ -37,13 +37,72 @@ const TEXT_FIELDS = [
 	"sourceNote",
 ] as const;
 
+/** Columns that hold a name rather than a note, and get the shorter ceiling. */
+const NAME_FIELDS = new Set(["name", "givenName", "familyName", "birthFamilyName", "nickname"]);
+
+/** Columns of Postgres type `date`: they take an exact calendar date or nothing. */
+const DATE_FIELDS = new Set(["birthDate", "deathDate"]);
+
+/**
+ * The longest free text any column accepts, and the longest name.
+ *
+ * Generous for a source note or a life story, and far too short to fill a database: the
+ * columns are plain `text`, so without a ceiling one request could store megabytes in a
+ * birthplace and repeat that for as long as it liked.
+ */
+const MAX_TEXT = 2000;
+const MAX_NAME = 200;
+
 /**
  * Empty string means "not recorded", which is not the same as an empty string in the
  * database: an `is null` check would miss half the unrecorded rows.
  */
-function orNull(value: FormDataEntryValue | null): string | null {
+export function orNull(value: FormDataEntryValue | null): string | null {
 	const text = typeof value === "string" ? value.trim() : "";
 	return text.length > 0 ? text : null;
+}
+
+/** The first posted field longer than its ceiling, phrased for the person who typed it. */
+export function tooLong(form: FormData, keys: Iterable<string>): string | null {
+	for (const key of keys) {
+		const value = orNull(form.get(key));
+		if (!value) continue;
+		if (NAME_FIELDS.has(key) && value.length > MAX_NAME) {
+			return `Keep names under ${MAX_NAME} characters.`;
+		}
+		if (value.length > MAX_TEXT) return "Keep each detail under 2,000 characters.";
+	}
+	return null;
+}
+
+/**
+ * A calendar date in the one shape a `date` column accepts, or null.
+ *
+ * Checked here because Postgres refuses "1952", "about 1890" and "2024-02-31" with an
+ * error rather than a value, and a refusal from the database arrives as a 500. A bare
+ * year or a fuzzy date belongs in the `*Approx` column instead, where it is stored as said.
+ */
+function isoDate(text: string): string | null {
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+	if (!match) return null;
+	const [year, month, day] = match.slice(1).map(Number) as [number, number, number];
+	const date = new Date(Date.UTC(year, month - 1, day));
+	return date.getUTCFullYear() === year &&
+		date.getUTCMonth() === month - 1 &&
+		date.getUTCDate() === day
+		? text
+		: null;
+}
+
+/** Every posted exact-date field is a real calendar date, or the refusal to show. */
+export function invalidDate(form: FormData, keys: Iterable<string>): string | null {
+	for (const key of keys) {
+		const value = orNull(form.get(key));
+		if (value && !isoDate(value)) {
+			return "Write an exact date as YYYY-MM-DD, or record it as approximate.";
+		}
+	}
+	return null;
 }
 
 /** A checked choice, keeping invalid input distinct from a deliberate blank. */
@@ -79,15 +138,29 @@ export function oneOf<T extends string, const F>(
  * that the KEY SET is dynamic, and a type asserting every key is optional would not stop
  * anybody adding an unconditional write back in.
  */
-export type PersonPatchResult =
+type PersonPatchResult =
 	| { ok: true; patch: Record<string, unknown> }
 	| { ok: false; error: string };
 
 export function buildPersonPatch(form: FormData): PersonPatchResult {
 	const patch: Record<string, unknown> = {};
 
+	const length = tooLong(form, [...TEXT_FIELDS, "name"]);
+	if (length) return { ok: false, error: length };
+	const date = invalidDate(
+		form,
+		[...TEXT_FIELDS].filter((key) => DATE_FIELDS.has(key)),
+	);
+	if (date) return { ok: false, error: date };
+
 	for (const key of TEXT_FIELDS) {
 		if (form.has(key)) patch[key] = orNull(form.get(key));
+	}
+
+	// The older two-column shape can erase a name too. Both columns posted blank would
+	// leave a row the canvas can only call "Unknown", which the single field refuses below.
+	if (form.has("givenName") && form.has("familyName") && !patch.givenName && !patch.familyName) {
+		return { ok: false, error: "A person needs a name." };
 	}
 
 	/*

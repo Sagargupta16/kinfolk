@@ -1,6 +1,6 @@
 {
 	"name": "kinfolk",
-	"version": "0.7.0",
+	"version": "0.8.0",
 	"private": true,
 	"description": "Collaborative family tree maker: build your branch, connect it to relatives, see the combined tree",
 	"license": "MIT",
@@ -30,7 +30,8 @@
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio",
 		"screenshots": "tsx scripts/capture-screenshots.mts",
-		"bench:layout": "tsx scripts/bench-layout.mts"
+		"bench:layout": "tsx scripts/bench-layout.mts",
+		"sample:build": "tsx scripts/build-sample.mts"
 	},
 	"dependencies": {
 		"@auth/drizzle-adapter": "^1.11.3",

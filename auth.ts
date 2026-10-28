@@ -13,6 +13,7 @@ import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { db, hasDatabase } from "@/lib/db/client";
 import { accounts, sessions, users } from "@/lib/db/schema";
+import { githubUserinfo } from "@/lib/tree/oauth-github";
 import { claimInvites, provisionGraph } from "@/lib/tree/provision";
 import { SESSION_MAX_AGE_SECONDS } from "@/lib/tree/session-lifetime";
 
@@ -38,7 +39,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 		accountsTable: accounts,
 		sessionsTable: sessions,
 	}),
-	providers: [GitHub],
+	providers: [
+		GitHub({
+			// The provider's own userinfo request falls back to the primary or the FIRST
+			// address without checking that GitHub verified it, and that address is stored
+			// as `users.email` and matched against invites. Same rule as the SPA's sign-in.
+			userinfo: {
+				async request({ tokens }: { tokens: { access_token?: string } }) {
+					return githubUserinfo(tokens.access_token ?? "");
+				},
+			},
+		}),
+	],
 	session: { strategy: "database", maxAge: SESSION_MAX_AGE_SECONDS },
 	// Merged over the defaults by @auth/core, so naming one cookie leaves the callback,
 	// csrf and pkce cookies at their own defaults. Only the session token can be
@@ -62,10 +74,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 	 * Record that Auth.js failed without serializing its error object. Adapter errors
 	 * can contain SQL, bound profile values, and nested provider details; those do not
 	 * belong in a platform log. Deliberately NOT `debug: true` for the same reason.
+	 *
+	 * The error's TYPE is logged, though. One fixed line for everything made a session
+	 * lookup that failed during a database outage (which signs the visitor out) read the
+	 * same as an event error after a successful sign-in, and neither is a failed sign-in.
 	 */
 	logger: {
-		error() {
-			console.error("[auth] authentication failed");
+		error(error) {
+			const type =
+				"type" in error && typeof error.type === "string" ? error.type : error.name || "Error";
+			console.error(`[auth] ${type}`);
 		},
 	},
 	callbacks: {
@@ -80,9 +98,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 		/**
 		 * Give a brand new account something to look at.
 		 *
-		 * Without this, first sign-in lands on an empty state with no way forward: the
-		 * editor does not exist yet, so "add your first relative" is not an action
-		 * anybody can take, and the one screen a new user sees would be a dead end.
+		 * Without this, first sign-in lands on an empty state. The canvas edits from the
+		 * `+` handles on a card, so a graph with no card has nothing to start from, and
+		 * the one screen a new user sees would be a dead end.
 		 *
 		 * In `createUser` rather than in the page, and that placement is what keeps it
 		 * correct. It fires exactly once in the account's lifetime, inside Auth.js's own

@@ -10,7 +10,7 @@
 import type { FlowEdge, FlowNode, UnionWithChildren } from "./graph";
 import type { Kinship } from "./kinship";
 
-export type TreeViewStats = {
+type TreeViewStats = {
 	/** Logical humans after fusion. */
 	people: number;
 	/** Person ROWS that produced them; higher than `people` when trees overlap. */
@@ -64,7 +64,10 @@ export type TreeView = {
 	editableTreeIds: string[];
 	/** Labels for choosing which writable family to share. Optional for older APIs. */
 	editableTrees?: { id: string; name: string }[];
-	/** Unfused records for choosing the exact writable parenting group in quick-add. */
+	/**
+	 * Unfused records of the writable trees, for the `+` handles: which family a new parent,
+	 * partner or child joins is decided against these source unions, never the fused ones.
+	 */
 	editableUnions: UnionWithChildren[];
 	/**
 	 * Who is signed in, for the account menu.

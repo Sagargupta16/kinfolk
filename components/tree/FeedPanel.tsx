@@ -82,7 +82,7 @@ export function FeedPanel({
 					className={cn(
 						"kf-sheet kf-sheet--rail absolute z-40 flex flex-col overflow-hidden",
 						// The detail panel's own geometry: sheet on a phone, rail on a desktop.
-						"inset-x-0 bottom-0 max-h-[55dvh] rounded-t-2xl",
+						"inset-x-0 bottom-0 max-h-[min(55dvh,55%)] rounded-t-2xl",
 						"sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[22rem] sm:rounded-none sm:rounded-l-2xl",
 					)}
 				>
@@ -102,7 +102,7 @@ export function FeedPanel({
 							aria-label="Close the family feed"
 							className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-surface-raised hover:text-ink"
 						>
-							<X aria-hidden className="size-4" strokeWidth={1.5} />
+							<X aria-hidden className="size-4" strokeWidth={1.75} />
 						</button>
 					</header>
 

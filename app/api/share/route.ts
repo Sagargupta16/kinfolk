@@ -3,7 +3,7 @@
  *
  * Its own route rather than an entry on the action dispatcher, because
  * `shareState(treeId)` takes a string and returns a `ShareState` -- not
- * `(FormData) => Result` like the fourteen writes. Coercing it into that shape would
+ * `(FormData) => Result` like the seventeen writes. Coercing it into that shape would
  * mean inventing a form for it to ignore and a `Result` for it to pretend to be.
  *
  * A GET, because it reads. The dispatcher is POST-only on purpose, so this could not
@@ -12,6 +12,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { corsHeaders, preflightHeaders } from "@/lib/tree/cors";
+import { requestUserId } from "@/lib/tree/request-user";
 import { shareState } from "@/lib/tree/share-actions";
 
 export async function OPTIONS(request: NextRequest) {
@@ -33,8 +34,17 @@ export async function GET(request: NextRequest) {
 	}
 
 	try {
-		// `shareState` runs its own `sharer()` check and then `assertCanEditTree`, so a
-		// caller asking about a graph they cannot see is refused inside it rather than
+		// 401 for a missing or expired session, so the SPA can say so and drop its token;
+		// folded into an empty list it read as "nobody has access", which is a different
+		// and false answer.
+		if (!(await requestUserId())) {
+			return NextResponse.json(
+				{ error: "Sign in to see who has access." },
+				{ status: 401, headers: cors },
+			);
+		}
+		// `shareState` then runs its own `sharer()` check and `assertCanEditTree`, so a
+		// caller asking about a graph they cannot see is answered inside it rather than
 		// here. This route decides nothing about permission.
 		return NextResponse.json(await shareState(treeId), { headers: cors });
 	} catch {

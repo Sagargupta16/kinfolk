@@ -57,10 +57,13 @@ jobs:
       pages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step pushes or fetches, so the token need not stay in .git/config.
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -74,13 +77,19 @@ jobs:
         # The SPA is useless without it -- every fetch would go to the Pages origin,
         # which has no API, and the canvas would show "could not reach the server".
         # Failing here names the cause; shipping would leave it to a visitor to find.
+        #
+        # Read from `env`, never interpolated into the script: an expression is pasted
+        # into the shell source before it runs, so a variable holding a quote or `$(...)`
+        # would execute as code.
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
         run: |
-          if [ -z "${{ vars.VITE_API_BASE_URL }}" ]; then
+          if [ -z "$VITE_API_BASE_URL" ]; then
             echo "::error::VITE_API_BASE_URL is not set. Add it as a repository variable."
             exit 1
           fi
-          case "${{ vars.VITE_API_BASE_URL }}" in
-            https://*) echo "api: ${{ vars.VITE_API_BASE_URL }}" ;;
+          case "$VITE_API_BASE_URL" in
+            https://*) echo "api: $VITE_API_BASE_URL" ;;
             *) echo "::error::VITE_API_BASE_URL must be an https origin."; exit 1 ;;
           esac
 
@@ -98,10 +107,12 @@ jobs:
         # Same technique ledger-sync uses.
         run: cp frontend/dist/index.html frontend/dist/404.html
 
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Upload the build
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        # Since v4 this leaves dotfiles out of the artifact. `frontend/dist` has none; set
+        # `include-hidden-files: true` if one is ever meant to publish.
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: frontend/dist
 
@@ -124,10 +135,12 @@ jobs:
     steps:
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Verify this Pages build and its assets

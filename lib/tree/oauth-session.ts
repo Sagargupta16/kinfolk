@@ -25,23 +25,42 @@ import type { GitHubProfile } from "./oauth-github";
 import { claimInvites, provisionGraph } from "./provision";
 import { SESSION_MAX_AGE_MS } from "./session-lifetime";
 
-export type SignInResult = {
+type SignInResult = {
 	token: string;
 	expires: Date;
 	userId: string;
 	isNewUser: boolean;
 };
 
+/**
+ * A GitHub identity whose email belongs to a Kinfolk user with a GitHub account of
+ * their own. Refused, as Auth.js refuses the same case with `OAuthAccountNotLinked`.
+ */
+export class AccountConflict extends Error {
+	constructor() {
+		super(
+			"Another Kinfolk account already uses this GitHub account's email address. Sign in with the GitHub account that created it.",
+		);
+		this.name = "AccountConflict";
+	}
+}
+
 export async function signInWithGitHub(profile: GitHubProfile): Promise<SignInResult> {
-	const existing = await findUser(profile);
-	const isNewUser = !existing;
+	let userId = await accountOwner(profile.providerAccountId);
+	let isNewUser = false;
 
-	const userId = existing ?? (await createUser(profile));
+	if (!userId) {
+		const repaired = await accountlessUser(profile);
+		const candidate = repaired ?? (await createUser(profile));
+		userId = await linkAccount(candidate, profile);
+		isNewUser = !repaired && userId === candidate;
+		// Two first sign-ins raced and the other one linked first. The user made here
+		// has nothing attached yet, so it is removed rather than left as an orphan.
+		if (!repaired && userId !== candidate) await db.delete(users).where(eq(users.id, candidate));
+	}
 
-	// Link the provider account if this is the first time, and refresh the cached
-	// handle every time -- somebody can rename themselves on GitHub, and an invite
-	// addressed to the new handle would never match a stale one.
-	await linkAccount(userId, profile);
+	// Refresh the cached handle every time -- somebody can rename themselves on GitHub,
+	// and an invite addressed to the new handle would never match a stale one.
 	await db.update(users).set({ githubLogin: profile.login }).where(eq(users.id, userId));
 
 	const token = crypto.randomUUID();
@@ -58,40 +77,47 @@ export async function signInWithGitHub(profile: GitHubProfile): Promise<SignInRe
 }
 
 /**
- * The existing user for this GitHub identity, if any.
+ * The user this GitHub identity already signs in as, if any.
  *
- * By `providerAccountId` FIRST, which is the only stable identifier -- an email can
- * be changed or removed on GitHub, and matching on it alone would hand somebody
- * else's account to whoever claimed a recycled address.
- *
- * Falling back to email is what lets a user who first signed in through the
- * server-rendered flow arrive here and land on the same account rather than a
- * duplicate. `users.email` is unique, so a duplicate would fail loudly anyway --
- * but failing loudly at sign-in is still a broken sign-in.
+ * By `providerAccountId`, the only stable identifier. Both flows store GitHub's
+ * numeric id there, so a user who first signed in through the server-rendered app is
+ * found here too.
  */
-async function findUser(profile: GitHubProfile): Promise<string | null> {
-	const linked = await db
+async function accountOwner(providerAccountId: string): Promise<string | null> {
+	const [linked] = await db
 		.select({ userId: accounts.userId })
 		.from(accounts)
-		.where(
-			and(
-				eq(accounts.provider, "github"),
-				eq(accounts.providerAccountId, profile.providerAccountId),
-			),
-		)
+		.where(and(eq(accounts.provider, "github"), eq(accounts.providerAccountId, providerAccountId)))
 		.limit(1);
-	if (linked[0]) return linked[0].userId;
+	return linked?.userId ?? null;
+}
 
-	if (profile.email) {
-		const byEmail = await db
-			.select({ id: users.id })
-			.from(users)
-			.where(eq(users.email, profile.email))
-			.limit(1);
-		if (byEmail[0]) return byEmail[0].id;
-	}
+/**
+ * A user with this email and NO GitHub account, which only a half-finished first
+ * sign-in leaves behind: the user row was written and the account row was not.
+ *
+ * An email alone proves nothing about WHICH GitHub account is signing in. An address
+ * can leave one account and be verified on another, so linking whoever holds it now
+ * to a user who already has a GitHub account would hand that user's family to a
+ * stranger. That case is refused; `users.email` is unique, so creating a second user
+ * for the address is not an option either.
+ */
+async function accountlessUser(profile: GitHubProfile): Promise<string | null> {
+	if (!profile.email) return null;
+	const [byEmail] = await db
+		.select({ id: users.id })
+		.from(users)
+		.where(eq(users.email, profile.email))
+		.limit(1);
+	if (!byEmail) return null;
 
-	return null;
+	const [github] = await db
+		.select({ userId: accounts.userId })
+		.from(accounts)
+		.where(and(eq(accounts.userId, byEmail.id), eq(accounts.provider, "github")))
+		.limit(1);
+	if (github) throw new AccountConflict();
+	return byEmail.id;
 }
 
 async function createUser(profile: GitHubProfile): Promise<string> {
@@ -112,31 +138,33 @@ async function createUser(profile: GitHubProfile): Promise<string> {
 }
 
 /**
- * The `accounts` row, written once.
+ * The `accounts` row, written once, and the user it belongs to.
+ *
+ * Inserted with ON CONFLICT DO NOTHING on the provider key instead of checked first,
+ * because two first sign-ins can race: both find no account and both create a user.
+ * Whichever links first owns the identity, and the other must sign in as THAT user
+ * rather than as the account-less one it just made.
  *
  * The access token is deliberately NOT stored. Auth.js keeps it because a provider
  * refresh may need it; nothing in Kinfolk ever calls GitHub on the user's behalf
  * after sign-in, so persisting a live credential would be storing a secret for no
  * reader -- and a database that holds one is a database worth stealing.
  */
-async function linkAccount(userId: string, profile: GitHubProfile): Promise<void> {
-	const existing = await db
-		.select({ userId: accounts.userId })
-		.from(accounts)
-		.where(
-			and(
-				eq(accounts.provider, "github"),
-				eq(accounts.providerAccountId, profile.providerAccountId),
-			),
-		)
-		.limit(1);
-	if (existing[0]) return;
+async function linkAccount(userId: string, profile: GitHubProfile): Promise<string> {
+	const [inserted] = await db
+		.insert(accounts)
+		.values({
+			userId,
+			type: "oauth",
+			provider: "github",
+			providerAccountId: profile.providerAccountId,
+			scope: "read:user,user:email",
+		})
+		.onConflictDoNothing()
+		.returning({ userId: accounts.userId });
+	if (inserted) return inserted.userId;
 
-	await db.insert(accounts).values({
-		userId,
-		type: "oauth",
-		provider: "github",
-		providerAccountId: profile.providerAccountId,
-		scope: "read:user,user:email",
-	});
+	const owner = await accountOwner(profile.providerAccountId);
+	if (!owner) throw new Error("The GitHub account link was not recorded.");
+	return owner;
 }

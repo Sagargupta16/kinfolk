@@ -121,9 +121,9 @@ describe("layered layout", () => {
 	it.each(detailLevels)("preserves collision-free sample geometry at %s detail", async (lod) => {
 		const sample = buildDemoView();
 		const { nodes } = await layoutGraph(sample.nodes, sample.edges, lod);
-		expect(nodes).toHaveLength(151);
-		expect(nodes.filter((node) => node.type === "person")).toHaveLength(117);
-		expect(nodes.filter((node) => node.type === "union")).toHaveLength(34);
+		expect(nodes).toHaveLength(256);
+		expect(nodes.filter((node) => node.type === "person")).toHaveLength(216);
+		expect(nodes.filter((node) => node.type === "union")).toHaveLength(40);
 		expect(personCollisions(nodes)).toEqual([]);
 		expect(junctionCollisions(nodes)).toEqual([]);
 	});

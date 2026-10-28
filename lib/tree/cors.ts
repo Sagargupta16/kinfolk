@@ -9,8 +9,9 @@
  *
  * 1. **The origin is an ALLOW LIST, never `*` and never reflected.** Reflecting
  *    `Origin` back is the same as `*` with extra steps -- any site could call the
- *    API and read the response. The list is short because it is exactly the two
- *    places the UI is served from.
+ *    API and read the response. The list is short because it is exactly where the
+ *    UI is served from: one production origin, plus localhost in development. The
+ *    Next fallback needs no entry, because it calls its own origin.
  *
  * 2. **`Access-Control-Allow-Credentials` is deliberately ABSENT.** Auth is a
  *    bearer token in a header (see [bearer.ts](bearer.ts)), so no cookie needs to

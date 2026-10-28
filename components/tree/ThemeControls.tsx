@@ -12,17 +12,19 @@
  * State starts at the SSR default and is corrected in an effect, because the server has
  * no `localStorage` and no `matchMedia` -- guessing during render makes the first
  * client paint disagree with the markup it hydrates.
+ *
+ * Following the OS while the choice is `system` is NOT done here: these controls exist
+ * only while the Appearance menu is open, so the listener lives in `MotionPreference`,
+ * which every page mounts (see `followSystemScheme` in lib/theme.ts).
  */
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	applyMotion,
-	applyScheme,
-	isThemeChoice,
+	chooseTheme,
 	MOTION_ATTR,
 	MOTION_KEY,
-	resolveScheme,
-	THEME_KEY,
+	storedTheme,
 	type ThemeChoice,
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -39,40 +41,15 @@ export function ThemeControls({ className }: { className?: string }) {
 
 	useEffect(() => {
 		setMotion(document.documentElement.getAttribute(MOTION_ATTR) !== "off");
-		try {
-			const stored = localStorage.getItem(THEME_KEY);
-			if (isThemeChoice(stored)) setChoice(stored);
-		} catch {
-			// A private window throws on `localStorage` access rather than returning null.
-			// The attribute the inline script wrote is still correct, so there is nothing to
-			// recover -- only the control's own label would be wrong, for one session.
-		}
+		// Storage that throws reads as `system`. The attribute the inline script wrote is
+		// still what is on screen, so at worst the control's own label is wrong, for one
+		// session.
+		setChoice(storedTheme());
 	}, []);
-
-	/**
-	 * Follow the OS while the choice is `system`, and only then.
-	 *
-	 * Without this, picking `system` resolves once and then never changes again -- so a
-	 * canvas left open through dusk stays in the wrong scheme, which is the one thing
-	 * `system` promises not to do.
-	 */
-	useEffect(() => {
-		if (choice !== "system") return;
-		const query = window.matchMedia("(prefers-color-scheme: light)");
-		const onChange = () => applyScheme(resolveScheme("system"));
-		query.addEventListener("change", onChange);
-		return () => query.removeEventListener("change", onChange);
-	}, [choice]);
 
 	const pickTheme = useCallback((next: ThemeChoice) => {
 		setChoice(next);
-		applyScheme(resolveScheme(next));
-		try {
-			localStorage.setItem(THEME_KEY, next);
-		} catch {
-			// Unwritable storage costs persistence, not the switch: the attribute is already
-			// applied, so the choice holds for this session.
-		}
+		chooseTheme(next);
 	}, []);
 
 	const pickMotion = useCallback((next: boolean) => {
@@ -81,7 +58,8 @@ export function ThemeControls({ className }: { className?: string }) {
 		try {
 			localStorage.setItem(MOTION_KEY, next ? "on" : "off");
 		} catch {
-			/* see above */
+			// Unwritable storage costs persistence, not the switch: the attribute is already
+			// applied, so the choice holds for this session.
 		}
 	}, []);
 
@@ -110,6 +88,11 @@ export function ThemeControls({ className }: { className?: string }) {
 						className={cn(
 							// 44px is the touch floor, and these sit in a header a thumb reaches for.
 							"flex size-11 items-center justify-center",
+							// The group clips its children, so the focus ring is drawn inside the
+							// button. The `!` is load-bearing: the global ring in globals.css is
+							// unlayered, and unlayered CSS beats a layered utility unless it is
+							// important.
+							"focus-visible:-outline-offset-2!",
 							"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 							choice === value
 								? "bg-surface-raised text-accent-ink"
@@ -137,6 +120,7 @@ export function ThemeControls({ className }: { className?: string }) {
 						aria-pressed={motion === enabled}
 						className={cn(
 							"min-h-11 flex-1 px-2 text-xs transition-colors duration-(--duration-fast)",
+							"focus-visible:-outline-offset-2!",
 							motion === enabled
 								? "bg-surface-raised text-accent-ink"
 								: "text-ink-faint hover:bg-surface-raised hover:text-ink",

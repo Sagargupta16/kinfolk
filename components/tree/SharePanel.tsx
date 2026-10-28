@@ -6,6 +6,10 @@
  * An invite is addressed to one identity, claimed once, expires after two weeks, and can
  * be withdrawn. That keeps a family record answerable: the owner can always see exactly who
  * has access instead of relying on a link that may have been forwarded.
+ *
+ * Only the owner changes that list (`state.canManage`). An editor sees the same members and
+ * invitations read-only: every control here would be refused by the server for them, and
+ * a control that can only refuse is an advertisement for an action that does not exist.
  */
 import {
 	AlertCircle,
@@ -22,13 +26,16 @@ import {
 	X,
 } from "lucide-react";
 import { type SubmitEvent, useId, useState, useTransition } from "react";
-import type { Result } from "@/lib/tree/edit-actions";
-import { invite, removeMember, revokeInvite, type ShareState } from "@/lib/tree/share-actions";
+import type { Result } from "@/lib/tree/result";
+import { invite, removeMember, revokeInvite } from "@/lib/tree/share-actions";
+import type { ShareState } from "@/lib/tree/sharing";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
 
+// 16px text: iOS Safari zooms the page into any smaller field, and this one sits on a
+// fixed-height canvas.
 const field = cn(
-	"min-h-11 w-full rounded-lg border border-hairline bg-canvas px-3 text-sm text-ink",
+	"min-h-11 w-full rounded-lg border border-hairline bg-canvas px-3 text-base text-ink",
 	"placeholder:text-ink-faint transition-colors duration-(--duration-fast) ease-(--ease-out)",
 	"focus:border-hairline-strong focus:outline-none",
 );
@@ -93,11 +100,11 @@ export function SharePanel({
 			aria-labelledby={titleId}
 			className={cn(
 				"kf-sheet kf-share-sheet flex w-[min(23rem,calc(100vw-1.5rem))] flex-col overflow-hidden",
-				"max-h-[min(82dvh,38rem)] rounded-lg border border-hairline-strong",
+				"max-h-[min(82dvh,38rem)] rounded-2xl border border-hairline-strong",
 				"bg-surface shadow-(--kf-shadow-panel)",
 			)}
 		>
-			<header className="kf-sheet-header flex shrink-0 items-center gap-3 border-b border-hairline px-3 py-2.5">
+			<header className="kf-sheet-header flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-3">
 				<div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent-ink">
 					<ShieldCheck className="size-4" strokeWidth={1.75} aria-hidden="true" />
 				</div>
@@ -111,9 +118,9 @@ export function SharePanel({
 					type="button"
 					onClick={onClose}
 					aria-label="Close family access"
-					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-surface-raised hover:text-ink"
+					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 				>
-					<X aria-hidden className="size-4" strokeWidth={1.5} />
+					<X aria-hidden className="size-4" strokeWidth={1.75} />
 				</button>
 			</header>
 
@@ -124,141 +131,156 @@ export function SharePanel({
 					aria-hidden="true"
 				/>
 				<p className="text-[0.6875rem] leading-relaxed text-ink-muted">
-					Manage direct access here. Members of linked families can also have viewing access.
+					{state.canManage
+						? "Manage direct access here."
+						: "Only the owner of this family changes who has access."}{" "}
+					Members of linked families can also have viewing access.
 				</p>
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
-				<form onSubmit={run(invite)} aria-busy={pending} className="space-y-3">
-					<input type="hidden" name="treeId" value={treeId} />
+				{state.canManage && (
+					<form onSubmit={run(invite)} aria-busy={pending} className="space-y-3">
+						<input type="hidden" name="treeId" value={treeId} />
 
-					<div>
-						<h3 className="text-[0.875rem] font-medium text-ink">Invite a relative</h3>
-						<p className="mt-0.5 text-[0.6875rem] leading-relaxed text-ink-faint">
-							After creating an invite, ask them to sign in with that email or GitHub account.
-							Kinfolk does not send an email.
-						</p>
-					</div>
-
-					<fieldset>
-						<legend className={fieldLabel}>Invite with</legend>
-						<div className="grid grid-cols-2 overflow-hidden rounded-lg border border-hairline">
-							<button
-								type="button"
-								disabled={pending}
-								onClick={() => setMethod("email")}
-								aria-pressed={method === "email"}
-								className={cn(
-									"flex min-h-11 items-center justify-center gap-2 border-r border-hairline px-2",
-									"text-[0.75rem] font-medium transition-colors",
-									method === "email"
-										? "bg-surface-raised text-accent-ink"
-										: "text-ink-muted hover:bg-surface-raised hover:text-ink",
-								)}
-							>
-								<Mail className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-								Email
-							</button>
-							<button
-								type="button"
-								disabled={pending}
-								onClick={() => setMethod("github")}
-								aria-pressed={method === "github"}
-								className={cn(
-									"flex min-h-11 items-center justify-center gap-2 px-2",
-									"text-[0.75rem] font-medium transition-colors",
-									method === "github"
-										? "bg-surface-raised text-accent-ink"
-										: "text-ink-muted hover:bg-surface-raised hover:text-ink",
-								)}
-							>
-								<AtSign className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-								GitHub
-							</button>
+						<div>
+							<h3 className="text-[0.875rem] font-medium text-ink">Invite a relative</h3>
+							<p className="mt-0.5 text-[0.6875rem] leading-relaxed text-ink-faint">
+								After creating an invite, ask them to sign in with that email or GitHub account.
+								Kinfolk does not send an email.
+							</p>
 						</div>
-					</fieldset>
 
-					<div key={method}>
-						{method === "email" ? (
-							<label className="block">
-								<span className={fieldLabel}>Email address</span>
-								<div className="relative">
-									<Mail
-										className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
-										strokeWidth={1.5}
-										aria-hidden="true"
-									/>
-									<input
-										name="email"
-										type="email"
-										required
-										placeholder="relative@example.com"
-										className={cn(field, "pl-9")}
-										autoComplete="off"
-									/>
-								</div>
-							</label>
-						) : (
-							<label className="block">
-								<span className={fieldLabel}>GitHub username</span>
-								<div className="relative">
-									<AtSign
-										className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
-										strokeWidth={1.5}
-										aria-hidden="true"
-									/>
-									<input
-										name="githubLogin"
-										required
-										placeholder="@username"
-										className={cn(field, "pl-9")}
-										autoComplete="off"
-										autoCapitalize="none"
-										spellCheck={false}
-									/>
-								</div>
-							</label>
-						)}
-					</div>
+						<fieldset>
+							<legend className={fieldLabel}>Invite with</legend>
+							<div className="grid grid-cols-2 overflow-hidden rounded-lg border border-hairline">
+								<button
+									type="button"
+									disabled={pending}
+									onClick={() => setMethod("email")}
+									aria-pressed={method === "email"}
+									className={cn(
+										"flex min-h-11 items-center justify-center gap-2 border-r border-hairline px-2",
+										"text-[0.75rem] font-medium transition-colors",
+										// The group clips, so the ring goes inside; `!` because the global
+										// ring is unlayered CSS and beats a layered utility otherwise.
+										"focus-visible:-outline-offset-2!",
+										method === "email"
+											? "bg-surface-raised text-accent-ink"
+											: "text-ink-muted hover:bg-surface-raised hover:text-ink",
+									)}
+								>
+									<Mail className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+									Email
+								</button>
+								<button
+									type="button"
+									disabled={pending}
+									onClick={() => setMethod("github")}
+									aria-pressed={method === "github"}
+									className={cn(
+										"flex min-h-11 items-center justify-center gap-2 px-2",
+										"text-[0.75rem] font-medium transition-colors",
+										"focus-visible:-outline-offset-2!",
+										method === "github"
+											? "bg-surface-raised text-accent-ink"
+											: "text-ink-muted hover:bg-surface-raised hover:text-ink",
+									)}
+								>
+									<AtSign className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+									GitHub
+								</button>
+							</div>
+						</fieldset>
 
-					<fieldset>
-						<legend className={fieldLabel}>Access level</legend>
-						<div className="grid grid-cols-2 gap-1.5">
-							<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
-								<input type="radio" name="role" value="viewer" defaultChecked className="sr-only" />
-								<span>
-									<span className="block text-[0.75rem] font-medium text-ink">Can view</span>
-									<span className="block text-[0.625rem] text-ink-faint">Read only</span>
-								</span>
-							</label>
-							<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
-								<input type="radio" name="role" value="editor" className="sr-only" />
-								<span>
-									<span className="block text-[0.75rem] font-medium text-ink">Can edit</span>
-									<span className="block text-[0.625rem] text-ink-faint">Add and update</span>
-								</span>
-							</label>
+						<div key={method}>
+							{method === "email" ? (
+								<label className="block">
+									<span className={fieldLabel}>Email address</span>
+									<div className="relative">
+										<Mail
+											className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
+											strokeWidth={1.5}
+											aria-hidden="true"
+										/>
+										<input
+											name="email"
+											type="email"
+											required
+											placeholder="relative@example.com"
+											className={cn(field, "pl-9")}
+											autoComplete="off"
+										/>
+									</div>
+								</label>
+							) : (
+								<label className="block">
+									<span className={fieldLabel}>GitHub username</span>
+									<div className="relative">
+										<AtSign
+											className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
+											strokeWidth={1.5}
+											aria-hidden="true"
+										/>
+										<input
+											name="githubLogin"
+											required
+											placeholder="@username"
+											className={cn(field, "pl-9")}
+											autoComplete="off"
+											autoCapitalize="none"
+											spellCheck={false}
+										/>
+									</div>
+								</label>
+							)}
 						</div>
-					</fieldset>
 
-					<button
-						type="submit"
-						disabled={pending}
-						className={cn(
-							"flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4",
-							"text-sm font-medium text-canvas transition-transform",
-							"duration-(--duration-fast) ease-(--ease-out)",
-							"hover:-translate-y-px active:translate-y-0 disabled:cursor-wait disabled:opacity-60",
-						)}
-					>
-						{pending ? (
-							<Loader2 className="size-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
-						) : (
-							<UserPlus className="size-4" strokeWidth={1.75} aria-hidden="true" />
-						)}
-						{pending ? "Creating invite..." : "Create invite"}
-					</button>
-				</form>
+						<fieldset>
+							<legend className={fieldLabel}>Access level</legend>
+							<div className="grid grid-cols-2 gap-1.5">
+								<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
+									<input
+										type="radio"
+										name="role"
+										value="viewer"
+										defaultChecked
+										className="sr-only"
+									/>
+									<span>
+										<span className="block text-[0.75rem] font-medium text-ink">Can view</span>
+										<span className="block text-[0.625rem] text-ink-faint">Read only</span>
+									</span>
+								</label>
+								<label className="flex min-h-12 cursor-pointer items-center rounded-lg border border-hairline px-3 py-2 has-checked:border-accent/40 has-checked:bg-accent/8 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
+									<input type="radio" name="role" value="editor" className="sr-only" />
+									<span>
+										<span className="block text-[0.75rem] font-medium text-ink">Can edit</span>
+										<span className="block text-[0.625rem] text-ink-faint">Add and update</span>
+									</span>
+								</label>
+							</div>
+						</fieldset>
+
+						<button
+							type="submit"
+							disabled={pending}
+							className={cn(
+								"flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4",
+								"text-sm font-medium text-canvas transition-transform",
+								"duration-(--duration-fast) ease-(--ease-out)",
+								"hover:-translate-y-px active:translate-y-0 disabled:cursor-wait disabled:opacity-60",
+							)}
+						>
+							{pending ? (
+								<Loader2 className="size-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+							) : (
+								<UserPlus className="size-4" strokeWidth={1.75} aria-hidden="true" />
+							)}
+							{pending ? "Creating invite..." : "Create invite"}
+						</button>
+					</form>
+				)}
 
 				{message && (
 					<div
@@ -287,7 +309,8 @@ export function SharePanel({
 					</div>
 				)}
 
-				<section className="mt-5 border-t border-hairline pt-3">
+				{/* Ruled off from the invite form; read-only, it is the first thing in the panel. */}
+				<section className={cn(state.canManage && "mt-5 border-t border-hairline pt-3")}>
 					<div className="mb-1.5 flex items-center justify-between gap-3">
 						<h3 className={heading}>People with access</h3>
 						<span className="tabular text-[0.625rem] text-ink-faint">{state.members.length}</span>
@@ -302,7 +325,7 @@ export function SharePanel({
 									<p className="truncate text-xs font-medium text-ink">{member.name}</p>
 									<p className="text-[0.625rem] text-ink-faint">{accessLabel(member.role)}</p>
 								</div>
-								{!member.isOwner && (
+								{state.canManage && !member.isOwner && (
 									<form onSubmit={run(removeMember)} className="shrink-0">
 										<input type="hidden" name="treeId" value={treeId} />
 										<input type="hidden" name="userId" value={member.userId} />
@@ -340,18 +363,20 @@ export function SharePanel({
 											{accessLabel(row.role)}, expires {row.expiresAt}
 										</p>
 									</div>
-									<form onSubmit={run(revokeInvite)} className="shrink-0">
-										<input type="hidden" name="inviteId" value={row.id} />
-										<button
-											type="submit"
-											disabled={pending}
-											aria-label={`Withdraw the invite to ${row.addressedTo}`}
-											title={`Withdraw invite to ${row.addressedTo}`}
-											className="flex size-11 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-surface-raised hover:text-danger disabled:cursor-wait disabled:opacity-40"
-										>
-											<Trash2 aria-hidden className="size-3.5" strokeWidth={1.5} />
-										</button>
-									</form>
+									{state.canManage && (
+										<form onSubmit={run(revokeInvite)} className="shrink-0">
+											<input type="hidden" name="inviteId" value={row.id} />
+											<button
+												type="submit"
+												disabled={pending}
+												aria-label={`Withdraw the invite to ${row.addressedTo}`}
+												title={`Withdraw invite to ${row.addressedTo}`}
+												className="flex size-11 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-surface-raised hover:text-danger disabled:cursor-wait disabled:opacity-40"
+											>
+												<Trash2 aria-hidden className="size-3.5" strokeWidth={1.5} />
+											</button>
+										</form>
+									)}
 								</li>
 							))}
 						</ul>

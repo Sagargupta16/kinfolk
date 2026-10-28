@@ -10,7 +10,7 @@ legend:
   dashed: Server-rendered fallback, no SPA
 
 groups:
-  pages: { type: box, label: GitHub Pages, evidence: .github/workflows/pages.yml:106 }
+  pages: { type: box, label: GitHub Pages, evidence: .github/workflows/pages.yml:117#frontend/dist }
   vercel: { type: box, label: "Vercel, sin1", evidence: vercel.json:6 }
 
 nodes:
@@ -25,19 +25,19 @@ nodes:
     icon: logos:github-icon
     label: GitHub OAuth
     note: the only sign-in provider
-    evidence: [auth.ts:41#GitHub, lib/tree/oauth-github.ts:70#TOKEN]
+    evidence: [auth.ts:43#GitHub, lib/tree/oauth-github.ts:91#TOKEN]
   api:
     icon: logos:nextjs-icon
     label: Next.js JSON API
     note: "app/api, CORS allow list"
     in: vercel
-    evidence: app/api/tree/route.ts:62#viewerFromBearer
+    evidence: app/api/tree/route.ts:74#viewerFromBearer
   ssr:
     icon: logos:nextjs-icon
     label: Next.js fallback
     note: "pages, server actions, Auth.js"
     in: vercel
-    evidence: app/tree/page.tsx:32#sessionOrNull
+    evidence: app/tree/page.tsx:37#sessionOrNull
   neon:
     icon: logos:neon-icon
     label: Neon Postgres
@@ -47,7 +47,7 @@ nodes:
 edges:
   - browser -> spa: static bundle
   - browser -> api: { label: "JSON, bearer token", evidence: frontend/src/api.ts:66#authHeaders }
-  - browser --> ssr: { label: httpOnly cookie, evidence: auth.ts:50#httpOnly }
-  - browser -> github: { label: authorize, evidence: frontend/src/auth.ts:53#authorize }
-  - vercel -> github: { label: code exchange, evidence: lib/tree/oauth-github.ts:70#TOKEN }
+  - browser --> ssr: { label: httpOnly cookie, evidence: auth.ts:62#httpOnly }
+  - browser -> github: { label: authorize, evidence: frontend/src/auth.ts:68#authorize }
+  - vercel -> github: { label: code exchange, evidence: lib/tree/oauth-github.ts:91#TOKEN }
   - vercel -> neon: { label: Drizzle over HTTP, evidence: lib/db/client.ts:42#neon }

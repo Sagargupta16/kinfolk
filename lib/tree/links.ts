@@ -1,4 +1,4 @@
-export type LinkCandidate = {
+type LinkCandidate = {
 	id: string;
 	name: string;
 	treeId: string;

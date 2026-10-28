@@ -28,7 +28,7 @@ Start from the supplied change set. If needed, use only read-oriented shell comm
 
 ### 3. Read access is not write authorization
 
-- `accessibleTrees()` and accepted links answer read reachability. They never grant writes.
+- `treeAccessForUser()` in `lib/tree/read-access.ts` and accepted links answer read reachability. They never grant writes.
 - Every mutation must derive permissions server-side through `editableTreeIds()`, `assertCanEditTree()`, or the appropriate editable source resolver in `lib/tree/authz.ts` and `lib/tree/editable.ts`.
 - `TreeView.editableTreeId` is only a rendering hint and is attacker-controlled once sent to a client.
 - A union or relation cannot straddle trees; cross-tree identity uses consent-gated `person_links`. Flag any action that trusts submitted tree/person IDs without rechecking ownership/editor role and same-tree constraints.
@@ -59,7 +59,7 @@ Start from the supplied change set. If needed, use only read-oriented shell comm
 Return findings first, ordered by severity:
 
 ```text
-[high|medium|low] Short title — path/to/file.ts:line
+[high|medium|low] Short title -- path/to/file.ts:line
 Invariant: the Kinfolk contract being violated.
 Impact: the concrete privacy, authorization, data-integrity, cross-frontend, or rendering failure.
 Fix: the smallest safe correction.

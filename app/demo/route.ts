@@ -13,7 +13,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { DEMO_COOKIE } from "@/lib/tree/demo";
 
 export async function GET(request: NextRequest) {
-	const response = NextResponse.redirect(new URL("/tree", request.url));
+	// `?demo=1`, so the sample shows even for somebody signed in: the link names the sample.
+	const response = NextResponse.redirect(new URL("/tree?demo=1", request.url));
 	response.cookies.set(DEMO_COOKIE, "1", {
 		httpOnly: true,
 		sameSite: "lax",

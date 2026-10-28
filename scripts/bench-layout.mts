@@ -1,6 +1,6 @@
 /**
  * Time the family layout (ELK layered plus Kinfolk's pedigree passes) on generated
- * families of increasing size, and on the bundled 117-person sample tree.
+ * families of increasing size, and on the bundled sample tree (the Wikidata royal families).
  *
  *   pnpm bench:layout             # 50, 200 and 1000 people
  *   pnpm bench:layout 100 500     # any sizes
@@ -109,7 +109,8 @@ const sizes = process.argv
 	.map(Number)
 	.filter((n) => Number.isInteger(n) && n >= 2);
 const cases = [
-	{ label: "sample tree, 117 people", view: buildDemoView() },
+	// Counted rather than written down: the sample is rebuilt from Wikidata now and then.
+	{ label: `sample tree, ${buildDemoView().stats.people} people`, view: buildDemoView() },
 	...(sizes.length ? sizes : [50, 200, 1000]).map(family),
 ];
 

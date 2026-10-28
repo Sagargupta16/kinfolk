@@ -2,12 +2,12 @@
 
 Local setup is [SETUP.md](SETUP.md). This is the production path.
 
-## Release verification in 0.4.0
+## Release verification
 
-Released and deployed on **2026-09-10**: the Deploy workflow applied migrations and passed
-its serving-commit and readiness checks. On 2026-10-18 `GET /api/health` returned `ready`,
-version 0.4.0, commit `8eb9b35`, database ready, auth configured.
-Local checks and their limits are in the [verification report](verification-0.4.0.md).
+0.4.0 was released and deployed on **2026-09-10**: the Deploy workflow applied migrations and
+passed its serving-commit and readiness checks. On 2026-10-28 `GET /api/health` returned `ready`,
+version 0.7.0, commit `4b181b2`, database ready, auth configured, and the Pages SPA served the
+same commit. Local 0.4.0 checks and their limits are in the [verification report](verification-0.4.0.md).
 
 `GET /api/health` returns 200 only when the database query can resolve
 the required tables and columns and authentication variables are present. Failures return 503
@@ -54,7 +54,7 @@ for the prepared 0.4.0 branch and does not establish its production migration st
 > verified 3/4 committed migrations, ran `drizzle-kit migrate`, then complete-checked
 > 4/4 before endpoint verification passed. Release 0.3.1 adds
 > `0004_dusty_karen_page.sql`, which contains only the atomic creation-budget table
-> and its cascading tree foreign key—no genealogy rows or credentials. The deploy
+> and its cascading tree foreign key -- no genealogy rows or credentials. The deploy
 > workflow applies every committed migration before its complete-history check.
 
 The 0.3.1 runtime temporarily falls back to the prior timestamp-count budget if the app
@@ -157,7 +157,7 @@ policy disables Preview builds; do not copy production credentials to a new prev
 | `DATABASE_URL` | Neon connection string. The **pooler** host is correct here -- the app talks over the serverless HTTP driver, and a serverless function opens a connection per invocation. |
 | `AUTH_SECRET` | A fresh 32+ byte random string. **Not** the one from `.env.local`: a local secret that leaks should not be able to forge production sessions. Generate with `node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"`. |
 | `AUTH_URL` | `https://kinfolk-neon.vercel.app`, with no trailing slash. Auth.js builds its callback URL from this. The 2026-08-08 checks found the other Vercel aliases unsuitable; confirm the intended host rather than guessing. |
-| `AUTH_TRUST_HOST` | `true`. Auth.js must trust Vercel's forwarded host. |
+| `AUTH_TRUST_HOST` | `true`, set for clarity. On Vercel, Auth.js trusts the forwarded host without it: `@auth/core` infers `trustHost` from the `VERCEL` variable, or from a set `AUTH_URL`. |
 | `AUTH_GITHUB_ID` | From the production OAuth app below. |
 | `AUTH_GITHUB_SECRET` | Same. |
 
@@ -216,9 +216,9 @@ CI needs no secrets at all. `lib/db/client.ts` is built to import cleanly with n
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | PRs targeting `main`, pushes to `main`, or manual dispatch | frozen-lockfile install, lint, both typechecks, isolated tests, dependency audit at high severity, both builds, and the built-CSS guard |
+| [`ci.yml`](../.github/workflows/ci.yml) | PRs targeting `main`, pushes to `main`, or manual dispatch | frozen-lockfile install, lint, both typechecks, isolated tests, dependency audit at low severity, both builds, and the built-CSS guard |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | pushes to `main` matching its runtime/migration paths, or manual dispatch | requires migration configuration, checks history before and after applying committed migrations, then waits for the exact serving SHA and API readiness |
-| [`health.yml`](../.github/workflows/health.yml) | daily at 02:31 UTC or manual dispatch | checks API identity, schema readiness, auth configuration, protected reads, sample data, and Pages assets without requiring equal deployment SHAs |
+| [`health.yml`](../.github/workflows/health.yml) | daily, scheduled at 02:31 UTC (GitHub usually starts it several hours later), or manual dispatch | checks API identity, schema readiness, auth configuration, protected reads, sample data, and Pages assets without requiring equal deployment SHAs |
 | [`pages.yml`](../.github/workflows/pages.yml) | pushes to `main` matching SPA/shared UI paths, or manual dispatch | builds and publishes `frontend/dist`, then checks the published SHA, manifest assets, and theme script |
 
 Vercel's Git integration and `deploy.yml` start independently on the same push. The workflow
@@ -234,7 +234,9 @@ Committed migration history runs from `0000` through `0004`. Before writing, the
 preflight requires the live history to be an exact prefix of those committed files;
 after `db:migrate`, the complete check requires every committed migration. The baseline
 procedure below is historical and applies only to an existing database created before
-migration tracking. A new empty database should run the committed migrations.
+migration tracking. A new empty database has no migration tracking, which the deploy
+preflight refuses, so apply the committed migrations by hand once (`pnpm db:migrate` on the
+direct host) before enabling Deploy, as [SELF-HOSTING.md](SELF-HOSTING.md) describes.
 
 The schema was originally created with `db:push`, so `0000` is a BASELINE: a full
 `CREATE TABLE` script describing tables that already exist. Running it against the live

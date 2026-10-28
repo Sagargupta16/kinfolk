@@ -32,6 +32,7 @@ import { displayName, type FusedPerson } from "@/lib/tree/graph";
 import { splitName } from "@/lib/tree/kin-plan";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
+import { joinedName } from "./NodeEdit";
 
 /**
  * The schema's own values, `unknown` included.
@@ -53,11 +54,6 @@ const LIVING = [
 	{ value: "deceased", label: "Passed away" },
 	{ value: "unknown", label: "Not known" },
 ] as const;
-
-/** The two name columns as the one field shows them, whitespace collapsed for comparison. */
-function joinedName(givenName: string | null | undefined, familyName: string | null | undefined) {
-	return [givenName, familyName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-}
 
 export function PersonEdit({
 	person,
@@ -207,7 +203,7 @@ export function PersonEdit({
 					type="submit"
 					disabled={pending || confirmDelete}
 					className={cn(
-						"kf-primary-action mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg",
+						"mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg",
 						"border border-accent/40 bg-accent/10 text-[0.8125rem] font-medium text-accent-ink",
 						"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 						"hover:bg-accent/20 disabled:cursor-wait disabled:opacity-60",
@@ -314,14 +310,14 @@ function Shell({
 }) {
 	return (
 		<div
-			// Announced like the add sheet in NodeAdd: a dialog with the heading as its
-			// name. Non-modal, because the canvas behind stays usable.
+			// A dialog named by its heading, the way the canvas strips are named by their
+			// aria-label. Non-modal, because the canvas behind stays usable.
 			role="dialog"
 			aria-modal="false"
 			aria-labelledby={titleId}
 			className="flex min-h-0 flex-1 flex-col overflow-hidden"
 		>
-			<div className="flex items-center gap-2 border-b border-hairline px-3 pb-2.5 pt-3">
+			<div className="flex items-center gap-2 border-b border-hairline px-4 py-3">
 				<Pencil
 					className="size-3.5 shrink-0 text-ink-faint"
 					strokeWidth={1.75}
@@ -336,7 +332,7 @@ function Shell({
 					aria-label="Close without saving"
 					className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 				>
-					<X className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+					<X className="size-4" strokeWidth={1.75} aria-hidden="true" />
 				</button>
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2">{children}</div>
@@ -425,25 +421,6 @@ function Choice({
 	);
 }
 
-/** The pencil that opens it, for the panel header. */
-export function EditButton({ onOpen, label }: { onOpen: () => void; label: string }) {
-	return (
-		<button
-			type="button"
-			onClick={onOpen}
-			aria-label={label}
-			title={label}
-			className={cn(
-				"flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint",
-				"transition-colors duration-(--duration-fast) ease-(--ease-out)",
-				"hover:bg-surface-raised hover:text-accent-ink",
-			)}
-		>
-			<Pencil className="size-4" strokeWidth={1.75} aria-hidden="true" />
-		</button>
-	);
-}
-
 /** Wraps the form so it can animate in over the panel's read view. */
 export function PersonEditSheet({
 	person,
@@ -477,7 +454,7 @@ export function PersonEditSheet({
 					}}
 					// Over the panel's own content rather than beside it: the form and the read view
 					// answer the same question, so showing both would be the same data twice.
-					className="absolute inset-0 z-10 flex flex-col bg-surface/95 backdrop-blur-sm"
+					className="absolute inset-0 z-10 flex flex-col bg-surface"
 				>
 					<PersonEdit
 						key={target?.editable ? target.personId : person.id}

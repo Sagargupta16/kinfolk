@@ -19,12 +19,23 @@ import type { TreeView } from "./view";
 /** Cookie that opts a visitor into sample data. Session-scoped, no value beyond "on". */
 export const DEMO_COOKIE = "kinfolk_demo";
 
-export type DemoOptions = {
+type DemoOptions = {
 	/** False drops the relative's tree, showing what a viewer without a share sees. */
 	combined?: boolean;
 	/** False hides the social overlay, leaving the bare family skeleton. */
 	showRelations?: boolean;
 };
+
+/**
+ * One built view per option pair, made on first request and shared after.
+ *
+ * The view is a pure function of its two flags over module constants, yet fusion, the
+ * projection and the kinship walk used to run again for every demo request. Shared, so it
+ * is read-only: every caller copies before changing anything (`serialiseTreeView` and the
+ * tests spread it), and the layout writes only to its own position map, never to the nodes
+ * or edges it is handed.
+ */
+const built = new Map<string, TreeView>();
 
 /**
  * Build the demo view.
@@ -37,6 +48,10 @@ export function buildDemoView({
 	combined = true,
 	showRelations = true,
 }: DemoOptions = {}): TreeView {
+	const key = `${combined}:${showRelations}`;
+	const cached = built.get(key);
+	if (cached) return cached;
+
 	const slices = combined
 		? sampleSlices
 		: sampleSlices.filter((slice) => slice.treeId === samplePrimaryTreeId);
@@ -45,7 +60,7 @@ export function buildDemoView({
 	const fused = fuseTrees(slices, links, samplePrimaryTreeId);
 	const { nodes, edges } = toFlowGraph(fused);
 
-	return {
+	const view: TreeView = {
 		nodes,
 		edges,
 		selfId: sampleSelfId,
@@ -70,4 +85,6 @@ export function buildDemoView({
 			trees: slices.length,
 		},
 	};
+	built.set(key, view);
+	return view;
 }

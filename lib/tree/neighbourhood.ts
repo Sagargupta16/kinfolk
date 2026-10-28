@@ -12,7 +12,7 @@
  */
 import type { FlowEdge } from "./graph";
 
-export type Neighbourhood = {
+type Neighbourhood = {
 	/** Nodes to keep lit, including the focused person and any union dots between. */
 	nodeIds: Set<string>;
 	edgeIds: Set<string>;

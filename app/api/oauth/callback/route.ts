@@ -17,8 +17,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { corsHeaders, preflightHeaders } from "@/lib/tree/cors";
-import { exchangeCode, fetchProfile } from "@/lib/tree/oauth-github";
-import { signInWithGitHub } from "@/lib/tree/oauth-session";
+import { exchangeCode, fetchProfile, SPENT_CODE } from "@/lib/tree/oauth-github";
+import { AccountConflict, signInWithGitHub } from "@/lib/tree/oauth-session";
 import { verifyState } from "@/lib/tree/oauth-state";
 import { allowedRedirect } from "@/lib/tree/redirect-allow";
 
@@ -34,26 +34,23 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
 	const cors = { ...corsHeaders(request.headers.get("origin")), ...NO_STORE };
 
-	let body: { code?: unknown; state?: unknown; redirect_uri?: unknown };
+	let parsed: unknown;
 	try {
-		body = await request.json();
+		parsed = await request.json();
 	} catch {
 		return NextResponse.json({ error: "expected a JSON body" }, { status: 400, headers: cors });
 	}
+	// `null`, a string or an array is valid JSON too, and reading a field off `null`
+	// would throw before any handler could add the CORS headers.
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		return NextResponse.json({ error: "expected a JSON object" }, { status: 400, headers: cors });
+	}
+	const body = parsed as { code?: unknown; state?: unknown; redirect_uri?: unknown };
 
 	const code = typeof body.code === "string" ? body.code : null;
 	const state = typeof body.state === "string" ? body.state : null;
 	if (!code) {
 		return NextResponse.json({ error: "code is missing" }, { status: 400, headers: cors });
-	}
-
-	// CSRF. Verified by signature, so any instance can check a state it never issued
-	// -- the reason it is an HMAC rather than a remembered nonce.
-	if (!(await verifyState(state))) {
-		return NextResponse.json(
-			{ error: "this sign-in link has expired or was not started here" },
-			{ status: 400, headers: cors },
-		);
 	}
 
 	// Must match the value sent to `/authorize`, because GitHub compares it at
@@ -70,22 +67,43 @@ export async function POST(request: NextRequest) {
 	}
 
 	// Track the failing stage for server logs. It is never included in the response.
-	let stage = "exchange";
+	let stage = "state";
 
 	try {
-		const accessToken = await exchangeCode(code, redirectUri);
-		if (!accessToken) {
-			// A spent, forged or expired code. 400 because the caller can recover by
-			// starting again, which a 500 would not suggest.
+		// CSRF. Verified by signature, so any instance can check a state it never issued
+		// -- the reason it is an HMAC rather than a remembered nonce. Inside the try
+		// because signing needs AUTH_SECRET, and a missing one throws.
+		if (!(await verifyState(state))) {
 			return NextResponse.json(
-				{ error: "GitHub would not accept that code. Try signing in again." },
+				{ error: "this sign-in link has expired or was not started here" },
 				{ status: 400, headers: cors },
 			);
 		}
 
+		stage = "exchange";
+		const exchange = await exchangeCode(code, redirectUri);
+		if (!exchange.ok) {
+			if (exchange.reason === SPENT_CODE) {
+				// A spent, forged or expired code. 400 because the caller can recover by
+				// starting again, which a 500 would not suggest.
+				return NextResponse.json(
+					{ error: "GitHub would not accept that code. Try signing in again." },
+					{ status: 400, headers: cors },
+				);
+			}
+			// A rejected client secret, a redirect GitHub does not know, or an outage:
+			// ours to fix, so it is logged by GitHub's own error code.
+			console.error(`[oauth] exchange refused: ${exchange.reason}`);
+			return NextResponse.json(
+				{ error: "GitHub did not complete the sign-in. Try again in a moment." },
+				{ status: 502, headers: cors },
+			);
+		}
+
 		stage = "profile";
-		const profile = await fetchProfile(accessToken);
+		const profile = await fetchProfile(exchange.accessToken);
 		if (!profile) {
+			console.error("[oauth] callback failed at profile");
 			return NextResponse.json(
 				{ error: "could not read your GitHub profile" },
 				{ status: 502, headers: cors },
@@ -103,13 +121,22 @@ export async function POST(request: NextRequest) {
 			},
 			{ headers: cors },
 		);
-	} catch {
+	} catch (error) {
+		if (error instanceof AccountConflict) {
+			return NextResponse.json({ error: error.message }, { status: 409, headers: cors });
+		}
 		// Keep credentials, profile data, SQL, and bound parameters out of platform logs.
 		// The stage is enough to route diagnosis without persisting request data.
 		console.error(`[oauth] callback failed at ${stage}`);
+		// A timeout or a dropped connection to GitHub is an upstream failure, not ours.
+		const upstream = stage === "exchange" || stage === "profile";
 		return NextResponse.json(
-			{ error: "Could not complete sign-in. Try again." },
-			{ status: 500, headers: cors },
+			{
+				error: upstream
+					? "GitHub did not answer. Try again in a moment."
+					: "Could not complete sign-in. Try again.",
+			},
+			{ status: upstream ? 502 : 500, headers: cors },
 		);
 	}
 }

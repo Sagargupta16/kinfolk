@@ -6,6 +6,150 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.8.0 -- 2026-10-28
+
+A whole-repository audit, every finding fixed, and a sample family of real, public records.
+No schema or migration change.
+
+### Security
+
+- **SPA sign-in no longer hands an account to whoever holds its email address.** When no
+  account row matched the GitHub id, sign-in matched `users.email` and linked the new GitHub
+  identity to that user, so an address that moved to another GitHub account took the family
+  with it. Only a user with no GitHub account at all -- the half-written state a failed first
+  sign-in leaves -- is repaired now; anything else is refused with a 409, as Auth.js refuses
+  the same case.
+- **Contact values no longer reach the browser with the tree.** The view (the page props and
+  `/api/tree`) carried every value the viewer may see; it now carries only each channel's
+  kind, label and visibility. Values load on the contact page alone, as its code always said.
+- **Only a graph's owner changes who has access.** Editors could invite, withdraw invites and
+  remove members, including other editors. They now see the access list read-only.
+- **Writes have ceilings.** 2,000 characters per free-text field and 200 per name; per hour,
+  500 partnerships and 500 connections per graph, 50 invites per graph and 100 link proposals
+  per proposer; 50 contact details per person.
+- The server-rendered sign-in takes only a GitHub address that GitHub has verified. The
+  provider's own fallback picked the primary or first address unchecked, and that address
+  matches invites.
+- A failed query is never rethrown or logged with its bound values -- a phone number, an
+  invitee's email, the session token being revoked. Actions log their name and the Postgres
+  code; sign-out, provisioning and invite claims log a stage.
+- The SPA refuses to render inside a frame, since a meta CSP cannot carry `frame-ancestors`.
+- CI checkouts no longer keep the GitHub token, the Pages API origin reaches its script
+  through `env`, and the dependency audit fails at `low`, as documented.
+
+### Changed
+
+- **The sample family is real and public**: Queen Victoria's and Christian IX's families from
+  Wikidata (CC0), recorded as two trees of 228 records with 12 accepted links where the
+  dynasties married into each other, so the canvas fuses them into 216 people and 40
+  partnerships, with godparents and divorces. `pnpm sample:build` rebuilds it. An explicit
+  `?demo=1` now shows it even to a signed-in visitor, on the page and the API alike, where a
+  session used to win and showed their own family under the sample banner.
+- **Layout runs in a Web Worker.** ELK is 97% of a layout, so a large family no longer freezes
+  the page while it lays out, and one engine is reused instead of built per layout. If the
+  worker cannot start, layout falls back to the page thread instead of hanging.
+- **Social links is a switch, not a reload.** It only changes what is drawn, so it is client
+  state mirrored into the address bar; it used to refetch the tree, rerun the layout and drop
+  every fold. "All trees" still reloads, and now keeps the social-links and demo state.
+- Sibling brackets run through the middle of the gap between generations, the same distance
+  from the parents' row as from the children's. Lanes are no longer capped at three: each
+  takes the most families that fit, and spacing shrinks to keep every lane in the gap, so no
+  two families ever share a line.
+
+### Fixed
+
+- **Folding works.** Folding someone's ancestors hid nobody whenever they had a sibling (0 of
+  176 folds on the sample hid anyone), and folding descendants leaked back through every
+  married-in spouse. The walk never enters a folded branch now, and folds and the breadcrumb
+  trail survive a change of detail level or arrangement.
+- **Lines draw on again.** The draw-on keyframes counted in pixels on paths normalised to a
+  length of 1, so every line popped in at its delay; they count in path lengths now.
+- Kinship: a divorced or separated partner is an ex-wife, ex-husband or former partner, an
+  unmarried one a partner; grandparents and grandchildren by marriage are gendered when sex is
+  recorded.
+- The profile lists half-siblings, shows a biological father as father rather than
+  "father / stepfather", keeps a relation's own label and sorts relations by their stored
+  closeness. Each relative row puts the name over its kinship term, so a long term no longer
+  leaves a phone eight letters of the name.
+- Single-parent partnerships merge transitively across linked records, so one family no
+  longer comes out as two junctions sharing a child depending on load order; a couple
+  recorded twice keeps the strongest status.
+- Deleting a person, or detaching a single parent's last child, removes the partnership it
+  leaves empty instead of an orphan dot and a "Choose which family" question later.
+- Inviting an existing viewer as an editor upgrades them, where it marked the invite accepted
+  and left the role. Expired invites no longer show as pending.
+- A link that would make two different people in one family into one person, through a link
+  already made, is refused at proposal and again at acceptance.
+- Malformed ids, impossible or fuzzy exact dates and blank names are refused with a message
+  instead of a 500; re-adding a contact says it is already recorded instead of "saved".
+- Sign-in: two first sign-ins racing settle on one user; a `null` body is a 400; GitHub calls
+  time out after 10 seconds; a spent code is a 400, a rejected secret or an outage a logged
+  502; a failed sign-out is a 500 the SPA reports, keeping the session to retry.
+- Sign-up splits a name the canvas way ("Rakesh Kumar Gupta" is Rakesh Kumar / Gupta).
+- The add and edit strips focus their name field once on screen. Focus stayed on the `+`, so
+  the first letter typed went to the shortcuts -- a "d" changed the detail level.
+- Phone: a docked strip follows the keyboard and pans the canvas so its card's `+` stays above
+  it; a saved toast moves to the top while a strip is open; the profile sheet takes at most 55%
+  of the canvas, not of the screen; the travel buttons are icons; the trail shows the last
+  three people; text fields are 16px, so iOS no longer zooms the workspace.
+- The search list closes on an outside tap, when focus leaves, and on Escape from anywhere.
+- The Viewing flag no longer covers a folded branch's chevron, fold targets grow into the gap
+  between generations, and the generation rails sit behind the lines instead of over them.
+- Status marks: "not recorded" meets 3:1; living wears no colour in the profile either; the
+  legend's samples are drawn from the canvas's own marks.
+- The contacts page's Save label was ink on an ink fill; it is readable, and Remove is red.
+- Pressed toggles look pressed, the profile form's Save matches the strip's, hover styles apply
+  only where something can hover (a tapped `+` stayed lit), floating chrome is opaque, and
+  panel headers, close buttons and focus rings match.
+- The browser bar follows the in-app Light/Dark choice; the Appearance menu fits a phone.
+- SPA: a refresh that fails after a save keeps the canvas and offers a retry; a chunk lost to
+  a redeploy reloads once and otherwise shows a reload prompt; requests time out; a response in
+  an older shape says the app and server are out of step; a signed-out `/tree` goes to the
+  front door instead of the sample; an account with no graph offers the same way forward in
+  both runtimes; the first person cannot be added twice.
+- Opening a profile or a toolbar popover never leaves a strip painted over it.
+- A Vercel preview whose file list was large enough to fill the pipe skipped its build.
+- Speed: the tree loads in 4 round trips instead of 6, read actions run their queries
+  together, a write in the Next app renders the tree once instead of twice, the zoom no longer
+  re-renders the whole canvas every frame, and the sample is built once per server.
+
+### Removed
+
+- Dead code the audit found: `lib/tree/acyclic.ts`, `editablePeople`, `EditButton`,
+  `TreeAlone`, `kinshipOf`, `kindsByCategory`, `barCollisions`, `PERSON_WIDTH` and
+  `PERSON_HEIGHT`, the unused Drizzle relation definitions, six unused CSS rules, and the
+  `export` on 49 declarations nothing else imports. `lib/tree/names.ts` went with the invented
+  sample.
+
+### Documentation
+
+- README, CLAUDE.md, the guides and the essay describe the Wikidata sample, the current add
+  flow and the measured benchmark; stale version labels, health times and file references are
+  fixed, and the architecture diagrams' evidence lines point at the current code.
+- Corrected the 0.7.0 entry: the handle pings end about 5.4 seconds after a pick, not inside
+  five.
+
+### Verification
+
+- Headless Chromium, on the Next fallback and on the SPA through the JSON API, at 1440x900 and
+  375x812 in both themes: 256 nodes, 216 people, 40 junctions and 265 edges on every surface,
+  0 broken paths, 0 overlaps, no horizontal overflow, one theme-color tag, and a clean console.
+  The layout worker loaded on both, and the production Pages build loaded it from
+  `/kinfolk/assets/` under the real CSP; with the worker blocked, layout fell back and still
+  drew all 256 nodes.
+- Brackets: 0 collisions at every detail level, against 6 to 8 before; 19 of 33 sit exactly in
+  the middle of their gap, and every lane stays at least 14px clear of the cards.
+- On a phone: the sheet measured 55% of the canvas with the tapped card above it; a `+` at
+  y=743 under the docked strip was panned to 674, clear of it at 682; a second add while the
+  toast was up left the answer buttons uncovered; the strip's name field had focus.
+- Social links switched with no reload and no new request; a fold survived `d`; the search
+  list closed on a canvas tap; a failed sign-out showed its message and kept the session.
+- Sixteen server checks against the real Drizzle and Neon HTTP path on in-memory Postgres: the
+  takeover refused, the account-less user repaired, a sign-in race on one user, the 400 / 502 /
+  409 answers, no token in the sign-out failure log, owner-only sharing, the role upgrade, the
+  empty-union cleanup, every refusal above, and the sample served for `?demo=1` with a session.
+- `pnpm test` 88/88, both typechecks, Biome, both production builds.
+
 ## 0.7.0 -- 2026-10-28
 
 Every edit happens on the card, and the tree moves to make room. No schema or migration
@@ -40,8 +184,8 @@ change.
   from and lands through a 4% overshoot with a ring, and the family lines that moved draw
   back on as the cards come to rest. An edit sweeps a light across its card once, a deleted
   person shrinks away before the record goes, and a refused save shakes the strip. Picking
-  a person pops their handles in one after another and pings them three times, inside five
-  seconds. The Reduced setting makes all of it instant.
+  a person pops their handles in one after another and pings them three times, ending about
+  5.4 seconds after the pick. The Reduced setting makes all of it instant.
 - `p` (profile) and `r` (edit in place) shortcuts, listed in the help sheet.
 
 ### Fixed

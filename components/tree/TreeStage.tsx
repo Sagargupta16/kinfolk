@@ -3,12 +3,13 @@
 /**
  * The canvas plus its chrome: detail level, search, legend, feed.
  *
- * LOD is client state, deliberately unlike the combined and social-links toggles which
- * live in `searchParams`. Those change WHICH DATA is fetched, so a URL round trip is the
+ * LOD is client state, deliberately unlike the combined toggle, which lives in
+ * `searchParams`: that one changes WHICH DATA is fetched, so a URL round trip is the
  * honest implementation and the resulting view is worth sharing. Detail level changes
  * nothing about the data -- it is how much of each person is drawn -- so a server round
  * trip would buy a shareable link nobody wants at the cost of making a purely visual
- * switch feel like a page load.
+ * switch feel like a page load. Social links are the same kind of switch, so they are
+ * client state too, mirrored into the URL without a navigation.
  *
  * It lives HERE rather than inside the canvas because the `d` shortcut cycles it and the
  * button group displays it, so the two have to read one value. The canvas is handed the
@@ -17,6 +18,8 @@
 import {
 	Activity,
 	GitBranch,
+	GitMerge,
+	Link2,
 	Rows3,
 	SlidersHorizontal,
 	Square,
@@ -25,7 +28,7 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
 import { familyFeed } from "@/lib/tree/feed";
@@ -40,6 +43,7 @@ import type { Lod } from "@/lib/tree/layout";
 import { useEscapeClose } from "./escape";
 import { FeedPanel } from "./FeedPanel";
 import { PeopleDirectory } from "./PeopleDirectory";
+import { ScopeToggle } from "./ScopeToggle";
 import { TreeCanvas } from "./TreeCanvas";
 import { TreeLegend } from "./TreeLegend";
 import { TreeSearch } from "./TreeSearch";
@@ -70,7 +74,8 @@ export function TreeStage({
 	editableTreeId,
 	editableTreeIds: writableTreeIds,
 	editableUnions = EMPTY_UNIONS,
-	scopeControls,
+	isCombined = true,
+	isDemo = false,
 }: {
 	nodes: FlowNode[];
 	/** Every edge, including hidden relations: layout needs them. See TreeWorkspace. */
@@ -89,9 +94,36 @@ export function TreeStage({
 	editableTreeId?: string | null;
 	editableTreeIds?: readonly string[];
 	editableUnions?: UnionWithChildren[];
-	scopeControls?: ReactNode;
+	/** Whether the linked families are drawn with this one; mine-only when false. */
+	isCombined?: boolean;
+	/** The sample family, whose links must keep `?demo=1` for the SPA to stay on it. */
+	isDemo?: boolean;
 }) {
 	const [lod, setLod] = useState<Lod>("full");
+	/*
+	 * Social links: what is DRAWN, not what is fetched, so client state. The address bar
+	 * follows through `replaceState`, so a reload and a shared link still match the screen
+	 * without the navigation that used to refetch the tree, rerun ELK, and lose every fold
+	 * and the zoom.
+	 */
+	const [relationsOn, setRelationsOn] = useState(showRelations);
+	const toggleRelations = useCallback(() => {
+		const next = !relationsOn;
+		setRelationsOn(next);
+		const url = new URL(window.location.href);
+		if (next) url.searchParams.delete("relations");
+		else url.searchParams.set("relations", "0");
+		window.history.replaceState(window.history.state, "", url);
+	}, [relationsOn]);
+	// The other scope is a real navigation, carrying this one along.
+	const combinedHref = useMemo(() => {
+		const params = new URLSearchParams();
+		if (isDemo) params.set("demo", "1");
+		if (isCombined) params.set("combined", "0");
+		if (!relationsOn) params.set("relations", "0");
+		const query = params.toString();
+		return query ? `/tree?${query}` : "/tree";
+	}, [isCombined, isDemo, relationsOn]);
 	const [screen, setScreen] = useState<"tree" | "people">("tree");
 	const [optionsOpen, setOptionsOpen] = useState(false);
 	const optionsId = useId();
@@ -279,7 +311,7 @@ export function TreeStage({
 	 * From the VISIBLE edges, so a ring never claims a connection whose line the viewer
 	 * has switched off.
 	 */
-	const drawn = useMemo(() => visibleEdges(edges, showRelations), [edges, showRelations]);
+	const drawn = useMemo(() => visibleEdges(edges, relationsOn), [edges, relationsOn]);
 	const degree = useMemo(() => degrees(nodes, drawn), [nodes, drawn]);
 
 	/*
@@ -355,18 +387,35 @@ export function TreeStage({
 									<button
 										type="button"
 										aria-label="Close view options"
-										className="flex size-11 items-center justify-center text-ink-faint"
+										className="flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface-raised hover:text-ink"
 										onClick={() => setOptionsOpen(false)}
 									>
-										<X className="size-4" aria-hidden="true" />
+										<X className="size-4" strokeWidth={1.75} aria-hidden="true" />
 									</button>
 								</div>
-								{scopeControls && (
-									<section>
-										<h3>Which connections</h3>
-										{scopeControls}
-									</section>
-								)}
+								<section>
+									<h3>Which connections</h3>
+									<div className="grid grid-cols-2 gap-2">
+										<ScopeToggle
+											onToggle={toggleRelations}
+											active={relationsOn}
+											label="Social links"
+											hint={relationsOn ? "Hide social connections" : "Show social connections"}
+											Icon={Link2}
+										/>
+										<ScopeToggle
+											href={combinedHref}
+											active={isCombined}
+											label={isCombined ? "All trees" : "My tree"}
+											hint={
+												isCombined
+													? "Show only your own family tree"
+													: "Show every family tree shared with you"
+											}
+											Icon={GitMerge}
+										/>
+									</div>
+								</section>
 								<section>
 									<h3>Arrange the tree</h3>
 									<ViewControls
@@ -412,7 +461,7 @@ export function TreeStage({
 										<Activity className="size-4" aria-hidden="true" />
 										Recent activity
 									</button>
-									<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} inline />
+									<TreeLegend census={census} lod={lod} hasSelf={Boolean(selfId)} />
 								</section>
 							</motion.div>
 						)}
@@ -437,7 +486,7 @@ export function TreeStage({
 					onGoToHandled={() => setGoTo(null)}
 					degree={degree}
 					kinship={kinship}
-					showRelations={showRelations}
+					showRelations={relationsOn}
 					onFocusSearch={onFocusSearch}
 					onDetailOpenChange={setDetailOpen}
 					closeDetailRequest={closeDetailRequest}

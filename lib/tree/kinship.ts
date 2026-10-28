@@ -18,13 +18,15 @@
  * more than anywhere, because "second cousin once removed" is a claim about a
  * family that a reader will believe without checking.
  */
-import type { Person, RelationKind } from "../db/schema";
-import type { FusedGraph, FusedPerson } from "./graph";
+import type { Person, RelationKind, Union } from "../db/schema";
+import type { FusedGraph } from "./graph";
 import { parentageLabel, parentRoles } from "./parentage";
 import { relationLabel } from "./relations";
 
+type UnionStatus = Union["status"];
+
 /**
- * The graph reduced to the three adjacencies kinship needs.
+ * The graph reduced to the adjacencies kinship needs.
  *
  * Built once per graph and reused for every person, because the naive shape --
  * walk the union list per lookup -- is O(people * unions) and this runs for all
@@ -36,12 +38,15 @@ type FamilyIndex = {
 	familyParents: Map<string, string[]>;
 	/** Person id to their partners' ids. */
 	partners: Map<string, string[]>;
+	/** Person id to each partner's id and how that partnership stands. */
+	partnerStatus: Map<string, Map<string, UnionStatus>>;
 };
 
 function indexFamily(graph: FusedGraph): FamilyIndex {
 	const parents = new Map<string, string[]>();
 	const familyParents = new Map<string, string[]>();
 	const partners = new Map<string, string[]>();
+	const partnerStatus = new Map<string, Map<string, UnionStatus>>();
 
 	for (const union of graph.unions) {
 		const couple = [union.partnerAId, union.partnerBId].filter((id): id is string => Boolean(id));
@@ -50,6 +55,11 @@ function indexFamily(graph: FusedGraph): FamilyIndex {
 			for (const b of couple) {
 				if (a === b) continue;
 				push(partners, a, b);
+				// One status per couple: fusion collapses every record of a partnership into a
+				// single union and settles its status there (see `dedupeUnions`).
+				const statuses = partnerStatus.get(a) ?? new Map<string, UnionStatus>();
+				if (!statuses.has(b)) statuses.set(b, union.status);
+				partnerStatus.set(a, statuses);
 			}
 		}
 
@@ -63,7 +73,7 @@ function indexFamily(graph: FusedGraph): FamilyIndex {
 		}
 	}
 
-	return { parents, familyParents, partners };
+	return { parents, familyParents, partners, partnerStatus };
 }
 
 function push(map: Map<string, string[]>, key: string, value: string): void {
@@ -144,7 +154,7 @@ function ordinal(n: number): string {
  * difference, which is where "second cousin once removed" comes from -- a phrase
  * people use loosely and this gets right.
  */
-export function bloodTerm(up: number, down: number, sex: Sex): string {
+function bloodTerm(up: number, down: number, sex: Sex): string {
 	if (up === 0 && down === 0) return "you";
 
 	// Direct line down: child, grandchild, great-grandchild.
@@ -206,13 +216,43 @@ function inLawTerm(
 	if (up === 1 && down === 1) return pick(sex, "sister-in-law", "brother-in-law", "sibling-in-law");
 	if (up === 0 && down === 1) return pick(sex, "daughter-in-law", "son-in-law", "child-in-law");
 
-	if (down === 0) return `${greats(up - 2, "grandparent")} by marriage`;
-	if (up === 0) return `${greats(down - 2, "grandchild")} by marriage`;
+	if (down === 0) {
+		return `${greats(up - 2, pick(sex, "grandmother", "grandfather", "grandparent"))} by marriage`;
+	}
+	if (up === 0) {
+		return `${greats(down - 2, pick(sex, "granddaughter", "grandson", "grandchild"))} by marriage`;
+	}
 	if (down === 1)
 		return `${greats(up - 2, pick(sex, "aunt", "uncle", "aunt or uncle"))} by marriage`;
 	if (up === 1)
 		return `${greats(down - 2, pick(sex, "niece", "nephew", "niece or nephew"))} by marriage`;
 	return "cousin by marriage";
+}
+
+/**
+ * What the viewer's own partner is called, from how the partnership stands.
+ *
+ * Read from the union's status rather than assumed, because the partner pass used to call
+ * every partnership a marriage: a divorced husband, an unmarried partner and a current wife
+ * all came out as "wife" or "husband", which is a claim about the present that the record
+ * itself contradicts. Each status is decided on purpose:
+ *
+ *   married, widowed     wife / husband / spouse. A widow's late husband is still her husband.
+ *   divorced, separated  ex-wife / ex-husband / former partner. The partnership has ended.
+ *   partnered, unknown   partner. Not recorded as a marriage, so not called one -- the same
+ *                        reason `unknown` sex gives a neutral term.
+ */
+function partnerTerm(status: UnionStatus | undefined, sex: Sex): string {
+	switch (status) {
+		case "married":
+		case "widowed":
+			return pick(sex, "wife", "husband", "spouse");
+		case "divorced":
+		case "separated":
+			return pick(sex, "ex-wife", "ex-husband", "former partner");
+		default:
+			return "partner";
+	}
 }
 
 export type Kinship = {
@@ -240,7 +280,7 @@ export function kinshipMap(graph: FusedGraph, selfId?: string): Map<string, Kins
 	const labels = new Map<string, Kinship>();
 	if (!selfId) return labels;
 
-	const { parents, familyParents, partners } = indexFamily(graph);
+	const { parents, familyParents, partners, partnerStatus } = indexFamily(graph);
 	const sexById = new Map<string, Sex>(graph.people.map((p) => [p.id, p.primary.sex]));
 	const sexOf = (id: string): Sex => sexById.get(id) ?? "unknown";
 	if (!sexById.has(selfId)) return labels;
@@ -290,7 +330,7 @@ export function kinshipMap(graph: FusedGraph, selfId?: string): Map<string, Kins
 	for (const partnerId of partners.get(selfId) ?? []) {
 		if (labels.has(partnerId)) continue;
 		labels.set(partnerId, {
-			label: pick(sexOf(partnerId), "wife", "husband", "partner"),
+			label: partnerTerm(partnerStatus.get(selfId)?.get(partnerId), sexOf(partnerId)),
 			via: "partner",
 		});
 	}
@@ -382,12 +422,4 @@ function nearestCommon(
 export function fusedSelfId(graph: FusedGraph, selfRowId?: string): string | undefined {
 	if (!selfRowId) return undefined;
 	return graph.idMap.get(selfRowId) ?? selfRowId;
-}
-
-/** Convenience for the card, which holds a `FusedPerson` and not an id. */
-export function kinshipOf(
-	labels: Map<string, Kinship>,
-	person: Pick<FusedPerson, "id">,
-): Kinship | undefined {
-	return labels.get(person.id);
 }

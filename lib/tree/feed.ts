@@ -18,7 +18,7 @@
 import type { FlowEdge, FlowNode } from "./graph";
 import { displayName, unionsInGraph } from "./graph";
 
-export type FeedEventKind = "arrived" | "updated" | "partnership";
+type FeedEventKind = "arrived" | "updated" | "partnership";
 
 export type FeedEvent = {
 	/** Unique per event, for React keys. */

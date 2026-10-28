@@ -58,8 +58,8 @@ export type OverviewNode = {
  * it is drawn over.
  */
 export const OVERVIEW_WIDTH = 200;
-export const OVERVIEW_MIN_HEIGHT = 40;
-export const OVERVIEW_MAX_HEIGHT = 132;
+const OVERVIEW_MIN_HEIGHT = 40;
+const OVERVIEW_MAX_HEIGHT = 132;
 
 /**
  * Breathing room inside the frame, in panel pixels.
@@ -136,7 +136,7 @@ export function overviewHeight(extent: Box): number {
 	return Math.round(Math.min(Math.max(scaled, OVERVIEW_MIN_HEIGHT), OVERVIEW_MAX_HEIGHT));
 }
 
-export type OverviewProjection = {
+type OverviewProjection = {
 	/** Panel pixels per graph unit. */
 	scale: number;
 	offsetX: number;

@@ -78,8 +78,10 @@ families land on one node. The viewer's own row wins as the display record. When
 sources disagree on a birth or death date, the card says so instead of quietly showing
 whichever row won ([lib/tree/graph.ts](../lib/tree/graph.ts)).
 
-The public sample shows this working: three family trees holding 120 records in total,
-joined by 3 accepted links, render as 117 people and 34 unions on one canvas.
+The public sample shows this working with real families from Wikidata. Queen Victoria's
+descendants and Christian IX of Denmark's were recorded as two trees holding 228 records;
+where the families married into each other, 12 accepted links join them, and the canvas
+renders 216 people and 40 unions.
 
 Access follows the same idea. You can read a tree you own, one you were invited to, or one
 that is a single accepted link away. A pending proposal grants nothing, and seeing a linked
@@ -111,16 +113,16 @@ Kinfolk uses [ELK](https://eclipse.dev/elk/)'s layered algorithm, which treats l
 assignment as a graph problem and so handles cousin marriages and remarriages, rendered
 with [React Flow](https://reactflow.dev/). Union nodes are laid out as small junction dots.
 After ELK runs, Kinfolk's own passes keep each couple adjacent, group siblings under their
-parents' union, and centre the union dot over its children.
+parents' union, and put each couple's union dot on the marriage line between the partners.
 
 ELK is also where the cost is. With [scripts/bench-layout.mts](../scripts/bench-layout.mts)
-(`pnpm bench:layout`), a generated 200-person family lays out in about a quarter of a
-second, but 1,000 people take 8.8 to 9.8 seconds: the range of the median of 7 runs over
-three back-to-back runs, on an Intel i9-14900HX laptop under Node 26. The same script
-times `elk.layout()` on its own, and Kinfolk's own passes are about 30 ms of that; the
-rest, 97% or more at every size, is ELK. The layout runs on the main thread today, so a
-tree that size freezes the page until ELK returns. Moving it into a Web Worker is the
-next step.
+(`pnpm bench:layout`), a generated 200-person family lays out in under a fifth of a
+second and the 216-person sample in about a quarter, but 1,000 people take about five
+seconds: the median of 7 runs on an Intel i9-14900HX laptop under Node 26, and earlier runs
+on the same machine ranged up to 6.3. The same script times `elk.layout()` on its own, and
+Kinfolk's own passes are under 20 ms of that; the rest, 97% or more at every size, is ELK.
+So ELK runs in a Web Worker in the browser, where a tree that size takes as long as it takes
+without freezing the page, and falls back to the page thread if the worker cannot start.
 
 ## Fuzzy data is data
 

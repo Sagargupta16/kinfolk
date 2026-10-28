@@ -1,10 +1,10 @@
 /**
  * What a brand new account gets.
  *
- * Signing in for the first time used to land on an empty state, and an empty state
- * is a worse first screen here than in most apps: the editor does not exist yet, so
- * "add your first relative" is not an action anybody can take. The one screen a new
- * user saw was a dead end.
+ * Signing in for the first time used to land on an empty state, and when this was
+ * written the editor did not exist yet, so "add your first relative" was not an action
+ * anybody could take. The one screen a new user saw was a dead end. Now the canvas
+ * edits from the `+` handles on a card, which needs a card to start from.
  *
  * So the account arrives with a graph containing exactly one node -- them. That is
  * the smallest thing that is still true. Seeding invented relatives would put claims
@@ -19,6 +19,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { people, trees } from "../db/schema";
 import { normalizeGitHubLogin } from "./invite";
+import { splitName } from "./kin-plan";
 
 /**
  * A url-safe slug from a display name.
@@ -51,6 +52,8 @@ function slugify(name: string | null): string {
  * honest fallback is the empty state that already exists for this case.
  */
 export async function provisionGraph(userId: string, name: string | null): Promise<void> {
+	// Which step failed, for the log line; never the error, which can carry the name.
+	let stage = "lookup";
 	try {
 		// Reuse an existing claimed row and repair the smaller partial state where the
 		// self exists but the root update failed.
@@ -81,11 +84,13 @@ export async function provisionGraph(userId: string, name: string | null): Promi
 
 		let treeId = existing?.id ?? null;
 		if (!treeId) {
+			stage = "tree";
 			const slug = slugify(name);
+			const first = name?.trim().split(/\s+/)[0];
 			const [created] = await db
 				.insert(trees)
 				.values({
-					name: name ? `${name.split(" ")[0]}'s people` : "My people",
+					name: first ? `${first}'s people` : "My people",
 					slug,
 					ownerId: userId,
 				})
@@ -109,13 +114,18 @@ export async function provisionGraph(userId: string, name: string | null): Promi
 		// this starter row's primary key makes concurrent retries conflict safely even
 		// during the rollout window before the claimed-user index exists. Once migration
 		// 0003 lands, that index remains the database backstop for every other write path.
+		//
+		// Split by the same rule as every name typed on the canvas, so "Rakesh Kumar
+		// Gupta" signs up as Rakesh Kumar / Gupta exactly as he would be added.
+		stage = "self";
+		const { givenName, familyName } = splitName(name ?? "");
 		const [createdSelf] = await db
 			.insert(people)
 			.values({
 				id: userId,
 				treeId,
-				givenName: name?.split(" ")[0] ?? "You",
-				familyName: name?.split(" ").slice(1).join(" ") || null,
+				givenName: givenName ?? "You",
+				familyName,
 				living: "living",
 				claimedByUserId: userId,
 				verification: "self_confirmed",
@@ -132,12 +142,16 @@ export async function provisionGraph(userId: string, name: string | null): Promi
 		if (!winner || winner.treeId !== treeId) return;
 
 		// A stale read must not replace a root selected between the read and this write.
+		stage = "root";
 		await db
 			.update(trees)
 			.set({ rootPersonId: winner.id })
 			.where(and(eq(trees.id, treeId), eq(trees.ownerId, userId), isNull(trees.rootPersonId)));
 	} catch {
-		// Left to the empty state; the next successful sign-in retries this repair.
+		// Left to the empty state; the next successful sign-in retries this repair. Logged,
+		// because a failure that repeats (a schema the deploy has not migrated yet) would
+		// otherwise leave every new account empty with nothing to say why.
+		console.error(`[provision] graph failed at ${stage}`);
 	}
 }
 
@@ -166,6 +180,12 @@ export async function claimInvites(
 
 		// Claim and grant in one statement. The conditional UPDATE locks the invite,
 		// so a concurrent withdrawal cannot be overwritten by a stale pending read.
+		//
+		// An invite to somebody who is already a member UPGRADES a viewer to editor and
+		// never downgrades. Doing nothing there marked the invite accepted while the role
+		// stayed as it was, so it vanished from the pending list without taking effect.
+		// Grouped per graph first, because one statement may not update the same member
+		// row twice; `min` on the role enum (owner, editor, viewer) picks the stronger.
 		const result = await db.execute<{ count: number }>(sql`
 			WITH claimed AS (
 				UPDATE tree_invites SET status = 'accepted', as_person_id = NULL
@@ -177,8 +197,9 @@ export async function claimInvites(
 				RETURNING tree_id, role
 			), granted AS (
 				INSERT INTO tree_members (tree_id, user_id, role)
-				SELECT tree_id, ${userId}::uuid, role FROM claimed
-				ON CONFLICT DO NOTHING
+				SELECT tree_id, ${userId}::uuid, min(role) FROM claimed GROUP BY tree_id
+				ON CONFLICT (tree_id, user_id) DO UPDATE SET role = EXCLUDED.role
+				WHERE tree_members.role = 'viewer' AND EXCLUDED.role = 'editor'
 				RETURNING tree_id
 			)
 			SELECT count(*)::integer AS count FROM claimed
@@ -187,6 +208,7 @@ export async function claimInvites(
 	} catch {
 		// Same reasoning as provisionGraph: this runs inside the sign-in flow, and a failed
 		// grant must not cost somebody their session. They can sign in again to retry.
+		console.error("[invites] claim failed");
 		return 0;
 	}
 }

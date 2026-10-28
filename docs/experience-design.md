@@ -1,6 +1,6 @@
 # Family atlas experience
 
-Prepared 2026-09-10 for 0.4.0, released and deployed the same day.
+First prepared 2026-09-10.
 This direction applies to both the Next application and the Vite client.
 
 ## Main tasks
@@ -54,7 +54,8 @@ svg-forge presets: the strip grows out of the `+` on a damped spring and folds b
 it; cards that change place glide there from where they were on screen; the new relative
 comes out of the `+` they were added from and lands with a ring; the family lines that
 moved draw back on as the cards come to rest; the viewed card never moves. Picking a person
-pops their handles in one after another and pings them three times, inside five seconds.
+pops their handles in one after another and pings them three times; the last ping ends about
+5.4 seconds after the pick.
 
 Both themes, keyboard access, touch targets, narrow screens, and both application
 runtimes were included in the local checks. The [verification report](verification-0.4.0.md)

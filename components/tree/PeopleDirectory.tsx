@@ -77,7 +77,7 @@ export function PeopleDirectory({
 								onChange={(event) => setQuery(event.target.value)}
 								aria-describedby={`${searchId}-status`}
 								placeholder="Name, nickname or birthplace"
-								className="h-11 min-w-0 w-full bg-transparent text-sm outline-none"
+								className="h-11 min-w-0 w-full bg-transparent text-base outline-none"
 							/>
 						</div>
 					</div>

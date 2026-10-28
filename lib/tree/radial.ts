@@ -33,14 +33,14 @@ import { NODE_METRICS } from "./layout";
  * versions would drift on the first change. Both arrangements return the same thing plus
  * whatever is peculiar to them.
  */
-export type RadialNode = PositionedNode & {
+type RadialNode = PositionedNode & {
 	/** Hops from the focus. 0 is the focus itself. */
 	ring: number;
 	/** Where on its ring, in radians clockwise from twelve o'clock. Undefined for the focus. */
 	angle?: number;
 };
 
-export type RadialResult = {
+type RadialResult = {
 	nodes: RadialNode[];
 	/** Radius of each ring, indexed by ring number. `rings[0]` is always 0. */
 	rings: number[];
@@ -144,9 +144,10 @@ const MAX_RINGS = 4;
  * How much of a parent's arc a ring of children may occupy.
  *
  * Below 1 so the fan stays near the direction its parent sits in: at 1 a lone child
- * inherits the whole wedge and nothing ever narrows, which is the defect the chain test
- * pins. Not much below 1 either -- too small and each generation collapses toward a single
- * ray, leaving the outer rings sparse and the circle mostly empty.
+ * inherits the whole wedge and nothing ever narrows, which is the defect a chain-of-children
+ * test caught before the suite was removed in 0.2.0. Not much below 1 either -- too small
+ * and each generation collapses toward a single ray, leaving the outer rings sparse and the
+ * circle mostly empty.
  *
  * 0.72 keeps a four-child fan inside roughly a quarter turn at ring 3 while still filling
  * the circle at ring 1, where the focus's whole 360 is in play.
@@ -180,7 +181,7 @@ const MAX_PER_RING = 18;
  * So a union is traversed rather than counted, and a ring means "people I am N relationships
  * from" -- which is the question this view exists to answer.
  */
-export function hopsFrom(
+function hopsFrom(
 	edges: FlowEdge[],
 	focusId: string,
 	/** True for ids that are junctions rather than people. */
@@ -245,7 +246,7 @@ function push(map: Map<string, string[]>, key: string, value: string): void {
  * times what 6 nodes need, and a fixed value either wastes the whole canvas or overlaps
  * every card on the busy ring.
  */
-export function ringRadius(count: number, nodeWidth: number, gap = ARC_GAP): number {
+function ringRadius(count: number, nodeWidth: number, gap = ARC_GAP): number {
 	if (count <= 1) return 0;
 	return ((count * (nodeWidth + gap)) / (2 * Math.PI)) as number;
 }
@@ -369,7 +370,8 @@ export function radialLayout(
 			 * Wedge allocation packs a family into its parent's sector, so a node's slot can be
 			 * far narrower than `2 * PI / count` -- eight children inside a 40 degree wedge get
 			 * 5 degrees each. Sizing on the count alone assumes an even spread that no longer
-			 * exists, and the no-overlap test caught exactly that once wedges landed. Solving
+			 * exists, and a no-overlap test (since removed with the 0.2.0 suite) caught exactly
+			 * that once wedges landed. Solving
 			 * `slot * r >= width + gap` for the smallest slot is what makes the ring wide enough
 			 * for its worst case.
 			 */
@@ -399,9 +401,9 @@ export function radialLayout(
 			 * The step clears the card's LARGER dimension, not its height. A card is 168x92 and
 			 * cards are placed at every angle, so two on adjacent radii near the twelve o'clock
 			 * axis are separated radially but overlap through their widths -- which is exactly
-			 * what the no-overlap test caught once RING_GAP came down from 96 to 40. Using the
-			 * max makes the step correct at every angle rather than only at three and nine
-			 * o'clock.
+			 * what the no-overlap test caught, before the 0.2.0 suite was removed, once RING_GAP
+			 * came down from 96 to 40. Using the max makes the step correct at every angle
+			 * rather than only at three and nine o'clock.
 			 */
 			const step = Math.max(metrics.width, metrics.height) + RING_GAP;
 			radius = Math.max(radius + step, needed);
@@ -565,9 +567,10 @@ function allocateWedges(
 			/*
 			 * A wedge SHRINKS as it is handed down, even when only one node inherits it.
 			 *
-			 * Proportional splitting alone did not fix the chain case, and the test caught it: a
-			 * lone child's share of its parent's arc is 100%, so it still received the full 360
-			 * degrees and its own four children spread across 270 of them. The arc a node needs
+			 * Proportional splitting alone did not fix the chain case, and a test in the suite
+			 * removed in 0.2.0 caught it: a lone child's share of its parent's arc is 100%, so
+			 * it still received the full 360 degrees and its own four children spread across 270
+			 * of them. The arc a node needs
 			 * is set by what hangs off it, not by how many siblings it happens to have -- so each
 			 * generation keeps a FRACTION of what it was given and stays centred on its parent's
 			 * direction.

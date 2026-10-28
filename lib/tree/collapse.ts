@@ -52,11 +52,14 @@ export function isCollapsed(collapsed: Collapsed): boolean {
 type Skeleton = {
 	down: Map<string, string[]>;
 	up: Map<string, string[]>;
+	/** Childless couples, joined person to person: adjacency for the isolation rule only. */
+	partners: Map<string, string[]>;
 };
 
 function skeleton(edges: FlowEdge[]): Skeleton {
 	const down = new Map<string, string[]>();
 	const up = new Map<string, string[]>();
+	const partners = new Map<string, string[]>();
 
 	for (const edge of edges) {
 		if (!edge.layout) continue;
@@ -66,12 +69,16 @@ function skeleton(edges: FlowEdge[]): Skeleton {
 		// descendants would also swallow the other partner's children by a
 		// different union, and `foldable` would offer descent controls on people
 		// with nothing below them.
-		if (edge.kind === "partner" && !edge.target.startsWith("union:")) continue;
+		if (edge.kind === "partner" && !edge.target.startsWith("union:")) {
+			push(partners, edge.source, edge.target);
+			push(partners, edge.target, edge.source);
+			continue;
+		}
 		push(down, edge.source, edge.target);
 		push(up, edge.target, edge.source);
 	}
 
-	return { down, up };
+	return { down, up, partners };
 }
 
 function push(map: Map<string, string[]>, key: string, value: string): void {
@@ -112,37 +119,73 @@ function blockades(collapsed: Collapsed, down: Map<string, string[]>, _up: Map<s
 }
 
 /**
- * Everything the walk may start from.
+ * What a fold hides: everything behind its blockades, and nobody may walk back in.
  *
- * Not simply "the roots", and that was the first implementation's bug: the roots ARE
- * the ancestors an upward fold hides, so seeding from them let every folded
- * grandparent back in through the front door and an upward collapse did nothing at
- * all.
+ * Disqualifying these nodes only as SEEDS was the second implementation's bug, and it
+ * made the feature a no-op on real families. A sibling is not behind a fold of their
+ * brother's ancestors, so they seeded the walk and climbed straight back up into the
+ * parents and grandparents the fold had hidden (measured on the sample: 0 of 176
+ * ancestor folds hid anybody). Folding descendants leaked the same way through every
+ * married-in spouse, who brought back their partner and the whole line below.
  *
- * So a node behind a blockade is disqualified as a seed, and everybody else keeps
- * theirs. That is what makes a fold local -- collapse one person in a tree of 117 and
- * the other 116 are still entry points, where seeding from the collapsed node alone
- * would leave a canvas holding one branch.
+ * So the walk never ENTERS a node behind a fold. Two refinements keep that honest:
+ *
+ *   - A person whose every family link leads behind the fold is behind it too. A spouse
+ *     who married into a folded line, or an unmarried sibling whose parents are folded
+ *     away, would otherwise stay on the canvas as a card joined to nothing.
+ *   - An anchor behind a fold -- the viewer, the viewed person -- keeps the line that
+ *     joins them to the visible graph, and only that line. Dropping them would leave
+ *     the canvas without its subject; keeping their whole branch would undo the fold.
  */
-function entryPoints(
-	nodes: FlowNode[],
-	up: Map<string, string[]>,
-	down: Map<string, string[]>,
-	blocked: Blockades,
+function shadows(nodes: FlowNode[], { down, up, partners }: Skeleton, blocked: Blockades) {
+	const below = new Set<string>();
+	for (const id of blocked.down) collect(id, down, below);
+	const above = new Set<string>();
+	for (const id of blocked.up) collect(id, up, above);
+	const behind = new Set([...below, ...above]);
+
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const node of nodes) {
+			if (node.type !== "person" || behind.has(node.id)) continue;
+			const links = [
+				...(down.get(node.id) ?? []),
+				...(up.get(node.id) ?? []),
+				...(partners.get(node.id) ?? []),
+			];
+			if (links.length > 0 && links.every((id) => behind.has(id))) {
+				behind.add(node.id);
+				changed = true;
+			}
+		}
+	}
+	return { behind, below };
+}
+
+/** The anchors' own way back: from each anchor behind a fold, toward its blockade. */
+function anchorPaths(
 	anchors: string[],
-	all: Set<string>,
+	behind: Set<string>,
+	below: Set<string>,
+	down: Map<string, string[]>,
+	up: Map<string, string[]>,
 ): Set<string> {
-	const behind = new Set<string>();
-	for (const id of blocked.down) collect(id, down, behind);
-	for (const id of blocked.up) collect(id, up, behind);
-
-	const seeds = new Set<string>();
-	for (const node of nodes) if (!behind.has(node.id)) seeds.add(node.id);
-	// The anchors regardless: a viewer who folded the graph above themselves is behind
-	// their own blockade, and dropping them would empty the canvas.
-	for (const id of anchors) if (all.has(id)) seeds.add(id);
-
-	return seeds;
+	const open = new Set<string>();
+	for (const anchor of anchors) {
+		if (!behind.has(anchor)) continue;
+		// Below a descendants fold the way back is up through their parents; above an
+		// ancestors fold it is down through their children.
+		const toward = below.has(anchor) ? up : down;
+		const queue = [anchor];
+		while (queue.length > 0) {
+			const id = queue.pop();
+			if (id === undefined || open.has(id)) continue;
+			open.add(id);
+			for (const next of toward.get(id) ?? []) if (behind.has(next)) queue.push(next);
+		}
+	}
+	return open;
 }
 
 /** Everything reachable from `start` along one adjacency, excluding `start`. */
@@ -178,10 +221,16 @@ export function visibleAfterCollapse(
 	const all = new Set(nodes.map((node) => node.id));
 	if (!isCollapsed(collapsed)) return all;
 
-	const { down, up } = skeleton(edges);
+	const graph = skeleton(edges);
+	const { down, up } = graph;
 	const blocked = blockades(collapsed, down, up);
-	const starts = entryPoints(nodes, up, down, blocked, anchors, all);
-	if (starts.size === 0) return all;
+	const { behind, below } = shadows(nodes, graph, blocked);
+	const present = anchors.filter((id) => all.has(id));
+	const reopened = anchorPaths(present, behind, below, down, up);
+	const enterable = (id: string) => !behind.has(id) || reopened.has(id);
+
+	const starts = [...all].filter(enterable);
+	if (starts.length === 0) return all;
 
 	const reachable = new Set<string>();
 	const queue = [...starts];
@@ -193,12 +242,16 @@ export function visibleAfterCollapse(
 
 		// A collapsed person is still drawn -- it is their line that is folded, and the
 		// card is where the expand control lives. So the block is on LEAVING a node,
-		// never on arriving at one.
+		// never on arriving at one; and nothing behind a fold may be entered at all.
 		if (!blocked.down.has(id)) {
-			for (const next of down.get(id) ?? []) if (!reachable.has(next)) queue.push(next);
+			for (const next of down.get(id) ?? []) {
+				if (!reachable.has(next) && enterable(next)) queue.push(next);
+			}
 		}
 		if (!blocked.up.has(id)) {
-			for (const next of up.get(id) ?? []) if (!reachable.has(next)) queue.push(next);
+			for (const next of up.get(id) ?? []) {
+				if (!reachable.has(next) && enterable(next)) queue.push(next);
+			}
 		}
 	}
 
@@ -234,12 +287,14 @@ export function hiddenCounts(
 	nodes: FlowNode[],
 	edges: FlowEdge[],
 	collapsed: Collapsed,
+	/** The canvas's own anchors, so a badge never counts somebody the canvas still shows. */
+	anchors: string[] = [],
 ): Map<string, number> {
 	const counts = new Map<string, number>();
 	if (!isCollapsed(collapsed)) return counts;
 
 	const people = new Set(nodes.filter((node) => node.type === "person").map((node) => node.id));
-	const visible = visibleAfterCollapse(nodes, edges, collapsed);
+	const visible = visibleAfterCollapse(nodes, edges, collapsed, anchors);
 
 	const { down, up } = skeleton(edges);
 

@@ -2,11 +2,12 @@ name: Deploy
 
 # Vercel, not GitHub Pages, and the reason is structural rather than a preference.
 #
-# `pnpm build` emits four DYNAMIC routes (`ƒ`): /tree, /demo, /signin and the Auth.js
-# handler. They are server-rendered on demand because the app reads Neon per request,
-# runs server actions for every write, and keeps Auth.js DATABASE sessions -- none of
-# which a static host can serve. `prod/kalchar` reached the same conclusion and left
-# its own Pages workflow dormant with a note saying so.
+# `pnpm build` emits every route except / and the icons (`icon.svg`,
+# `opengraph-image.png`) as DYNAMIC (`ƒ`): /tree, /demo, /signin, /contacts, the Auth.js
+# handler and the JSON API. They are server-rendered on demand because the app reads
+# Neon per request, runs server actions for every write, and keeps Auth.js DATABASE
+# sessions -- none of which a static host can serve. `prod/kalchar` reached the same
+# conclusion and left its own Pages workflow dormant with a note saying so.
 #
 # Vercel's Git integration and this migration workflow start independently on the
 # same push. Runtime changes must therefore tolerate the previous schema until this
@@ -25,11 +26,15 @@ on:
       - "drizzle/**"
       - "auth.ts"
       - "next.config.mjs"
+      - "postcss.config.mjs"
+      - "tsconfig.json"
+      - "vercel.json"
       - "drizzle.config.ts"
       - "scripts/check-migrations.mts"
       - "scripts/check-production.mts"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -56,10 +61,13 @@ jobs:
       name: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step pushes or fetches, so the token need not stay in .git/config.
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -79,7 +87,8 @@ jobs:
         # hand, before enabling this step: see docs/DEPLOYMENT.md.
         run: |
           if [ ! -d drizzle ] || ! ls drizzle/*.sql >/dev/null 2>&1; then
-            echo "No committed migrations -- skipping. Generate them with \`pnpm db:generate\`."
+            echo "::error::drizzle/ has no committed migrations. Production already has a migration history, so this checkout is broken; restore drizzle/ rather than deploying past it."
+            exit 1
           elif [ -z "$DATABASE_URL" ]; then
             echo "::error::DATABASE_URL is required in the production environment. Migration verification did not run."
             exit 1
@@ -110,7 +119,9 @@ jobs:
     # must never make a production release look verified.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Wait for this commit and verify readiness

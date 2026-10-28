@@ -38,7 +38,7 @@ import type { Kinship } from "@/lib/tree/kinship";
 import { type Lod, NODE_METRICS } from "@/lib/tree/layout";
 import { cn } from "@/lib/utils";
 
-export type PersonNodeData = FusedPerson & {
+type PersonNodeData = FusedPerson & {
 	/** Marks the durable subject of navigation, distinct from hover and signed-in identity. */
 	isViewed?: boolean;
 	/** Highlights the viewer's own card. */
@@ -92,6 +92,35 @@ export const SEX_MARKS: Record<Sex, { Icon: typeof Venus; title: string }> = {
 	male: { Icon: Mars, title: "Male" },
 	other: { Icon: Transgender, title: "Other" },
 	unknown: { Icon: CircleDashed, title: "Not recorded" },
+};
+
+/**
+ * The status rail across a card's top edge, and the dot level's fill, by state.
+ *
+ * Exported for the same reason as the two maps above: TreeLegend draws its samples from
+ * these rather than restating them. Restated, the key kept a green rail and a green dot
+ * for "living" long after the canvas stopped painting the majority state, plus a hairline
+ * "not recorded" dot and an accent "you" the canvas no longer drew.
+ */
+export const RAIL_TONE: Record<"deceased" | "unknown" | "living", string> = {
+	deceased: "bg-past",
+	unknown: "bg-ink-faint",
+	living: "bg-transparent",
+};
+
+export const DOT_TONE: Record<"viewed" | "self" | "deceased" | "unknown" | "living", string> = {
+	viewed: "border-accent bg-accent ring-2 ring-accent ring-offset-2 ring-offset-canvas",
+	self: "border-accent-dim bg-accent-dim ring-1 ring-accent-dim ring-offset-2 ring-offset-canvas",
+	// Hollow, which is the distinction that survives at 3px: filled or not, rather than one
+	// hue against another.
+	deceased: "border-past bg-canvas",
+	unknown: "border-ink-faint bg-canvas",
+	// Living is the majority, so it takes the NEUTRAL ink and the accent stays the only
+	// colour on the canvas. Filled green here made dots mode -- the view whose entire job is
+	// showing the shape of the family -- into a green mass with one amber pixel in it, so the
+	// single landmark competed with the majority state. Same defect as the card rail and the
+	// minimap, and only a screenshot could show it.
+	living: "border-edge bg-edge",
 };
 
 /**
@@ -176,23 +205,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					className={cn(
 						"kf-dot size-2.5 shrink-0 rounded-full border transition-transform",
 						"duration-(--duration-fast) ease-(--ease-spring) hover:scale-175",
-						data.isViewed
-							? "border-accent bg-accent ring-2 ring-accent ring-offset-2 ring-offset-canvas"
-							: data.isSelf
-								? "border-accent-dim bg-accent-dim ring-1 ring-accent-dim ring-offset-2 ring-offset-canvas"
-								: person.living === "deceased"
-									? // Hollow, which is the distinction that survives at 3px: filled or not,
-										// rather than one hue against another.
-										"border-past bg-canvas"
-									: person.living === "unknown"
-										? "border-ink-faint bg-canvas"
-										: // Living is 93 of 117 dots, so it takes the NEUTRAL ink and the accent
-											// stays the only colour on the canvas. Filled green here made dots mode
-											// -- the view whose entire job is showing the shape of the family --
-											// into a green mass with one amber pixel in it, so the single landmark
-											// competed with the majority state. Same defect as the card rail and
-											// the minimap, and only a screenshot could show it.
-											"border-edge bg-edge",
+						DOT_TONE[data.isViewed ? "viewed" : data.isSelf ? "self" : person.living],
 						selected && !data.isViewed && "ring-2 ring-accent ring-offset-2 ring-offset-canvas",
 					)}
 				/>
@@ -288,20 +301,15 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 				 * spending a second colour against the one-accent rule.
 				 *
 				 * So the rail now marks only what is UNCOMMON. Deceased is the minority (23) and
-				 * keeps its quiet grey; `unknown` keeps the hairline, since an unrecorded status
-				 * is a real stored value and worth showing. Living is the default state, so it
-				 * gets the default treatment: nothing. Per-element measurement cleared the green
-				 * at every step -- only the picture showed that 94 of them shared a canvas.
+				 * keeps its quiet grey; `unknown` gets a faint ink mark, since an unrecorded
+				 * status is a real stored value and worth showing -- and a mark worth showing owes
+				 * 3:1, which the hairline it used to wear did not (1.92:1 light, 2.02:1 dark).
+				 * Living is the default state, so it gets the default treatment: nothing.
+				 * Per-element measurement cleared the green at every step -- only the picture
+				 * showed that 94 of them shared a canvas.
 				 */}
 				<div
-					className={cn(
-						"kf-index-card__status h-0.5 w-full shrink-0",
-						person.living === "deceased"
-							? "bg-past"
-							: person.living === "unknown"
-								? "bg-hairline-strong"
-								: "bg-transparent",
-					)}
+					className={cn("kf-index-card__status h-0.5 w-full shrink-0", RAIL_TONE[person.living])}
 				/>
 
 				<div className="kf-index-card__body flex min-h-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-1">
@@ -309,7 +317,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					<div className="flex items-center gap-1">
 						<span
 							className={cn(
-								"kf-index-card__name min-w-0 flex-1 truncate text-[0.9375rem] font-medium leading-tight",
+								"kf-index-card__name min-w-0 flex-1 truncate leading-tight",
 								data.isSelf ? "text-accent-ink" : "text-ink",
 							)}
 						>
@@ -407,6 +415,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					hidden={data.hidden}
 					cardWidth={NODE_METRICS[lod].width}
 					cardHeight={NODE_METRICS[lod].height}
+					rowGap={NODE_METRICS[lod].rowGap}
 					onFold={data.onFold}
 				/>
 			)}
@@ -419,6 +428,7 @@ function PersonNodeInner({ data, selected }: NodeProps & { data: PersonNodeData 
 					hidden={data.hidden}
 					cardWidth={NODE_METRICS[lod].width}
 					cardHeight={NODE_METRICS[lod].height}
+					rowGap={NODE_METRICS[lod].rowGap}
 					onFold={data.onFold}
 				/>
 			)}
@@ -440,6 +450,7 @@ function FoldButton({
 	hidden,
 	cardWidth,
 	cardHeight,
+	rowGap,
 	onFold,
 }: {
 	direction: "descendants" | "ancestors";
@@ -450,6 +461,8 @@ function FoldButton({
 	/** The card's own box, so the hit area can never grow larger than what it belongs to. */
 	cardWidth: number;
 	cardHeight: number;
+	/** The gap between generations, which the target may grow out into. */
+	rowGap: number;
 	onFold: (personId: string, direction: "descendants" | "ancestors") => void;
 }) {
 	const up = direction === "ancestors";
@@ -457,6 +470,12 @@ function FoldButton({
 	// offers to close back toward the card.
 	const Icon = folded ? (up ? ChevronUp : ChevronDown) : up ? ChevronDown : ChevronUp;
 	const label = `${folded ? "Show" : "Hide"} ${name}'s ${up ? "ancestors" : "descendants"}`;
+	// The target's height and the part of it inside the card, as variables so the pill can
+	// sit on the edge however the two split. See the style comment below.
+	const reach = {
+		"--kf-fold-h": `min(calc(44px / var(--kf-zoom, 1)), ${cardHeight * 0.3 + rowGap * 0.45}px)`,
+		"--kf-fold-in": `min(calc(var(--kf-fold-h) / 2), ${cardHeight * 0.3}px)`,
+	} as CSSProperties;
 
 	return (
 		<button
@@ -483,9 +502,9 @@ function FoldButton({
 				 * a control the size of a third of a card into the gap between generations, and
 				 * those gaps are where the sibling bars read.
 				 *
-				 * So the button is a transparent square that centres a small pill. The border,
-				 * fill and shadow move to the inner span, so the touch area is honest at every
-				 * zoom while the mark stays 20px.
+				 * So the button is a transparent target holding a small pill. The border, fill
+				 * and shadow move to the inner span, so the touch area is honest at every zoom
+				 * while the mark stays 20px.
 				 *
 				 * At 16% across rather than the centre: the centre of the top and bottom edges
 				 * belongs to the viewed card's `+` handles (see NodeAdd.tsx), and a chevron under
@@ -493,7 +512,7 @@ function FoldButton({
 				 * same fraction, and the `+` targets are sized to stop short of this pill; where
 				 * the two TARGETS still meet at low zoom, the `+` layer wins by stacking order.
 				 */
-				"nodrag absolute left-[16%] z-10 flex -translate-x-1/2 items-center justify-center",
+				"nodrag absolute left-[16%] z-10 -translate-x-1/2",
 				"transition-opacity duration-(--duration-fast) ease-(--ease-out)",
 				// Revealed on hover of the wrapper, so the control appears with the card rather
 				// than having to be hunted for. Always visible once FOLDED, because a hidden
@@ -515,22 +534,35 @@ function FoldButton({
 			 * completely and `elementFromPoint` at the card's centre returned the BUTTON, so
 			 * clicking a person opened a fold instead of their panel. A control may overhang its
 			 * card's edge; it may never eclipse it.
+			 *
+			 * And ASYMMETRIC, the way the `+` targets are (see `hitBox`). Centred on the edge,
+			 * the cap halved what the gap could give: 30 screen px on a card at its legible
+			 * zoom and 24 on a row at zoom 1. So at most 30% of the card reaches INWARD and the
+			 * rest goes outward, up to 45% of the gap between generations -- the target of the
+			 * card in the next row, facing it, takes the other side, so the two never meet.
 			 */
 			style={{
+				...reach,
 				width: `min(calc(44px / var(--kf-zoom, 1)), ${cardWidth * 0.5}px)`,
-				height: `min(calc(44px / var(--kf-zoom, 1)), ${cardHeight * 0.6}px)`,
+				height: "var(--kf-fold-h)",
 				...(up
-					? { top: `max(calc(-22px / var(--kf-zoom, 1)), -${cardHeight * 0.3}px)` }
-					: { bottom: `max(calc(-22px / var(--kf-zoom, 1)), -${cardHeight * 0.3}px)` }),
+					? { top: "calc(var(--kf-fold-in) - var(--kf-fold-h))" }
+					: { bottom: "calc(var(--kf-fold-in) - var(--kf-fold-h))" }),
 			}}
 		>
+			{/* The pill stays ON the card's edge, wherever the target around it reaches. */}
 			<span
 				className={cn(
-					"flex items-center gap-0.5 rounded-full border border-hairline bg-surface-raised",
+					"absolute left-1/2 flex items-center gap-0.5 rounded-full border border-hairline bg-surface-raised",
 					"px-1.5 py-0.5 text-ink-faint shadow-(--kf-shadow-card)",
 					"transition-colors duration-(--duration-fast) ease-(--ease-out)",
 					"group-hover/node:border-hairline-strong",
 				)}
+				style={
+					up
+						? { bottom: "var(--kf-fold-in)", transform: "translate(-50%, 50%)" }
+						: { top: "var(--kf-fold-in)", transform: "translate(-50%, -50%)" }
+				}
 			>
 				<Icon className="size-3" strokeWidth={2.5} aria-hidden="true" />
 				{folded && hidden ? (

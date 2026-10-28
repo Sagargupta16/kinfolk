@@ -29,7 +29,7 @@ import { BaseEdge, type EdgeProps, getSmoothStepPath, type Position } from "@xyf
 import { bracketPath, CORNER, elbowPath, orbitPath, partnerPath } from "@/lib/tree/paths";
 
 /** Set on child edges whose union has a sibling bar. See lib/tree/siblings.ts. */
-export type FamilyEdgeData = {
+type FamilyEdgeData = {
 	/** The y the shared horizontal bar runs at. */
 	barY: number;
 	/** Bar extent, so only ONE edge per family draws it. */
@@ -51,7 +51,7 @@ export type FamilyEdgeData = {
  * else can fix it from inside the edge: `sourceY`/`targetY` are already the handle positions
  * by the time this component runs.
  */
-export type JunctionAnchor = {
+type JunctionAnchor = {
 	/** Centre of the union dot the SOURCE end sits on, when the source is a junction. */
 	sourceHub?: { x: number; y: number };
 	/** Centre of the union dot the TARGET end sits on, when the target is a junction. */
@@ -68,7 +68,7 @@ export type JunctionAnchor = {
  * bottom centre), and a marriage line runs at mid-card height, which no handle
  * is at.
  */
-export type PartnerRail = {
+type PartnerRail = {
 	partner: true;
 	/** The y the marriage line runs at. */
 	railY: number;

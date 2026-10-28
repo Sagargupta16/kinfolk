@@ -30,8 +30,6 @@ import { db, hasDatabase } from "@/lib/db/client";
 import { sessions, users } from "@/lib/db/schema";
 import { bearerToken } from "./bearer-header";
 
-export { bearerToken };
-
 /**
  * The user this token belongs to, or null.
  *

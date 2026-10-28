@@ -25,8 +25,14 @@ import type { StripSide } from "@/lib/tree/node-add";
 import { cn } from "@/lib/utils";
 import { NodeStrip, stripRow, useShake } from "./NodeStrip";
 
-/** The two name columns as the one field shows them, whitespace collapsed for comparison. */
-function joinedName(givenName: string | null | undefined, familyName: string | null | undefined) {
+/**
+ * The two name columns as the one field shows them, whitespace collapsed for comparison.
+ * Exported for PersonEdit, which shows the same field and must compare it the same way.
+ */
+export function joinedName(
+	givenName: string | null | undefined,
+	familyName: string | null | undefined,
+) {
 	return [givenName, familyName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
@@ -40,6 +46,7 @@ export function NodeEditStrip({
 	side,
 	onSaved,
 	onLeaving,
+	onFailed,
 	onProfile,
 	onClose,
 }: {
@@ -52,6 +59,8 @@ export function NodeEditStrip({
 	onSaved: (change: "updated" | "deleted") => void;
 	/** The card shrinks away while a delete is in flight, and comes back if it fails. */
 	onLeaving: (leaving: boolean) => void;
+	/** A failure that arrived after the strip was closed, for the canvas to report. */
+	onFailed?: (message: string) => void;
 	onProfile: () => void;
 	onClose: () => void;
 }) {
@@ -73,6 +82,7 @@ export function NodeEditStrip({
 				claimed={Boolean(values?.claimedByUserId)}
 				onSaved={onSaved}
 				onLeaving={onLeaving}
+				onFailed={onFailed}
 				onProfile={onProfile}
 				onClose={onClose}
 			/>
@@ -88,6 +98,7 @@ function EditForm({
 	claimed,
 	onSaved,
 	onLeaving,
+	onFailed,
 	onProfile,
 	onClose,
 }: {
@@ -99,6 +110,7 @@ function EditForm({
 	claimed: boolean;
 	onSaved: (change: "updated" | "deleted") => void;
 	onLeaving: (leaving: boolean) => void;
+	onFailed?: (message: string) => void;
 	onProfile: () => void;
 	onClose: () => void;
 }) {
@@ -109,12 +121,19 @@ function EditForm({
 	const [confirming, setConfirming] = useState(false);
 	const [error, setError] = useState<{ text: string; at: number } | null>(null);
 	const shake = useShake<HTMLFormElement>(error?.at);
-	const firstName = name.split(/\s+/)[0] || name;
-
-	// Selected rather than only focused, so retyping a misspelt name replaces it in one go.
+	// As in the add strip: a failure after the strip closed goes to the canvas instead.
+	const mounted = useRef(true);
 	useEffect(() => {
-		nameRef.current?.select();
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
 	}, []);
+	const fail = (text: string) => {
+		if (mounted.current) setError({ text, at: Date.now() });
+		else onFailed?.(text);
+	};
+	const firstName = name.split(/\s+/)[0] || name;
 
 	async function save(form: HTMLFormElement) {
 		if (pending) return;
@@ -149,15 +168,15 @@ function EditForm({
 		try {
 			const result = await updatePerson(data);
 			if (!result.ok) {
-				setError({ text: result.error, at: Date.now() });
+				fail(result.error);
 				return;
 			}
 			onSaved("updated");
 			onClose();
 		} catch {
-			setError({ text: "Could not save that. Try again.", at: Date.now() });
+			fail("Could not save that. Try again.");
 		} finally {
-			setPending(false);
+			if (mounted.current) setPending(false);
 		}
 	}
 
@@ -175,16 +194,16 @@ function EditForm({
 			const result = await deletePerson(form);
 			if (!result.ok) {
 				onLeaving(false);
-				setError({ text: result.error, at: Date.now() });
+				fail(result.error);
 				return;
 			}
 			onSaved("deleted");
 			onClose();
 		} catch {
 			onLeaving(false);
-			setError({ text: "Could not delete that record. Try again.", at: Date.now() });
+			fail("Could not delete that record. Try again.");
 		} finally {
-			setPending(false);
+			if (mounted.current) setPending(false);
 		}
 	}
 
@@ -215,6 +234,9 @@ function EditForm({
 				<input
 					id={nameId}
 					ref={nameRef}
+					// Selected rather than only focused, once the strip is on screen, so retyping a
+					// misspelt name replaces it in one go.
+					data-autofocus="select"
 					name="name"
 					defaultValue={initialName}
 					maxLength={120}

@@ -1,0 +1,4010 @@
+{
+	"source": {
+		"name": "Wikidata",
+		"url": "https://www.wikidata.org",
+		"license": "CC0 1.0",
+		"retrieved": "2026-10-28",
+		"roots": [
+			{
+				"qid": "Q9439",
+				"treeId": "tree-victoria",
+				"depth": 3
+			},
+			{
+				"qid": "Q151305",
+				"treeId": "tree-christian",
+				"depth": 2
+			}
+		]
+	},
+	"trees": [
+		{
+			"treeId": "tree-victoria",
+			"treeName": "Queen Victoria's family",
+			"people": [
+				{
+					"id": "v-Q10315513",
+					"qid": "Q10315513",
+					"givenName": "Iris",
+					"familyName": "Mountbatten",
+					"sex": "female",
+					"birthDate": "1920-01-13",
+					"birthDateApprox": null,
+					"deathDate": "1982-09-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q113584",
+					"qid": "Q113584",
+					"givenName": "Olga",
+					"familyName": "Nikolaevna",
+					"sex": "female",
+					"birthDate": "1895-11-15",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q115477",
+					"qid": "Q115477",
+					"givenName": "Louise",
+					"familyName": "Mountbatten",
+					"sex": "female",
+					"birthDate": "1889-07-13",
+					"birthDateApprox": null,
+					"deathDate": "1965-03-07",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q116062",
+					"qid": "Q116062",
+					"givenName": "Alice",
+					"familyName": "Battenberg",
+					"sex": "female",
+					"birthDate": "1885-02-25",
+					"birthDateApprox": null,
+					"deathDate": "1969-12-05",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q116728",
+					"qid": "Q116728",
+					"givenName": "Victoria",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1840-11-21",
+					"birthDateApprox": null,
+					"deathDate": "1901-08-05",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q117174",
+					"qid": "Q117174",
+					"givenName": "Henry",
+					"familyName": "Windsor",
+					"sex": "male",
+					"birthDate": "1900-03-31",
+					"birthDateApprox": null,
+					"deathDate": "1974-06-10",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q1208045",
+					"qid": "Q1208045",
+					"givenName": "Marie",
+					"familyName": "Hesse",
+					"sex": "female",
+					"birthDate": "1874-05-24",
+					"birthDateApprox": null,
+					"deathDate": "1878-11-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q12738554",
+					"qid": "Q12738554",
+					"givenName": "Alexander",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1871-04-06",
+					"birthDateApprox": null,
+					"deathDate": "1871-04-07",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q1332391",
+					"qid": "Q1332391",
+					"givenName": "Gonzalo",
+					"familyName": "Bourbon",
+					"sex": "male",
+					"birthDate": "1914-10-24",
+					"birthDateApprox": null,
+					"deathDate": "1934-08-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q151130",
+					"qid": "Q151130",
+					"givenName": "Anastasia",
+					"familyName": "Nikolaevna",
+					"sex": "female",
+					"birthDate": "1901-06-18",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q151742",
+					"qid": "Q151742",
+					"givenName": "Alexander",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1893-08-01",
+					"birthDateApprox": null,
+					"deathDate": "1920-10-25",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q152094",
+					"qid": "Q152094",
+					"givenName": "Alexandra",
+					"familyName": "Hesse",
+					"sex": "female",
+					"birthDate": "1872-06-06",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q152099",
+					"qid": "Q152099",
+					"givenName": "Constantine I",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1868-08-02",
+					"birthDateApprox": null,
+					"deathDate": "1923-01-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q152245",
+					"qid": "Q152245",
+					"givenName": "Albert",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1819-08-26",
+					"birthDateApprox": null,
+					"deathDate": "1861-12-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q152260",
+					"qid": "Q152260",
+					"givenName": "Alexandra",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1844-12-01",
+					"birthDateApprox": null,
+					"deathDate": "1925-11-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q152935",
+					"qid": "Q152935",
+					"givenName": "George II",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1890-07-19",
+					"birthDateApprox": null,
+					"deathDate": "1947-04-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q154045",
+					"qid": "Q154045",
+					"givenName": "Alexei",
+					"familyName": "Nikolaevich",
+					"sex": "male",
+					"birthDate": "1904-08-12",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q154423",
+					"qid": "Q154423",
+					"givenName": "Maud",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1869-11-26",
+					"birthDateApprox": null,
+					"deathDate": "1938-11-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q154912",
+					"qid": "Q154912",
+					"givenName": "Olav V",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1903-07-02",
+					"birthDateApprox": null,
+					"deathDate": "1991-01-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q154927",
+					"qid": "Q154927",
+					"givenName": "Haakon VII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1872-08-03",
+					"birthDateApprox": null,
+					"deathDate": "1957-09-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q155394",
+					"qid": "Q155394",
+					"givenName": "Paul",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1901-12-14",
+					"birthDateApprox": null,
+					"deathDate": "1964-03-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q155422",
+					"qid": "Q155422",
+					"givenName": "Maria",
+					"familyName": "Nikolaevna",
+					"sex": "female",
+					"birthDate": "1899-06-26",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q155566",
+					"qid": "Q155566",
+					"givenName": "Alice",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1843-04-25",
+					"birthDateApprox": null,
+					"deathDate": "1878-12-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q155822",
+					"qid": "Q155822",
+					"givenName": "Sophia",
+					"familyName": "Hohenzollern",
+					"sex": "female",
+					"birthDate": "1870-06-14",
+					"birthDateApprox": null,
+					"deathDate": "1932-01-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q157068",
+					"qid": "Q157068",
+					"givenName": "Louis",
+					"familyName": "Mountbatten",
+					"sex": "male",
+					"birthDate": "1900-06-25",
+					"birthDateApprox": null,
+					"deathDate": "1979-08-27",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q158140",
+					"qid": "Q158140",
+					"givenName": "Beatrice",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1857-04-14",
+					"birthDateApprox": null,
+					"deathDate": "1944-10-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q158143",
+					"qid": "Q158143",
+					"givenName": "Alfred",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1844-08-06",
+					"birthDateApprox": null,
+					"deathDate": "1900-07-31",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q158148",
+					"qid": "Q158148",
+					"givenName": "Tatiana",
+					"familyName": "Nikolaevna",
+					"sex": "female",
+					"birthDate": "1897-06-10",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q158154",
+					"qid": "Q158154",
+					"givenName": "Maria",
+					"familyName": "Alexandrovna",
+					"sex": "female",
+					"birthDate": "1853-10-17",
+					"birthDateApprox": null,
+					"deathDate": "1920-10-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q158173",
+					"qid": "Q158173",
+					"givenName": "Margaret",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1882-01-15",
+					"birthDateApprox": null,
+					"deathDate": "1920-05-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q159670",
+					"qid": "Q159670",
+					"givenName": "Albert",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1864-01-08",
+					"birthDateApprox": null,
+					"deathDate": "1892-01-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160001",
+					"qid": "Q160001",
+					"givenName": "Victoria",
+					"familyName": "Battenberg",
+					"sex": "female",
+					"birthDate": "1887-10-24",
+					"birthDateApprox": null,
+					"deathDate": "1969-04-15",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160467",
+					"qid": "Q160467",
+					"givenName": "Charles",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1884-07-19",
+					"birthDateApprox": null,
+					"deathDate": "1954-03-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160539",
+					"qid": "Q160539",
+					"givenName": "Helena",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1846-05-25",
+					"birthDateApprox": null,
+					"deathDate": "1923-06-09",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160541",
+					"qid": "Q160541",
+					"givenName": "Leopold",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1853-04-07",
+					"birthDateApprox": null,
+					"deathDate": "1884-03-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160558",
+					"qid": "Q160558",
+					"givenName": "Arthur",
+					"familyName": "Windsor",
+					"sex": "male",
+					"birthDate": "1850-05-01",
+					"birthDateApprox": null,
+					"deathDate": "1942-01-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160770",
+					"qid": "Q160770",
+					"givenName": "George",
+					"familyName": "Windsor",
+					"sex": "male",
+					"birthDate": "1902-12-20",
+					"birthDateApprox": null,
+					"deathDate": "1942-08-25",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q160948",
+					"qid": "Q160948",
+					"givenName": "Kirill",
+					"familyName": "Vladimirovich",
+					"sex": "male",
+					"birthDate": "1876-10-12",
+					"birthDateApprox": null,
+					"deathDate": "1938-10-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q161167",
+					"qid": "Q161167",
+					"givenName": "Louise",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1848-03-18",
+					"birthDateApprox": null,
+					"deathDate": "1939-12-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q161247",
+					"qid": "Q161247",
+					"givenName": "Augusta",
+					"familyName": "Augustenburg",
+					"sex": "female",
+					"birthDate": "1858-10-22",
+					"birthDateApprox": null,
+					"deathDate": "1921-04-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q162177",
+					"qid": "Q162177",
+					"givenName": "Helen",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1896-05-02",
+					"birthDateApprox": null,
+					"deathDate": "1982-11-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q163010",
+					"qid": "Q163010",
+					"givenName": "Ingrid",
+					"familyName": "Bernadotte",
+					"sex": "female",
+					"birthDate": "1910-03-28",
+					"birthDateApprox": null,
+					"deathDate": "2000-11-07",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q164498",
+					"qid": "Q164498",
+					"givenName": "Louis IV",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1837-09-12",
+					"birthDateApprox": null,
+					"deathDate": "1892-03-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q164500",
+					"qid": "Q164500",
+					"givenName": "Victoria",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1876-11-25",
+					"birthDateApprox": null,
+					"deathDate": "1936-03-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q167387",
+					"qid": "Q167387",
+					"givenName": "Maria",
+					"familyName": "Karađorđević",
+					"sex": "female",
+					"birthDate": "1900-01-06",
+					"birthDateApprox": null,
+					"deathDate": "1961-06-22",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q177769",
+					"qid": "Q177769",
+					"givenName": "Feodora",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1879-05-12",
+					"birthDateApprox": null,
+					"deathDate": "1945-08-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q18363",
+					"qid": "Q18363",
+					"givenName": "Alfonso XIII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1886-05-17",
+					"birthDateApprox": null,
+					"deathDate": "1941-02-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q204864",
+					"qid": "Q204864",
+					"givenName": "Helena",
+					"familyName": "Victoria",
+					"sex": "female",
+					"birthDate": "1870-05-03",
+					"birthDateApprox": null,
+					"deathDate": "1948-03-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2083011",
+					"qid": "Q2083011",
+					"givenName": "Álvaro",
+					"familyName": "Orléans",
+					"sex": "male",
+					"birthDate": "1910-04-20",
+					"birthDateApprox": null,
+					"deathDate": "1997-08-22",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q20875",
+					"qid": "Q20875",
+					"givenName": "Edward VII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1841-11-09",
+					"birthDateApprox": null,
+					"deathDate": "1910-05-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q212897",
+					"qid": "Q212897",
+					"givenName": "Carol II",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1893-10-15",
+					"birthDateApprox": null,
+					"deathDate": "1953-04-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2150403",
+					"qid": "Q2150403",
+					"givenName": "Richard",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1901-05-14",
+					"birthDateApprox": null,
+					"deathDate": "1969-02-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2205590",
+					"qid": "Q2205590",
+					"givenName": "Leopold",
+					"familyName": "Mountbatten",
+					"sex": "male",
+					"birthDate": "1889-05-21",
+					"birthDateApprox": null,
+					"deathDate": "1922-04-23",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2314771",
+					"qid": "Q2314771",
+					"givenName": "Christoph",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1901-05-14",
+					"birthDateApprox": null,
+					"deathDate": "1943-10-07",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q232728",
+					"qid": "Q232728",
+					"givenName": "Alexandra",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1870-08-30",
+					"birthDateApprox": null,
+					"deathDate": "1891-09-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q232735",
+					"qid": "Q232735",
+					"givenName": "Elisabeth",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1894-10-12",
+					"birthDateApprox": null,
+					"deathDate": "1956-11-15",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2332225",
+					"qid": "Q2332225",
+					"givenName": "Marie",
+					"familyName": "Melita",
+					"sex": "female",
+					"birthDate": "1899-01-18",
+					"birthDateApprox": null,
+					"deathDate": "1967-11-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q233516",
+					"qid": "Q233516",
+					"givenName": "Louise",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1867-02-20",
+					"birthDateApprox": null,
+					"deathDate": "1931-01-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q233913",
+					"qid": "Q233913",
+					"givenName": "Mary",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1897-04-25",
+					"birthDateApprox": null,
+					"deathDate": "1965-03-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q233990",
+					"qid": "Q233990",
+					"givenName": "Irene",
+					"familyName": "Hohenzollern",
+					"sex": "female",
+					"birthDate": "1866-07-11",
+					"birthDateApprox": null,
+					"deathDate": "1953-11-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q234542",
+					"qid": "Q234542",
+					"givenName": "Victoria",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1868-07-06",
+					"birthDateApprox": null,
+					"deathDate": "1935-12-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2351869",
+					"qid": "Q2351869",
+					"givenName": "Maurice",
+					"familyName": "Battenberg",
+					"sex": "male",
+					"birthDate": "1891-10-03",
+					"birthDateApprox": null,
+					"deathDate": "1914-10-27",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q235435",
+					"qid": "Q235435",
+					"givenName": "Louise",
+					"familyName": "Hohenzollern",
+					"sex": "female",
+					"birthDate": "1860-07-25",
+					"birthDateApprox": null,
+					"deathDate": "1917-03-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q235438",
+					"qid": "Q235438",
+					"givenName": "Maria",
+					"familyName": "Pavlovna",
+					"sex": "female",
+					"birthDate": "1890-04-18",
+					"birthDateApprox": null,
+					"deathDate": "1958-12-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q235521",
+					"qid": "Q235521",
+					"givenName": "Alice",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1883-02-25",
+					"birthDateApprox": null,
+					"deathDate": "1981-01-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q235595",
+					"qid": "Q235595",
+					"givenName": "Ileana",
+					"familyName": "Hohenzollern",
+					"sex": "female",
+					"birthDate": "1909-01-05",
+					"birthDateApprox": null,
+					"deathDate": "1991-01-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q235597",
+					"qid": "Q235597",
+					"givenName": "Beatrice",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1884-04-20",
+					"birthDateApprox": null,
+					"deathDate": "1966-07-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q236770",
+					"qid": "Q236770",
+					"givenName": "Irene",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1904-02-13",
+					"birthDateApprox": null,
+					"deathDate": "1974-04-15",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q237341",
+					"qid": "Q237341",
+					"givenName": "Kira",
+					"familyName": "Kirillovna",
+					"sex": "female",
+					"birthDate": "1909-05-09",
+					"birthDateApprox": null,
+					"deathDate": "1967-09-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2412713",
+					"qid": "Q2412713",
+					"givenName": "María",
+					"familyName": "Bourbon",
+					"sex": "female",
+					"birthDate": "1911-12-12",
+					"birthDateApprox": null,
+					"deathDate": "1996-12-23",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2419125",
+					"qid": "Q2419125",
+					"givenName": "Mircea",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1913-01-13",
+					"birthDateApprox": null,
+					"deathDate": "1916-11-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q242338",
+					"qid": "Q242338",
+					"givenName": "Katherine",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1913-05-04",
+					"birthDateApprox": null,
+					"deathDate": "2007-10-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q242876",
+					"qid": "Q242876",
+					"givenName": "Marie",
+					"familyName": "Louise",
+					"sex": "female",
+					"birthDate": "1872-08-12",
+					"birthDateApprox": null,
+					"deathDate": "1956-12-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2457294",
+					"qid": "Q2457294",
+					"givenName": "Alfonso",
+					"familyName": "Orléans",
+					"sex": "male",
+					"birthDate": "1886-11-12",
+					"birthDateApprox": null,
+					"deathDate": "1975-08-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q248900",
+					"qid": "Q248900",
+					"givenName": "Sergei",
+					"familyName": "Alexandrovich",
+					"sex": "male",
+					"birthDate": "1857-05-11",
+					"birthDateApprox": null,
+					"deathDate": "1905-02-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q255953",
+					"qid": "Q255953",
+					"givenName": "Alexandra",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1891-05-17",
+					"birthDateApprox": null,
+					"deathDate": "1959-02-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2562528",
+					"qid": "Q2562528",
+					"givenName": "Friedrich",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1870-10-07",
+					"birthDateApprox": null,
+					"deathDate": "1873-05-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q256951",
+					"qid": "Q256951",
+					"givenName": "Patricia",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1886-03-17",
+					"birthDateApprox": null,
+					"deathDate": "1974-01-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q26303863",
+					"qid": "Q26303863",
+					"givenName": "Friedrich",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1893-11-23",
+					"birthDateApprox": null,
+					"deathDate": "1916-09-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q26309270",
+					"qid": "Q26309270",
+					"givenName": "Maximilian",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1894-10-20",
+					"birthDateApprox": null,
+					"deathDate": "1914-10-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2643355",
+					"qid": "Q2643355",
+					"givenName": "Alexander",
+					"familyName": "Zoubkoff",
+					"sex": "male",
+					"birthDate": "1901-09-25",
+					"birthDateApprox": null,
+					"deathDate": "1936-01-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2677",
+					"qid": "Q2677",
+					"givenName": "Wilhelm II",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1859-01-27",
+					"birthDateApprox": null,
+					"deathDate": "1941-06-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q269412",
+					"qid": "Q269412",
+					"givenName": "George V",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1865-06-03",
+					"birthDateApprox": null,
+					"deathDate": "1936-01-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q269493",
+					"qid": "Q269493",
+					"givenName": "Beatriz",
+					"familyName": "Bourbon",
+					"sex": "female",
+					"birthDate": "1909-06-22",
+					"birthDateApprox": null,
+					"deathDate": "2002-11-22",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2800847",
+					"qid": "Q2800847",
+					"givenName": "Sigismund",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1864-09-15",
+					"birthDateApprox": null,
+					"deathDate": "1866-06-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q280856",
+					"qid": "Q280856",
+					"givenName": "George VI",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1895-12-14",
+					"birthDateApprox": null,
+					"deathDate": "1952-02-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q2914819",
+					"qid": "Q2914819",
+					"givenName": "Alastair",
+					"familyName": "Windsor",
+					"sex": "male",
+					"birthDate": "1914-08-09",
+					"birthDateApprox": null,
+					"deathDate": "1943-04-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q3026877",
+					"qid": "Q3026877",
+					"givenName": "Waldemar",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1868-02-10",
+					"birthDateApprox": null,
+					"deathDate": "1879-03-27",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q310488",
+					"qid": "Q310488",
+					"givenName": "John",
+					"familyName": "Windsor",
+					"sex": "male",
+					"birthDate": "1905-07-12",
+					"birthDateApprox": null,
+					"deathDate": "1919-01-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q313857",
+					"qid": "Q313857",
+					"givenName": "Juan",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1913-06-20",
+					"birthDateApprox": null,
+					"deathDate": "1993-04-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q332552",
+					"qid": "Q332552",
+					"givenName": "Alexander",
+					"familyName": "Duff",
+					"sex": "male",
+					"birthDate": "1849-11-10",
+					"birthDateApprox": null,
+					"deathDate": "1912-01-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q334971",
+					"qid": "Q334971",
+					"givenName": "John",
+					"familyName": "Campbell",
+					"sex": "male",
+					"birthDate": "1845-08-06",
+					"birthDateApprox": null,
+					"deathDate": "1914-05-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q335091",
+					"qid": "Q335091",
+					"givenName": "Alexander",
+					"familyName": "Cambridge",
+					"sex": "male",
+					"birthDate": "1874-04-14",
+					"birthDateApprox": null,
+					"deathDate": "1957-01-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q335129",
+					"qid": "Q335129",
+					"givenName": "George",
+					"familyName": "Battenberg",
+					"sex": "male",
+					"birthDate": "1892-11-06",
+					"birthDateApprox": null,
+					"deathDate": "1938-04-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q337477",
+					"qid": "Q337477",
+					"givenName": "Alexander",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1886-11-23",
+					"birthDateApprox": null,
+					"deathDate": "1960-02-23",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q347374",
+					"qid": "Q347374",
+					"givenName": "Gustaf",
+					"familyName": "Bernadotte",
+					"sex": "male",
+					"birthDate": "1906-04-22",
+					"birthDateApprox": null,
+					"deathDate": "1947-01-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q361261",
+					"qid": "Q361261",
+					"givenName": "Bertil",
+					"familyName": "Bernadotte",
+					"sex": "male",
+					"birthDate": "1912-02-28",
+					"birthDateApprox": null,
+					"deathDate": "1997-01-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q372954",
+					"qid": "Q372954",
+					"givenName": "Dmitri",
+					"familyName": "Pavlovich",
+					"sex": "male",
+					"birthDate": "1891-09-18",
+					"birthDateApprox": null,
+					"deathDate": "1942-03-05",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q372964",
+					"qid": "Q372964",
+					"givenName": "Paul",
+					"familyName": "Alexandrovich",
+					"sex": "male",
+					"birthDate": "1860-10-03",
+					"birthDateApprox": null,
+					"deathDate": "1919-01-30",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q382226",
+					"qid": "Q382226",
+					"givenName": "Vladimir",
+					"familyName": "Kirillovich",
+					"sex": "male",
+					"birthDate": "1917-08-30",
+					"birthDateApprox": null,
+					"deathDate": "1992-04-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q40787",
+					"qid": "Q40787",
+					"givenName": "Nicholas II",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1868-05-18",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q437019",
+					"qid": "Q437019",
+					"givenName": "Carl",
+					"familyName": "Bernadotte",
+					"sex": "male",
+					"birthDate": "1916-10-31",
+					"birthDateApprox": null,
+					"deathDate": "2012-05-05",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q439167",
+					"qid": "Q439167",
+					"givenName": "Maud",
+					"familyName": "MacDuff",
+					"sex": "female",
+					"birthDate": "1893-04-03",
+					"birthDateApprox": null,
+					"deathDate": "1945-12-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q4424877",
+					"qid": "Q4424877",
+					"givenName": "May Abel",
+					"familyName": "Smith",
+					"sex": "female",
+					"birthDate": "1906-01-23",
+					"birthDateApprox": null,
+					"deathDate": "1994-05-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q444347",
+					"qid": "Q444347",
+					"givenName": "Henry",
+					"familyName": "Battenberg",
+					"sex": "male",
+					"birthDate": "1858-10-05",
+					"birthDateApprox": null,
+					"deathDate": "1896-01-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q447209",
+					"qid": "Q447209",
+					"givenName": "Sigvard",
+					"familyName": "Bernadotte",
+					"sex": "male",
+					"birthDate": "1907-06-07",
+					"birthDateApprox": null,
+					"deathDate": "2002-02-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q4540064",
+					"qid": "Q4540064",
+					"givenName": "Hubertus",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1909-08-24",
+					"birthDateApprox": null,
+					"deathDate": "1943-11-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q47139432",
+					"qid": "Q47139432",
+					"givenName": "Irma",
+					"familyName": "Hohenlohe",
+					"sex": "female",
+					"birthDate": "1902-07-17",
+					"birthDateApprox": null,
+					"deathDate": "1986-03-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q4719910",
+					"qid": "Q4719910",
+					"givenName": "Alexander",
+					"familyName": "Ramsay",
+					"sex": "male",
+					"birthDate": "1881-05-29",
+					"birthDateApprox": null,
+					"deathDate": "1972-10-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q4719913",
+					"qid": "Q4719913",
+					"givenName": "Alexander",
+					"familyName": "Ramsay",
+					"sex": "male",
+					"birthDate": "1919-12-21",
+					"birthDateApprox": null,
+					"deathDate": "2000-12-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q50998",
+					"qid": "Q50998",
+					"givenName": "Adalbert",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1884-07-14",
+					"birthDateApprox": null,
+					"deathDate": "1948-09-22",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q51007",
+					"qid": "Q51007",
+					"givenName": "Adolf",
+					"familyName": "Lippe",
+					"sex": "male",
+					"birthDate": "1859-07-20",
+					"birthDateApprox": null,
+					"deathDate": "1916-07-09",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q518846",
+					"qid": "Q518846",
+					"givenName": "Alfonso",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1907-05-10",
+					"birthDateApprox": null,
+					"deathDate": "1938-09-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q519332",
+					"qid": "Q519332",
+					"givenName": "Arthur",
+					"familyName": "Windsor",
+					"sex": "male",
+					"birthDate": "1883-01-13",
+					"birthDateApprox": null,
+					"deathDate": "1938-09-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q52878",
+					"qid": "Q52878",
+					"givenName": "Gustaf",
+					"familyName": "Bernadotte",
+					"sex": "male",
+					"birthDate": "1882-11-11",
+					"birthDateApprox": null,
+					"deathDate": "1973-09-15",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q529045",
+					"qid": "Q529045",
+					"givenName": "Nicolae",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1903-08-05",
+					"birthDateApprox": null,
+					"deathDate": "1978-07-09",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q5365163",
+					"qid": "Q5365163",
+					"givenName": "Caroline",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1912-06-22",
+					"birthDateApprox": null,
+					"deathDate": "1983-09-05",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57165",
+					"qid": "Q57165",
+					"givenName": "Ferdinand I",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1865-08-24",
+					"birthDateApprox": null,
+					"deathDate": "1927-07-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q572145",
+					"qid": "Q572145",
+					"givenName": "Aribert",
+					"familyName": "Anhalt",
+					"sex": "male",
+					"birthDate": "1864-06-18",
+					"birthDateApprox": null,
+					"deathDate": "1933-12-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57468",
+					"qid": "Q57468",
+					"givenName": "Louis",
+					"familyName": "Battenberg",
+					"sex": "male",
+					"birthDate": "1854-05-24",
+					"birthDateApprox": null,
+					"deathDate": "1921-09-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57507",
+					"qid": "Q57507",
+					"givenName": "Ernest Louis",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1868-11-25",
+					"birthDateApprox": null,
+					"deathDate": "1937-10-09",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57529",
+					"qid": "Q57529",
+					"givenName": "Viktoria",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1892-09-13",
+					"birthDateApprox": null,
+					"deathDate": "1980-12-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57569",
+					"qid": "Q57569",
+					"givenName": "Henry",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1862-08-14",
+					"birthDateApprox": null,
+					"deathDate": "1929-04-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57621",
+					"qid": "Q57621",
+					"givenName": "Wilhelm",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1882-05-06",
+					"birthDateApprox": null,
+					"deathDate": "1951-07-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57626",
+					"qid": "Q57626",
+					"givenName": "Sibylla",
+					"familyName": "Saxe-Coburg",
+					"sex": "female",
+					"birthDate": "1908-01-18",
+					"birthDateApprox": null,
+					"deathDate": "1972-11-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57658",
+					"qid": "Q57658",
+					"givenName": "Victoria",
+					"familyName": "Hesse",
+					"sex": "female",
+					"birthDate": "1863-04-05",
+					"birthDateApprox": null,
+					"deathDate": "1950-09-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q57666",
+					"qid": "Q57666",
+					"givenName": "Marie",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1875-10-29",
+					"birthDateApprox": null,
+					"deathDate": "1938-07-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q58063",
+					"qid": "Q58063",
+					"givenName": "Elisabeth",
+					"familyName": "Hesse",
+					"sex": "female",
+					"birthDate": "1864-11-01",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q58600",
+					"qid": "Q58600",
+					"givenName": "Frederick III",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1831-10-18",
+					"birthDateApprox": null,
+					"deathDate": "1888-06-15",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q58670",
+					"qid": "Q58670",
+					"givenName": "Charlotte",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1860-07-24",
+					"birthDateApprox": null,
+					"deathDate": "1919-10-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q58777",
+					"qid": "Q58777",
+					"givenName": "August",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1887-01-29",
+					"birthDateApprox": null,
+					"deathDate": "1949-03-25",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q590227",
+					"qid": "Q590227",
+					"givenName": "Edward VIII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1894-06-23",
+					"birthDateApprox": null,
+					"deathDate": "1972-05-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q60371",
+					"qid": "Q60371",
+					"givenName": "Joachim",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1890-12-17",
+					"birthDateApprox": null,
+					"deathDate": "1920-07-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q60382",
+					"qid": "Q60382",
+					"givenName": "Viktoria",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1866-04-12",
+					"birthDateApprox": null,
+					"deathDate": "1929-11-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q6069164",
+					"qid": "Q6069164",
+					"givenName": "Irene",
+					"familyName": "Mountbatten",
+					"sex": "female",
+					"birthDate": "1890-07-04",
+					"birthDateApprox": null,
+					"deathDate": "1956-07-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q60707",
+					"qid": "Q60707",
+					"givenName": "Viktoria",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1885-12-31",
+					"birthDateApprox": null,
+					"deathDate": "1970-10-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q60737",
+					"qid": "Q60737",
+					"givenName": "Georg",
+					"familyName": "Donatus",
+					"sex": "male",
+					"birthDate": "1906-11-08",
+					"birthDateApprox": null,
+					"deathDate": "1937-11-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q60741",
+					"qid": "Q60741",
+					"givenName": "Philipp",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1896-11-06",
+					"birthDateApprox": null,
+					"deathDate": "1980-10-25",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q60747",
+					"qid": "Q60747",
+					"givenName": "Helena",
+					"familyName": "Waldeck",
+					"sex": "female",
+					"birthDate": "1861-02-17",
+					"birthDateApprox": null,
+					"deathDate": "1922-09-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q61104",
+					"qid": "Q61104",
+					"givenName": "Bernhard III",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1851-04-01",
+					"birthDateApprox": null,
+					"deathDate": "1928-01-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q61242",
+					"qid": "Q61242",
+					"givenName": "Oskar",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1888-07-27",
+					"birthDateApprox": null,
+					"deathDate": "1958-01-27",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q61270",
+					"qid": "Q61270",
+					"givenName": "Louis",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1908-11-20",
+					"birthDateApprox": null,
+					"deathDate": "1968-05-30",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q61338",
+					"qid": "Q61338",
+					"givenName": "Margaret",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1872-04-22",
+					"birthDateApprox": null,
+					"deathDate": "1954-01-22",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q61345",
+					"qid": "Q61345",
+					"givenName": "Alexandra",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1878-09-01",
+					"birthDateApprox": null,
+					"deathDate": "1942-04-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q61448",
+					"qid": "Q61448",
+					"givenName": "Hermine",
+					"familyName": "Hohenzollern",
+					"sex": "female",
+					"birthDate": "1887-12-17",
+					"birthDateApprox": null,
+					"deathDate": "1947-08-07",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q62056",
+					"qid": "Q62056",
+					"givenName": "Eitel",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1883-07-07",
+					"birthDateApprox": null,
+					"deathDate": "1942-12-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q62477",
+					"qid": "Q62477",
+					"givenName": "Alfred",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1874-10-15",
+					"birthDateApprox": null,
+					"deathDate": "1899-02-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q62549",
+					"qid": "Q62549",
+					"givenName": "Eleonore",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1871-09-17",
+					"birthDateApprox": null,
+					"deathDate": "1937-11-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q63093",
+					"qid": "Q63093",
+					"givenName": "Waldemar",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1889-03-20",
+					"birthDateApprox": null,
+					"deathDate": "1945-05-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q63609",
+					"qid": "Q63609",
+					"givenName": "Ernst II",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1863-09-13",
+					"birthDateApprox": null,
+					"deathDate": "1950-12-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q63615",
+					"qid": "Q63615",
+					"givenName": "Johann",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1906-08-02",
+					"birthDateApprox": null,
+					"deathDate": "1972-05-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q63679",
+					"qid": "Q63679",
+					"givenName": "Frederick",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1868-05-01",
+					"birthDateApprox": null,
+					"deathDate": "1940-05-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q64697923",
+					"qid": "Q64697923",
+					"givenName": "Alfonso",
+					"familyName": "Orleans",
+					"sex": "male",
+					"birthDate": "1912-05-28",
+					"birthDateApprox": null,
+					"deathDate": "1936-11-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q64697947",
+					"qid": "Q64697947",
+					"givenName": "Ataulfo",
+					"familyName": "Orleans",
+					"sex": "male",
+					"birthDate": "1913-10-20",
+					"birthDateApprox": null,
+					"deathDate": "1974-10-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q64704",
+					"qid": "Q64704",
+					"givenName": "Sigismund",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1896-11-27",
+					"birthDateApprox": null,
+					"deathDate": "1978-11-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q66546",
+					"qid": "Q66546",
+					"givenName": "Gottfried",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1897-03-24",
+					"birthDateApprox": null,
+					"deathDate": "1960-05-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q6677995",
+					"qid": "Q6677995",
+					"givenName": "Rupert",
+					"familyName": "Cambridge",
+					"sex": "male",
+					"birthDate": "1907-04-24",
+					"birthDateApprox": null,
+					"deathDate": "1928-04-15",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q67038",
+					"qid": "Q67038",
+					"givenName": "Wolfgang",
+					"familyName": "Hesse",
+					"sex": "male",
+					"birthDate": "1896-11-06",
+					"birthDateApprox": null,
+					"deathDate": "1989-07-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q677589",
+					"qid": "Q677589",
+					"givenName": "Christian",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1831-01-22",
+					"birthDateApprox": null,
+					"deathDate": "1917-10-28",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q701095",
+					"qid": "Q701095",
+					"givenName": "Albert",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1869-02-26",
+					"birthDateApprox": null,
+					"deathDate": "1931-04-27",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q703780",
+					"qid": "Q703780",
+					"givenName": "Jaime",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1908-06-23",
+					"birthDateApprox": null,
+					"deathDate": "1975-03-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q70850",
+					"qid": "Q70850",
+					"givenName": "Elisabeth",
+					"familyName": "Hesse",
+					"sex": "female",
+					"birthDate": "1895-03-11",
+					"birthDateApprox": null,
+					"deathDate": "1903-11-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q72834",
+					"qid": "Q72834",
+					"givenName": "Friedrich",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1918-11-29",
+					"birthDateApprox": null,
+					"deathDate": "1998-01-23",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q75381465",
+					"qid": "Q75381465",
+					"givenName": "Maurice",
+					"familyName": "Teck",
+					"sex": "male",
+					"birthDate": "1910-05-29",
+					"birthDateApprox": null,
+					"deathDate": "1910-09-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q75381484",
+					"qid": "Q75381484",
+					"givenName": "Harald",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1876-05-12",
+					"birthDateApprox": null,
+					"deathDate": "1876-05-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q75383845",
+					"qid": "Q75383845",
+					"givenName": "Alastair",
+					"familyName": "Duff",
+					"sex": "male",
+					"birthDate": "1890-06-16",
+					"birthDateApprox": null,
+					"deathDate": "1890-06-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q75384225",
+					"qid": "Q75384225",
+					"givenName": "Alexandra",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1901-04-02",
+					"birthDateApprox": null,
+					"deathDate": "1963-10-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q75384227",
+					"qid": "Q75384227",
+					"givenName": "Alfred",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1911-04-16",
+					"birthDateApprox": null,
+					"deathDate": "1911-04-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q75384295",
+					"qid": "Q75384295",
+					"givenName": "Valerie",
+					"familyName": "Schwalb",
+					"sex": "female",
+					"birthDate": "1900-04-03",
+					"birthDateApprox": null,
+					"deathDate": "1953-08-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q76927",
+					"qid": "Q76927",
+					"givenName": "Mary",
+					"familyName": "Teck",
+					"sex": "female",
+					"birthDate": "1867-05-26",
+					"birthDateApprox": null,
+					"deathDate": "1953-03-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q778200",
+					"qid": "Q778200",
+					"givenName": "Maria",
+					"familyName": "Kirillovna",
+					"sex": "female",
+					"birthDate": "1907-02-02",
+					"birthDateApprox": null,
+					"deathDate": "1951-10-25",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q7902792",
+					"qid": "Q7902792",
+					"givenName": "Henry",
+					"familyName": "Hohenzollern",
+					"sex": "male",
+					"birthDate": "1900-01-09",
+					"birthDateApprox": null,
+					"deathDate": "1904-02-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q836119",
+					"qid": "Q836119",
+					"givenName": "Christian",
+					"familyName": "Victor",
+					"sex": "male",
+					"birthDate": "1867-04-14",
+					"birthDateApprox": null,
+					"deathDate": "1900-10-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q8961405",
+					"qid": "Q8961405",
+					"givenName": "Fernando",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1910-05-21",
+					"birthDateApprox": null,
+					"deathDate": "1910-05-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "v-Q9439",
+					"qid": "Q9439",
+					"givenName": "Victoria",
+					"familyName": "Hanover",
+					"sex": "female",
+					"birthDate": "1819-05-24",
+					"birthDateApprox": null,
+					"deathDate": "1901-01-22",
+					"deathDateApprox": null,
+					"living": "deceased"
+				}
+			],
+			"unions": [
+				{
+					"id": "vu-Q115477-Q52878",
+					"partnerAId": "v-Q115477",
+					"partnerBId": "v-Q52878",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q116728-Q58600",
+					"partnerAId": "v-Q116728",
+					"partnerBId": "v-Q58600",
+					"status": "married",
+					"childIds": [
+						"v-Q2677",
+						"v-Q57569",
+						"v-Q58670",
+						"v-Q60382",
+						"v-Q61338",
+						"v-Q155822",
+						"v-Q2800847",
+						"v-Q3026877"
+					]
+				},
+				{
+					"id": "vu-Q152094-Q40787",
+					"partnerAId": "v-Q152094",
+					"partnerBId": "v-Q40787",
+					"status": "married",
+					"childIds": [
+						"v-Q113584",
+						"v-Q151130",
+						"v-Q154045",
+						"v-Q155422",
+						"v-Q158148"
+					]
+				},
+				{
+					"id": "vu-Q152099-Q155822",
+					"partnerAId": "v-Q152099",
+					"partnerBId": "v-Q155822",
+					"status": "married",
+					"childIds": [
+						"v-Q151742",
+						"v-Q152935",
+						"v-Q155394",
+						"v-Q162177",
+						"v-Q236770",
+						"v-Q242338"
+					]
+				},
+				{
+					"id": "vu-Q152245-Q9439",
+					"partnerAId": "v-Q152245",
+					"partnerBId": "v-Q9439",
+					"status": "married",
+					"childIds": [
+						"v-Q20875",
+						"v-Q116728",
+						"v-Q155566",
+						"v-Q158140",
+						"v-Q158143",
+						"v-Q160539",
+						"v-Q160541",
+						"v-Q160558",
+						"v-Q161167"
+					]
+				},
+				{
+					"id": "vu-Q152260-Q20875",
+					"partnerAId": "v-Q152260",
+					"partnerBId": "v-Q20875",
+					"status": "married",
+					"childIds": [
+						"v-Q154423",
+						"v-Q159670",
+						"v-Q233516",
+						"v-Q234542",
+						"v-Q269412",
+						"v-Q12738554"
+					]
+				},
+				{
+					"id": "vu-Q152935-Q232735",
+					"partnerAId": "v-Q152935",
+					"partnerBId": "v-Q232735",
+					"status": "divorced",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q154423-Q154927",
+					"partnerAId": "v-Q154423",
+					"partnerBId": "v-Q154927",
+					"status": "married",
+					"childIds": [
+						"v-Q154912"
+					]
+				},
+				{
+					"id": "vu-Q155566-Q164498",
+					"partnerAId": "v-Q155566",
+					"partnerBId": "v-Q164498",
+					"status": "married",
+					"childIds": [
+						"v-Q57507",
+						"v-Q57658",
+						"v-Q58063",
+						"v-Q152094",
+						"v-Q233990",
+						"v-Q1208045",
+						"v-Q2562528"
+					]
+				},
+				{
+					"id": "vu-Q158140-Q444347",
+					"partnerAId": "v-Q158140",
+					"partnerBId": "v-Q444347",
+					"status": "married",
+					"childIds": [
+						"v-Q160001",
+						"v-Q337477",
+						"v-Q2205590",
+						"v-Q2351869"
+					]
+				},
+				{
+					"id": "vu-Q158143-Q158154",
+					"partnerAId": "v-Q158143",
+					"partnerBId": "v-Q158154",
+					"status": "married",
+					"childIds": [
+						"v-Q57666",
+						"v-Q61345",
+						"v-Q62477",
+						"v-Q164500",
+						"v-Q235597"
+					]
+				},
+				{
+					"id": "vu-Q158173-Q52878",
+					"partnerAId": "v-Q158173",
+					"partnerBId": "v-Q52878",
+					"status": "married",
+					"childIds": [
+						"v-Q163010",
+						"v-Q347374",
+						"v-Q361261",
+						"v-Q437019",
+						"v-Q447209"
+					]
+				},
+				{
+					"id": "vu-Q160001-Q18363",
+					"partnerAId": "v-Q160001",
+					"partnerBId": "v-Q18363",
+					"status": "married",
+					"childIds": [
+						"v-Q269493",
+						"v-Q313857",
+						"v-Q518846",
+						"v-Q703780",
+						"v-Q1332391",
+						"v-Q2412713",
+						"v-Q8961405"
+					]
+				},
+				{
+					"id": "vu-Q160467-Q60707",
+					"partnerAId": "v-Q160467",
+					"partnerBId": "v-Q60707",
+					"status": "married",
+					"childIds": [
+						"v-Q57626",
+						"v-Q63615",
+						"v-Q72834",
+						"v-Q4540064",
+						"v-Q5365163"
+					]
+				},
+				{
+					"id": "vu-Q160539-Q677589",
+					"partnerAId": "v-Q160539",
+					"partnerBId": "v-Q677589",
+					"status": "married",
+					"childIds": [
+						"v-Q204864",
+						"v-Q242876",
+						"v-Q701095",
+						"v-Q836119",
+						"v-Q75381484"
+					]
+				},
+				{
+					"id": "vu-Q160541-Q60747",
+					"partnerAId": "v-Q160541",
+					"partnerBId": "v-Q60747",
+					"status": "married",
+					"childIds": [
+						"v-Q160467",
+						"v-Q235521"
+					]
+				},
+				{
+					"id": "vu-Q160558-Q235435",
+					"partnerAId": "v-Q160558",
+					"partnerBId": "v-Q235435",
+					"status": "married",
+					"childIds": [
+						"v-Q158173",
+						"v-Q256951",
+						"v-Q519332"
+					]
+				},
+				{
+					"id": "vu-Q160948-Q164500",
+					"partnerAId": "v-Q160948",
+					"partnerBId": "v-Q164500",
+					"status": "married",
+					"childIds": [
+						"v-Q237341",
+						"v-Q382226",
+						"v-Q778200"
+					]
+				},
+				{
+					"id": "vu-Q161167-Q334971",
+					"partnerAId": "v-Q161167",
+					"partnerBId": "v-Q334971",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q161247-Q2677",
+					"partnerAId": "v-Q161247",
+					"partnerBId": "v-Q2677",
+					"status": "married",
+					"childIds": [
+						"v-Q50998",
+						"v-Q57529",
+						"v-Q57621",
+						"v-Q58777",
+						"v-Q60371",
+						"v-Q61242",
+						"v-Q62056"
+					]
+				},
+				{
+					"id": "vu-Q162177-Q212897",
+					"partnerAId": "v-Q162177",
+					"partnerBId": "v-Q212897",
+					"status": "divorced",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q164500-Q57507",
+					"partnerAId": "v-Q164500",
+					"partnerBId": "v-Q57507",
+					"status": "divorced",
+					"childIds": [
+						"v-Q70850"
+					]
+				},
+				{
+					"id": "vu-Q232728-Q372964",
+					"partnerAId": "v-Q232728",
+					"partnerBId": "v-Q372964",
+					"status": "married",
+					"childIds": [
+						"v-Q235438",
+						"v-Q372954"
+					]
+				},
+				{
+					"id": "vu-Q233516-Q332552",
+					"partnerAId": "v-Q233516",
+					"partnerBId": "v-Q332552",
+					"status": "married",
+					"childIds": [
+						"v-Q255953",
+						"v-Q439167",
+						"v-Q75383845"
+					]
+				},
+				{
+					"id": "vu-Q233990-Q57569",
+					"partnerAId": "v-Q233990",
+					"partnerBId": "v-Q57569",
+					"status": "married",
+					"childIds": [
+						"v-Q63093",
+						"v-Q64704",
+						"v-Q7902792"
+					]
+				},
+				{
+					"id": "vu-Q235521-Q335091",
+					"partnerAId": "v-Q235521",
+					"partnerBId": "v-Q335091",
+					"status": "married",
+					"childIds": [
+						"v-Q4424877",
+						"v-Q6677995",
+						"v-Q75381465"
+					]
+				},
+				{
+					"id": "vu-Q235597-Q2457294",
+					"partnerAId": "v-Q235597",
+					"partnerBId": "v-Q2457294",
+					"status": "married",
+					"childIds": [
+						"v-Q2083011",
+						"v-Q64697923",
+						"v-Q64697947"
+					]
+				},
+				{
+					"id": "vu-Q242876-Q572145",
+					"partnerAId": "v-Q242876",
+					"partnerBId": "v-Q572145",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q248900-Q58063",
+					"partnerAId": "v-Q248900",
+					"partnerBId": "v-Q58063",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q255953-Q519332",
+					"partnerAId": "v-Q255953",
+					"partnerBId": "v-Q519332",
+					"status": "married",
+					"childIds": [
+						"v-Q2914819"
+					]
+				},
+				{
+					"id": "vu-Q256951-Q4719910",
+					"partnerAId": "v-Q256951",
+					"partnerBId": "v-Q4719910",
+					"status": "married",
+					"childIds": [
+						"v-Q4719913"
+					]
+				},
+				{
+					"id": "vu-Q2643355-Q60382",
+					"partnerAId": "v-Q2643355",
+					"partnerBId": "v-Q60382",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q2677-Q61448",
+					"partnerAId": "v-Q2677",
+					"partnerBId": "v-Q61448",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q269412-Q76927",
+					"partnerAId": "v-Q269412",
+					"partnerBId": "v-Q76927",
+					"status": "married",
+					"childIds": [
+						"v-Q117174",
+						"v-Q160770",
+						"v-Q233913",
+						"v-Q280856",
+						"v-Q310488",
+						"v-Q590227"
+					]
+				},
+				{
+					"id": "vu-Q337477-Q6069164",
+					"partnerAId": "v-Q337477",
+					"partnerBId": "v-Q6069164",
+					"status": "married",
+					"childIds": [
+						"v-Q10315513"
+					]
+				},
+				{
+					"id": "vu-Q347374-Q57626",
+					"partnerAId": "v-Q347374",
+					"partnerBId": "v-Q57626",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q51007-Q60382",
+					"partnerAId": "v-Q51007",
+					"partnerBId": "v-Q60382",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "vu-Q57165-Q57666",
+					"partnerAId": "v-Q57165",
+					"partnerBId": "v-Q57666",
+					"status": "married",
+					"childIds": [
+						"v-Q167387",
+						"v-Q212897",
+						"v-Q232735",
+						"v-Q235595",
+						"v-Q529045",
+						"v-Q2419125"
+					]
+				},
+				{
+					"id": "vu-Q57468-Q57658",
+					"partnerAId": "v-Q57468",
+					"partnerBId": "v-Q57658",
+					"status": "married",
+					"childIds": [
+						"v-Q115477",
+						"v-Q116062",
+						"v-Q157068",
+						"v-Q335129"
+					]
+				},
+				{
+					"id": "vu-Q57507-Q62549",
+					"partnerAId": "v-Q57507",
+					"partnerBId": "v-Q62549",
+					"status": "married",
+					"childIds": [
+						"v-Q60737",
+						"v-Q61270"
+					]
+				},
+				{
+					"id": "vu-Q58670-Q61104",
+					"partnerAId": "v-Q58670",
+					"partnerBId": "v-Q61104",
+					"status": "married",
+					"childIds": [
+						"v-Q177769"
+					]
+				},
+				{
+					"id": "vu-Q61338-Q63679",
+					"partnerAId": "v-Q61338",
+					"partnerBId": "v-Q63679",
+					"status": "married",
+					"childIds": [
+						"v-Q60741",
+						"v-Q67038",
+						"v-Q2150403",
+						"v-Q2314771",
+						"v-Q26303863",
+						"v-Q26309270"
+					]
+				},
+				{
+					"id": "vu-Q61345-Q63609",
+					"partnerAId": "v-Q61345",
+					"partnerBId": "v-Q63609",
+					"status": "married",
+					"childIds": [
+						"v-Q66546",
+						"v-Q2332225",
+						"v-Q47139432",
+						"v-Q75384225",
+						"v-Q75384227"
+					]
+				},
+				{
+					"id": "vu-Q701095",
+					"partnerAId": "v-Q701095",
+					"partnerBId": null,
+					"status": "married",
+					"childIds": [
+						"v-Q75384295"
+					]
+				}
+			],
+			"relations": [
+				{
+					"id": "vr-Q113584-Q154045",
+					"kind": "godparent",
+					"personAId": "v-Q113584",
+					"personBId": "v-Q154045"
+				},
+				{
+					"id": "vr-Q116728-Q113584",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q113584"
+				},
+				{
+					"id": "vr-Q116728-Q158140",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q158140"
+				},
+				{
+					"id": "vr-Q116728-Q158173",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q158173"
+				},
+				{
+					"id": "vr-Q116728-Q159670",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q159670"
+				},
+				{
+					"id": "vr-Q116728-Q160001",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q160001"
+				},
+				{
+					"id": "vr-Q116728-Q161247",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q161247"
+				},
+				{
+					"id": "vr-Q116728-Q235521",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q235521"
+				},
+				{
+					"id": "vr-Q116728-Q280856",
+					"kind": "godparent",
+					"personAId": "v-Q116728",
+					"personBId": "v-Q280856"
+				},
+				{
+					"id": "vr-Q152094-Q590227",
+					"kind": "godparent",
+					"personAId": "v-Q152094",
+					"personBId": "v-Q590227"
+				},
+				{
+					"id": "vr-Q152260-Q152094",
+					"kind": "godparent",
+					"personAId": "v-Q152260",
+					"personBId": "v-Q152094"
+				},
+				{
+					"id": "vr-Q152260-Q160770",
+					"kind": "godparent",
+					"personAId": "v-Q152260",
+					"personBId": "v-Q160770"
+				},
+				{
+					"id": "vr-Q152260-Q233913",
+					"kind": "godparent",
+					"personAId": "v-Q152260",
+					"personBId": "v-Q233913"
+				},
+				{
+					"id": "vr-Q152260-Q242338",
+					"kind": "godparent",
+					"personAId": "v-Q152260",
+					"personBId": "v-Q242338"
+				},
+				{
+					"id": "vr-Q152260-Q255953",
+					"kind": "godparent",
+					"personAId": "v-Q152260",
+					"personBId": "v-Q255953"
+				},
+				{
+					"id": "vr-Q152260-Q590227",
+					"kind": "godparent",
+					"personAId": "v-Q152260",
+					"personBId": "v-Q590227"
+				},
+				{
+					"id": "vr-Q154423-Q117174",
+					"kind": "godparent",
+					"personAId": "v-Q154423",
+					"personBId": "v-Q117174"
+				},
+				{
+					"id": "vr-Q154927-Q310488",
+					"kind": "godparent",
+					"personAId": "v-Q154927",
+					"personBId": "v-Q310488"
+				},
+				{
+					"id": "vr-Q155566-Q233516",
+					"kind": "godparent",
+					"personAId": "v-Q155566",
+					"personBId": "v-Q233516"
+				},
+				{
+					"id": "vr-Q155566-Q269412",
+					"kind": "godparent",
+					"personAId": "v-Q155566",
+					"personBId": "v-Q269412"
+				},
+				{
+					"id": "vr-Q155822-Q310488",
+					"kind": "godparent",
+					"personAId": "v-Q155822",
+					"personBId": "v-Q310488"
+				},
+				{
+					"id": "vr-Q158140-Q117174",
+					"kind": "godparent",
+					"personAId": "v-Q158140",
+					"personBId": "v-Q117174"
+				},
+				{
+					"id": "vr-Q158140-Q152094",
+					"kind": "godparent",
+					"personAId": "v-Q158140",
+					"personBId": "v-Q152094"
+				},
+				{
+					"id": "vr-Q158140-Q235597",
+					"kind": "godparent",
+					"personAId": "v-Q158140",
+					"personBId": "v-Q235597"
+				},
+				{
+					"id": "vr-Q158143-Q159670",
+					"kind": "godparent",
+					"personAId": "v-Q158143",
+					"personBId": "v-Q159670"
+				},
+				{
+					"id": "vr-Q158143-Q160001",
+					"kind": "godparent",
+					"personAId": "v-Q158143",
+					"personBId": "v-Q160001"
+				},
+				{
+					"id": "vr-Q158143-Q590227",
+					"kind": "godparent",
+					"personAId": "v-Q158143",
+					"personBId": "v-Q590227"
+				},
+				{
+					"id": "vr-Q159670-Q2351869",
+					"kind": "godparent",
+					"personAId": "v-Q159670",
+					"personBId": "v-Q2351869"
+				},
+				{
+					"id": "vr-Q160001-Q235595",
+					"kind": "godparent",
+					"personAId": "v-Q160001",
+					"personBId": "v-Q235595"
+				},
+				{
+					"id": "vr-Q160539-Q160001",
+					"kind": "godparent",
+					"personAId": "v-Q160539",
+					"personBId": "v-Q160001"
+				},
+				{
+					"id": "vr-Q160539-Q160467",
+					"kind": "godparent",
+					"personAId": "v-Q160539",
+					"personBId": "v-Q160467"
+				},
+				{
+					"id": "vr-Q160539-Q160770",
+					"kind": "godparent",
+					"personAId": "v-Q160539",
+					"personBId": "v-Q160770"
+				},
+				{
+					"id": "vr-Q160541-Q154423",
+					"kind": "godparent",
+					"personAId": "v-Q160541",
+					"personBId": "v-Q154423"
+				},
+				{
+					"id": "vr-Q160541-Q2562528",
+					"kind": "godparent",
+					"personAId": "v-Q160541",
+					"personBId": "v-Q2562528"
+				},
+				{
+					"id": "vr-Q160558-Q234542",
+					"kind": "godparent",
+					"personAId": "v-Q160558",
+					"personBId": "v-Q234542"
+				},
+				{
+					"id": "vr-Q160558-Q280856",
+					"kind": "godparent",
+					"personAId": "v-Q160558",
+					"personBId": "v-Q280856"
+				},
+				{
+					"id": "vr-Q161167-Q160467",
+					"kind": "godparent",
+					"personAId": "v-Q161167",
+					"personBId": "v-Q160467"
+				},
+				{
+					"id": "vr-Q161167-Q233516",
+					"kind": "godparent",
+					"personAId": "v-Q161167",
+					"personBId": "v-Q233516"
+				},
+				{
+					"id": "vr-Q164498-Q116062",
+					"kind": "godparent",
+					"personAId": "v-Q164498",
+					"personBId": "v-Q116062"
+				},
+				{
+					"id": "vr-Q164498-Q234542",
+					"kind": "godparent",
+					"personAId": "v-Q164498",
+					"personBId": "v-Q234542"
+				},
+				{
+					"id": "vr-Q164498-Q235521",
+					"kind": "godparent",
+					"personAId": "v-Q164498",
+					"personBId": "v-Q235521"
+				},
+				{
+					"id": "vr-Q18363-Q64697923",
+					"kind": "godparent",
+					"personAId": "v-Q18363",
+					"personBId": "v-Q64697923"
+				},
+				{
+					"id": "vr-Q20875-Q152094",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q152094"
+				},
+				{
+					"id": "vr-Q20875-Q154045",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q154045"
+				},
+				{
+					"id": "vr-Q20875-Q158173",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q158173"
+				},
+				{
+					"id": "vr-Q20875-Q160467",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q160467"
+				},
+				{
+					"id": "vr-Q20875-Q160770",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q160770"
+				},
+				{
+					"id": "vr-Q20875-Q233913",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q233913"
+				},
+				{
+					"id": "vr-Q20875-Q235521",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q235521"
+				},
+				{
+					"id": "vr-Q20875-Q255953",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q255953"
+				},
+				{
+					"id": "vr-Q20875-Q57658",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q57658"
+				},
+				{
+					"id": "vr-Q20875-Q590227",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q590227"
+				},
+				{
+					"id": "vr-Q20875-Q76927",
+					"kind": "godparent",
+					"personAId": "v-Q20875",
+					"personBId": "v-Q76927"
+				},
+				{
+					"id": "vr-Q233516-Q280856",
+					"kind": "godparent",
+					"personAId": "v-Q233516",
+					"personBId": "v-Q280856"
+				},
+				{
+					"id": "vr-Q234542-Q233913",
+					"kind": "godparent",
+					"personAId": "v-Q234542",
+					"personBId": "v-Q233913"
+				},
+				{
+					"id": "vr-Q235435-Q2351869",
+					"kind": "godparent",
+					"personAId": "v-Q235435",
+					"personBId": "v-Q2351869"
+				},
+				{
+					"id": "vr-Q235521-Q310488",
+					"kind": "godparent",
+					"personAId": "v-Q235521",
+					"personBId": "v-Q310488"
+				},
+				{
+					"id": "vr-Q2677-Q117174",
+					"kind": "godparent",
+					"personAId": "v-Q2677",
+					"personBId": "v-Q117174"
+				},
+				{
+					"id": "vr-Q2677-Q154045",
+					"kind": "godparent",
+					"personAId": "v-Q2677",
+					"personBId": "v-Q154045"
+				},
+				{
+					"id": "vr-Q2677-Q242338",
+					"kind": "godparent",
+					"personAId": "v-Q2677",
+					"personBId": "v-Q242338"
+				},
+				{
+					"id": "vr-Q269412-Q154045",
+					"kind": "godparent",
+					"personAId": "v-Q269412",
+					"personBId": "v-Q154045"
+				},
+				{
+					"id": "vr-Q269412-Q158148",
+					"kind": "godparent",
+					"personAId": "v-Q269412",
+					"personBId": "v-Q158148"
+				},
+				{
+					"id": "vr-Q269412-Q242338",
+					"kind": "godparent",
+					"personAId": "v-Q269412",
+					"personBId": "v-Q242338"
+				},
+				{
+					"id": "vr-Q332552-Q310488",
+					"kind": "godparent",
+					"personAId": "v-Q332552",
+					"personBId": "v-Q310488"
+				},
+				{
+					"id": "vr-Q335091-Q117174",
+					"kind": "godparent",
+					"personAId": "v-Q335091",
+					"personBId": "v-Q117174"
+				},
+				{
+					"id": "vr-Q40787-Q590227",
+					"kind": "godparent",
+					"personAId": "v-Q40787",
+					"personBId": "v-Q590227"
+				},
+				{
+					"id": "vr-Q57468-Q160001",
+					"kind": "godparent",
+					"personAId": "v-Q57468",
+					"personBId": "v-Q160001"
+				},
+				{
+					"id": "vr-Q57468-Q160770",
+					"kind": "godparent",
+					"personAId": "v-Q57468",
+					"personBId": "v-Q160770"
+				},
+				{
+					"id": "vr-Q57507-Q113584",
+					"kind": "godparent",
+					"personAId": "v-Q57507",
+					"personBId": "v-Q113584"
+				},
+				{
+					"id": "vr-Q57507-Q2351869",
+					"kind": "godparent",
+					"personAId": "v-Q57507",
+					"personBId": "v-Q2351869"
+				},
+				{
+					"id": "vr-Q58063-Q116062",
+					"kind": "godparent",
+					"personAId": "v-Q58063",
+					"personBId": "v-Q116062"
+				},
+				{
+					"id": "vr-Q58600-Q158140",
+					"kind": "godparent",
+					"personAId": "v-Q58600",
+					"personBId": "v-Q158140"
+				},
+				{
+					"id": "vr-Q58600-Q233516",
+					"kind": "godparent",
+					"personAId": "v-Q58600",
+					"personBId": "v-Q233516"
+				},
+				{
+					"id": "vr-Q60747-Q235597",
+					"kind": "godparent",
+					"personAId": "v-Q60747",
+					"personBId": "v-Q235597"
+				},
+				{
+					"id": "vr-Q9439-Q113584",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q113584"
+				},
+				{
+					"id": "vr-Q9439-Q116062",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q116062"
+				},
+				{
+					"id": "vr-Q9439-Q117174",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q117174"
+				},
+				{
+					"id": "vr-Q9439-Q158173",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q158173"
+				},
+				{
+					"id": "vr-Q9439-Q159670",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q159670"
+				},
+				{
+					"id": "vr-Q9439-Q160467",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q160467"
+				},
+				{
+					"id": "vr-Q9439-Q164500",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q164500"
+				},
+				{
+					"id": "vr-Q9439-Q233913",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q233913"
+				},
+				{
+					"id": "vr-Q9439-Q234542",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q234542"
+				},
+				{
+					"id": "vr-Q9439-Q235521",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q235521"
+				},
+				{
+					"id": "vr-Q9439-Q255953",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q255953"
+				},
+				{
+					"id": "vr-Q9439-Q280856",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q280856"
+				},
+				{
+					"id": "vr-Q9439-Q57658",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q57658"
+				},
+				{
+					"id": "vr-Q9439-Q590227",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q590227"
+				},
+				{
+					"id": "vr-Q9439-Q60382",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q60382"
+				},
+				{
+					"id": "vr-Q9439-Q76927",
+					"kind": "godparent",
+					"personAId": "v-Q9439",
+					"personBId": "v-Q76927"
+				}
+			]
+		},
+		{
+			"treeId": "tree-christian",
+			"treeName": "Christian IX's family",
+			"people": [
+				{
+					"id": "c-Q120180",
+					"qid": "Q120180",
+					"givenName": "Alexander III",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1845-03-10",
+					"birthDateApprox": null,
+					"deathDate": "1894-11-01",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q12738554",
+					"qid": "Q12738554",
+					"givenName": "Alexander",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1871-04-06",
+					"birthDateApprox": null,
+					"deathDate": "1871-04-07",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q151305",
+					"qid": "Q151305",
+					"givenName": "Christian IX",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1818-04-08",
+					"birthDateApprox": null,
+					"deathDate": "1906-01-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q152099",
+					"qid": "Q152099",
+					"givenName": "Constantine I",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1868-08-02",
+					"birthDateApprox": null,
+					"deathDate": "1923-01-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q152260",
+					"qid": "Q152260",
+					"givenName": "Alexandra",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1844-12-01",
+					"birthDateApprox": null,
+					"deathDate": "1925-11-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q152756",
+					"qid": "Q152756",
+					"givenName": "Frederik VIII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1843-06-03",
+					"birthDateApprox": null,
+					"deathDate": "1912-05-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q153601",
+					"qid": "Q153601",
+					"givenName": "Maria",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1847-11-26",
+					"birthDateApprox": null,
+					"deathDate": "1928-10-13",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q154423",
+					"qid": "Q154423",
+					"givenName": "Maud",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1869-11-26",
+					"birthDateApprox": null,
+					"deathDate": "1938-11-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q154444",
+					"qid": "Q154444",
+					"givenName": "Michael",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1878-12-04",
+					"birthDateApprox": null,
+					"deathDate": "1918-06-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q154927",
+					"qid": "Q154927",
+					"givenName": "Haakon VII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1872-08-03",
+					"birthDateApprox": null,
+					"deathDate": "1957-09-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q155178",
+					"qid": "Q155178",
+					"givenName": "Olga",
+					"familyName": "Constantinovna",
+					"sex": "female",
+					"birthDate": "1851-09-03",
+					"birthDateApprox": null,
+					"deathDate": "1926-06-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q156531",
+					"qid": "Q156531",
+					"givenName": "Andrew",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1882-02-02",
+					"birthDateApprox": null,
+					"deathDate": "1944-12-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q156617",
+					"qid": "Q156617",
+					"givenName": "Christian X",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1870-09-26",
+					"birthDateApprox": null,
+					"deathDate": "1947-04-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q159670",
+					"qid": "Q159670",
+					"givenName": "Albert",
+					"familyName": "Saxe-Coburg",
+					"sex": "male",
+					"birthDate": "1864-01-08",
+					"birthDateApprox": null,
+					"deathDate": "1892-01-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q163176",
+					"qid": "Q163176",
+					"givenName": "Olga",
+					"familyName": "Alexandrovna",
+					"sex": "female",
+					"birthDate": "1882-06-13",
+					"birthDateApprox": null,
+					"deathDate": "1960-11-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q165113",
+					"qid": "Q165113",
+					"givenName": "Xenia",
+					"familyName": "Alexandrovna",
+					"sex": "female",
+					"birthDate": "1875-04-06",
+					"birthDateApprox": null,
+					"deathDate": "1960-04-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q166028",
+					"qid": "Q166028",
+					"givenName": "Louise",
+					"familyName": "Hesse",
+					"sex": "female",
+					"birthDate": "1817-09-07",
+					"birthDateApprox": null,
+					"deathDate": "1898-09-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q170160",
+					"qid": "Q170160",
+					"givenName": "Nicholas",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1872-01-22",
+					"birthDateApprox": null,
+					"deathDate": "1938-02-08",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q170293",
+					"qid": "Q170293",
+					"givenName": "George",
+					"familyName": "Alexandrovich",
+					"sex": "male",
+					"birthDate": "1871-05-09",
+					"birthDateApprox": null,
+					"deathDate": "1899-07-10",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q170396",
+					"qid": "Q170396",
+					"givenName": "George",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1869-06-24",
+					"birthDateApprox": null,
+					"deathDate": "1957-11-25",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q17142",
+					"qid": "Q17142",
+					"givenName": "George I",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1845-12-24",
+					"birthDateApprox": null,
+					"deathDate": "1913-03-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q1799886",
+					"qid": "Q1799886",
+					"givenName": "Harald",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1876-10-08",
+					"birthDateApprox": null,
+					"deathDate": "1949-03-30",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q1868677",
+					"qid": "Q1868677",
+					"givenName": "Viggo",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1893-12-25",
+					"birthDateApprox": null,
+					"deathDate": "1970-01-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q1986544",
+					"qid": "Q1986544",
+					"givenName": "Olga",
+					"familyName": "Hanover",
+					"sex": "female",
+					"birthDate": "1884-07-11",
+					"birthDateApprox": null,
+					"deathDate": "1958-09-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q2004187",
+					"qid": "Q2004187",
+					"givenName": "Axel",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1888-08-12",
+					"birthDateApprox": null,
+					"deathDate": "1964-07-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q20875",
+					"qid": "Q20875",
+					"givenName": "Edward VII",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1841-11-09",
+					"birthDateApprox": null,
+					"deathDate": "1910-05-06",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q2131670",
+					"qid": "Q2131670",
+					"givenName": "George",
+					"familyName": "Hanover",
+					"sex": "male",
+					"birthDate": "1880-10-28",
+					"birthDateApprox": null,
+					"deathDate": "1912-05-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q217504",
+					"qid": "Q217504",
+					"givenName": "Thyra",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1853-09-29",
+					"birthDateApprox": null,
+					"deathDate": "1933-02-26",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q2277202",
+					"qid": "Q2277202",
+					"givenName": "Marie",
+					"familyName": "Orléans",
+					"sex": "female",
+					"birthDate": "1865-01-13",
+					"birthDateApprox": null,
+					"deathDate": "1909-12-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q2305560",
+					"qid": "Q2305560",
+					"givenName": "Aage",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1887-06-10",
+					"birthDateApprox": null,
+					"deathDate": "1940-02-29",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q2305942",
+					"qid": "Q2305942",
+					"givenName": "Louise",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1875-02-17",
+					"birthDateApprox": null,
+					"deathDate": "1906-04-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q232402",
+					"qid": "Q232402",
+					"givenName": "Louise",
+					"familyName": "Bernadotte",
+					"sex": "female",
+					"birthDate": "1851-10-31",
+					"birthDateApprox": null,
+					"deathDate": "1926-03-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q232728",
+					"qid": "Q232728",
+					"givenName": "Alexandra",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1870-08-30",
+					"birthDateApprox": null,
+					"deathDate": "1891-09-24",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q232732",
+					"qid": "Q232732",
+					"givenName": "Maria",
+					"familyName": null,
+					"sex": "female",
+					"birthDate": "1876-03-03",
+					"birthDateApprox": null,
+					"deathDate": "1940-12-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q233516",
+					"qid": "Q233516",
+					"givenName": "Louise",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1867-02-20",
+					"birthDateApprox": null,
+					"deathDate": "1931-01-04",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q234033",
+					"qid": "Q234033",
+					"givenName": "Ingeborg",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1878-08-02",
+					"birthDateApprox": null,
+					"deathDate": "1958-03-12",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q234542",
+					"qid": "Q234542",
+					"givenName": "Victoria",
+					"familyName": "Windsor",
+					"sex": "female",
+					"birthDate": "1868-07-06",
+					"birthDateApprox": null,
+					"deathDate": "1935-12-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q259752",
+					"qid": "Q259752",
+					"givenName": "Margrethe",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1895-09-17",
+					"birthDateApprox": null,
+					"deathDate": "1992-09-18",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q269412",
+					"qid": "Q269412",
+					"givenName": "George V",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1865-06-03",
+					"birthDateApprox": null,
+					"deathDate": "1936-01-20",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q271998",
+					"qid": "Q271998",
+					"givenName": "Marie Louise",
+					"familyName": "Hanover",
+					"sex": "female",
+					"birthDate": "1879-10-11",
+					"birthDateApprox": null,
+					"deathDate": "1948-01-31",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q2735028",
+					"qid": "Q2735028",
+					"givenName": "Christian",
+					"familyName": "Hanover",
+					"sex": "male",
+					"birthDate": "1885-07-04",
+					"birthDateApprox": null,
+					"deathDate": "1901-09-03",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q3046654",
+					"qid": "Q3046654",
+					"givenName": "Erik",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1890-11-08",
+					"birthDateApprox": null,
+					"deathDate": "1950-09-16",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q310533",
+					"qid": "Q310533",
+					"givenName": "Valdemar",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1858-10-27",
+					"birthDateApprox": null,
+					"deathDate": "1939-01-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q40787",
+					"qid": "Q40787",
+					"givenName": "Nicholas II",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1868-05-18",
+					"birthDateApprox": null,
+					"deathDate": "1918-07-17",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q437001",
+					"qid": "Q437001",
+					"givenName": "Ernst August",
+					"familyName": "Hanover",
+					"sex": "male",
+					"birthDate": "1845-09-21",
+					"birthDateApprox": null,
+					"deathDate": "1923-11-14",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q447757",
+					"qid": "Q447757",
+					"givenName": "Christopher",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1888-08-10",
+					"birthDateApprox": null,
+					"deathDate": "1940-01-21",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q57672",
+					"qid": "Q57672",
+					"givenName": "Ernst August",
+					"familyName": "Hanover",
+					"sex": "male",
+					"birthDate": "1887-11-17",
+					"birthDateApprox": null,
+					"deathDate": "1953-01-30",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q61243",
+					"qid": "Q61243",
+					"givenName": "Alexandra",
+					"familyName": "Hanover",
+					"sex": "female",
+					"birthDate": "1882-09-29",
+					"birthDateApprox": null,
+					"deathDate": "1963-08-30",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q619062",
+					"qid": "Q619062",
+					"givenName": "Thyra",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1880-03-14",
+					"birthDateApprox": null,
+					"deathDate": "1945-11-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q619068",
+					"qid": "Q619068",
+					"givenName": "Alexander",
+					"familyName": null,
+					"sex": "male",
+					"birthDate": "1869-06-07",
+					"birthDateApprox": null,
+					"deathDate": "1870-05-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q701099",
+					"qid": "Q701099",
+					"givenName": "Gustav",
+					"familyName": "Glücksburg",
+					"sex": "male",
+					"birthDate": "1887-03-04",
+					"birthDateApprox": null,
+					"deathDate": "1944-10-05",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q75381564",
+					"qid": "Q75381564",
+					"givenName": "Olga",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1880-04-07",
+					"birthDateApprox": null,
+					"deathDate": "1880-11-02",
+					"deathDateApprox": null,
+					"living": "deceased"
+				},
+				{
+					"id": "c-Q972656",
+					"qid": "Q972656",
+					"givenName": "Dagmar",
+					"familyName": "Glücksburg",
+					"sex": "female",
+					"birthDate": "1890-05-23",
+					"birthDateApprox": null,
+					"deathDate": "1961-10-11",
+					"deathDateApprox": null,
+					"living": "deceased"
+				}
+			],
+			"unions": [
+				{
+					"id": "cu-Q120180-Q153601",
+					"partnerAId": "c-Q120180",
+					"partnerBId": "c-Q153601",
+					"status": "married",
+					"childIds": [
+						"c-Q40787",
+						"c-Q154444",
+						"c-Q163176",
+						"c-Q165113",
+						"c-Q170293",
+						"c-Q619068"
+					]
+				},
+				{
+					"id": "cu-Q151305-Q166028",
+					"partnerAId": "c-Q151305",
+					"partnerBId": "c-Q166028",
+					"status": "married",
+					"childIds": [
+						"c-Q17142",
+						"c-Q152260",
+						"c-Q152756",
+						"c-Q153601",
+						"c-Q217504",
+						"c-Q310533"
+					]
+				},
+				{
+					"id": "cu-Q152260-Q20875",
+					"partnerAId": "c-Q152260",
+					"partnerBId": "c-Q20875",
+					"status": "married",
+					"childIds": [
+						"c-Q154423",
+						"c-Q159670",
+						"c-Q233516",
+						"c-Q234542",
+						"c-Q269412",
+						"c-Q12738554"
+					]
+				},
+				{
+					"id": "cu-Q152756-Q232402",
+					"partnerAId": "c-Q152756",
+					"partnerBId": "c-Q232402",
+					"status": "married",
+					"childIds": [
+						"c-Q154927",
+						"c-Q156617",
+						"c-Q234033",
+						"c-Q619062",
+						"c-Q701099",
+						"c-Q972656",
+						"c-Q1799886",
+						"c-Q2305942"
+					]
+				},
+				{
+					"id": "cu-Q154423-Q154927",
+					"partnerAId": "c-Q154423",
+					"partnerBId": "c-Q154927",
+					"status": "married",
+					"childIds": []
+				},
+				{
+					"id": "cu-Q155178-Q17142",
+					"partnerAId": "c-Q155178",
+					"partnerBId": "c-Q17142",
+					"status": "married",
+					"childIds": [
+						"c-Q152099",
+						"c-Q156531",
+						"c-Q170160",
+						"c-Q170396",
+						"c-Q232728",
+						"c-Q232732",
+						"c-Q447757",
+						"c-Q75381564"
+					]
+				},
+				{
+					"id": "cu-Q217504-Q437001",
+					"partnerAId": "c-Q217504",
+					"partnerBId": "c-Q437001",
+					"status": "married",
+					"childIds": [
+						"c-Q57672",
+						"c-Q61243",
+						"c-Q271998",
+						"c-Q1986544",
+						"c-Q2131670",
+						"c-Q2735028"
+					]
+				},
+				{
+					"id": "cu-Q2277202-Q310533",
+					"partnerAId": "c-Q2277202",
+					"partnerBId": "c-Q310533",
+					"status": "married",
+					"childIds": [
+						"c-Q259752",
+						"c-Q1868677",
+						"c-Q2004187",
+						"c-Q2305560",
+						"c-Q3046654"
+					]
+				}
+			],
+			"relations": [
+				{
+					"id": "cr-Q120180-Q234542",
+					"kind": "godparent",
+					"personAId": "c-Q120180",
+					"personBId": "c-Q234542"
+				},
+				{
+					"id": "cr-Q151305-Q159670",
+					"kind": "godparent",
+					"personAId": "c-Q151305",
+					"personBId": "c-Q159670"
+				},
+				{
+					"id": "cr-Q152756-Q269412",
+					"kind": "godparent",
+					"personAId": "c-Q152756",
+					"personBId": "c-Q269412"
+				},
+				{
+					"id": "cr-Q153601-Q154423",
+					"kind": "godparent",
+					"personAId": "c-Q153601",
+					"personBId": "c-Q154423"
+				},
+				{
+					"id": "cr-Q153601-Q233516",
+					"kind": "godparent",
+					"personAId": "c-Q153601",
+					"personBId": "c-Q233516"
+				},
+				{
+					"id": "cr-Q155178-Q234542",
+					"kind": "godparent",
+					"personAId": "c-Q155178",
+					"personBId": "c-Q234542"
+				},
+				{
+					"id": "cr-Q166028-Q269412",
+					"kind": "godparent",
+					"personAId": "c-Q166028",
+					"personBId": "c-Q269412"
+				},
+				{
+					"id": "cr-Q17142-Q233516",
+					"kind": "godparent",
+					"personAId": "c-Q17142",
+					"personBId": "c-Q233516"
+				},
+				{
+					"id": "cr-Q232402-Q154423",
+					"kind": "godparent",
+					"personAId": "c-Q232402",
+					"personBId": "c-Q154423"
+				}
+			]
+		}
+	],
+	"links": [
+		{
+			"personAId": "v-Q20875",
+			"personBId": "c-Q20875"
+		},
+		{
+			"personAId": "v-Q154423",
+			"personBId": "c-Q154423"
+		},
+		{
+			"personAId": "v-Q159670",
+			"personBId": "c-Q159670"
+		},
+		{
+			"personAId": "v-Q233516",
+			"personBId": "c-Q233516"
+		},
+		{
+			"personAId": "v-Q234542",
+			"personBId": "c-Q234542"
+		},
+		{
+			"personAId": "v-Q269412",
+			"personBId": "c-Q269412"
+		},
+		{
+			"personAId": "v-Q12738554",
+			"personBId": "c-Q12738554"
+		},
+		{
+			"personAId": "v-Q40787",
+			"personBId": "c-Q40787"
+		},
+		{
+			"personAId": "v-Q152099",
+			"personBId": "c-Q152099"
+		},
+		{
+			"personAId": "v-Q152260",
+			"personBId": "c-Q152260"
+		},
+		{
+			"personAId": "v-Q154927",
+			"personBId": "c-Q154927"
+		},
+		{
+			"personAId": "v-Q232728",
+			"personBId": "c-Q232728"
+		}
+	],
+	"selfId": "v-Q280856"
+}
