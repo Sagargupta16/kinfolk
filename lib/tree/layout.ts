@@ -11,6 +11,7 @@
  */
 import type { ElkNode } from "elkjs/lib/elk-api";
 import { birthYear, type FlowEdge, type FlowNode } from "./graph";
+import { gapGrowth, type SiblingBar, siblingBars } from "./siblings";
 
 /**
  * How much of a person is drawn.
@@ -117,6 +118,11 @@ type LayoutResult = {
 	bands: GenerationBand[];
 	/** The box every node fits inside. See `graphExtent`. */
 	extent: Box;
+	/**
+	 * Every family's horizontal run, by union node id. Computed here rather than by the
+	 * canvas because the gaps are sized from them: see `openCrowdedGaps`.
+	 */
+	bars: Map<string, SiblingBar>;
 };
 
 /** Exported for the minimap, which shapes its own panel from the graph extent. */
@@ -256,6 +262,19 @@ function alignPedigreeRows(
 
 	const partnersByUnion = new Map<string, string[]>();
 	const partneredPeople = new Set<string>();
+	/** Who each person is partnered with, through a union or directly. */
+	const spouses = new Map<string, Set<string>>();
+	const marry = (a: string, b: string) => {
+		if (a === b) return;
+		for (const [one, other] of [
+			[a, b],
+			[b, a],
+		] as const) {
+			const set = spouses.get(one);
+			if (set) set.add(other);
+			else spouses.set(one, new Set([other]));
+		}
+	};
 	for (const edge of edges) {
 		if (!edge.layout || edge.kind !== "partner" || !people.has(edge.source)) continue;
 		partneredPeople.add(edge.source);
@@ -271,6 +290,7 @@ function alignPedigreeRows(
 		if (people.has(edge.target)) {
 			partneredPeople.add(edge.target);
 			join(edge.source, edge.target);
+			marry(edge.source, edge.target);
 		}
 	}
 	for (const partners of partnersByUnion.values()) {
@@ -278,6 +298,9 @@ function alignPedigreeRows(
 			const first = partners[0];
 			const partner = partners[index];
 			if (first && partner) join(first, partner);
+		}
+		for (const [index, one] of partners.entries()) {
+			for (const other of partners.slice(index + 1)) marry(one, other);
 		}
 	}
 
@@ -409,6 +432,40 @@ function alignPedigreeRows(
 	 */
 	const siblingGroupGap = Math.max(householdGap + 16, Math.round(metrics.gap * 4.4));
 
+	const byElk = (a: string, b: string) =>
+		(preferredX.get(a) ?? 0) - (preferredX.get(b) ?? 0) || a.localeCompare(b);
+	/**
+	 * A household's members in the order that stands each couple side by side.
+	 *
+	 * ELK's own x order is right for a couple and wrong for a remarriage chain: Victoria
+	 * Melita married Ernest Louis and then Kirill, and Ernest Louis then married Eleonore,
+	 * and ELK read them as Ernest, Kirill, Eleonore, Victoria Melita -- no couple adjacent,
+	 * so all three marriage lines ran through the generation gap on one shared line, and
+	 * the brackets below them were pushed onto one y. Walking the chain of marriages from
+	 * one end (the fewest partners, ELK's leftmost first) puts every remarried person
+	 * between the people they married: Kirill, Victoria Melita, Ernest, Eleonore. A person
+	 * with three partners can stand beside only two of them; the walk gives them the two
+	 * nearest in ELK's order and the third keeps a marriage line through the gap.
+	 */
+	const chainOrder = (ids: string[]): string[] => {
+		if (ids.length < 3) return [...ids].sort(byElk);
+		const here = new Set(ids);
+		const partnersHere = (id: string) =>
+			[...(spouses.get(id) ?? [])].filter((other) => here.has(other)).sort(byElk);
+		const order: string[] = [];
+		const visit = (id: string) => {
+			if (order.includes(id)) return;
+			order.push(id);
+			for (const next of partnersHere(id)) visit(next);
+		};
+		for (const id of [...ids].sort(
+			(a, b) => partnersHere(a).length - partnersHere(b).length || byElk(a, b),
+		)) {
+			visit(id);
+		}
+		return order;
+	};
+
 	/** Children of each household, through the unions its members partner in. */
 	const childrenOf = new Map<string, Set<string>>();
 	for (const edge of edges) {
@@ -488,9 +545,7 @@ function alignPedigreeRows(
 					.sort((a, b) => householdCentre(a) - householdCentre(b) || a.localeCompare(b))
 					.map((household) => ({
 						household,
-						ids: (groups.get(household) ?? []).sort(
-							(a, b) => (preferredX.get(a) ?? 0) - (preferredX.get(b) ?? 0) || a.localeCompare(b),
-						),
+						ids: chainOrder(groups.get(household) ?? []),
 					})),
 			);
 
@@ -538,7 +593,9 @@ function alignPedigreeRows(
 		 * the side ELK chose, and with it the birth order. A row with no anchored household at
 		 * all keeps ELK's x unchanged.
 		 */
-		const elkLeft = (group: { ids: string[] }) => preferredX.get(group.ids[0] ?? "") ?? 0;
+		// The household's leftmost member in ELK's order, which chainOrder need not put first.
+		const elkLeft = (group: { ids: string[] }) =>
+			Math.min(...group.ids.map((id) => preferredX.get(id) ?? 0));
 		const blockOf = (household: string) => parentUnionOf.get(household) ?? `solo:${household}`;
 		const anchored = ordered.flatMap((group, index) => {
 			const target = desired[index];
@@ -841,7 +898,7 @@ export async function layoutGraph(
 	selfId?: string,
 ): Promise<LayoutResult> {
 	if (nodes.length === 0)
-		return { nodes: [], bands: [], extent: { x: 0, y: 0, width: 0, height: 0 } };
+		return { nodes: [], bands: [], extent: { x: 0, y: 0, width: 0, height: 0 }, bars: new Map() };
 
 	const metrics = NODE_METRICS[lod];
 
@@ -915,23 +972,71 @@ export async function layoutGraph(
 
 	alignPedigreeRows(nodes, edges, positions, metrics);
 	anchorFamilylessNodes(nodes, edges, positions, metrics.gap, selfId);
-	placeUnionJunctions(nodes, edges, positions);
+	placeUnionJunctions(nodes, edges, positions, metrics.rowGap);
 
-	const positioned = nodes.map((node) => {
-		const box = positions.get(node.id);
-		return {
-			...node,
-			position: { x: box?.x ?? 0, y: box?.y ?? 0 },
-			width: box?.width ?? metrics.width,
-			height: box?.height ?? metrics.height,
-		};
-	});
+	const place = (): PositionedNode[] =>
+		nodes.map((node) => {
+			const box = positions.get(node.id);
+			return {
+				...node,
+				position: { x: box?.x ?? 0, y: box?.y ?? 0 },
+				width: box?.width ?? metrics.width,
+				height: box?.height ?? metrics.height,
+			};
+		});
+	const unions = nodes.flatMap((node) => (node.type === "union" ? [node.data.union] : []));
+	openCrowdedGaps(gapGrowth(unions, place(), edges, metrics.rowGap), positions);
+	const bars = siblingBars(unions, place(), edges, metrics.rowGap);
+	seatSingleParents(edges, positions, bars);
 
+	const positioned = place();
 	return {
 		nodes: positioned,
 		bands: generationBands(positioned, metrics.height),
 		extent: graphExtent(positioned),
+		bars,
 	};
+}
+
+/**
+ * Make each crowded generation gap tall enough for its lanes.
+ *
+ * `gapGrowth` says how much taller each gap must be, keyed on the top of its lower row;
+ * everything at or below that row moves down by it, and by every grown gap above it. A
+ * junction or a routed line inside a gap belongs to the row above, so it stays. The
+ * skeleton's order and every x are untouched: this only spaces the rows apart.
+ */
+function openCrowdedGaps(growth: Map<number, number>, positions: Map<string, Box>): void {
+	const grown = [...growth.entries()].sort(([a], [b]) => a - b);
+	if (grown.length === 0) return;
+	for (const box of positions.values()) {
+		let shift = 0;
+		for (const [top, extra] of grown) if (box.y >= top) shift += extra;
+		box.y += shift;
+	}
+}
+
+/**
+ * Put a single parent's junction ON its children's bar.
+ *
+ * The parent's line then drops straight to a bead on the bracket, the way a couple's
+ * drop leaves a bead on their marriage line. It used to sit in the middle of the gap,
+ * which is exactly where lane 0 runs, so the family's own bar had to dodge below it.
+ */
+function seatSingleParents(
+	edges: FlowEdge[],
+	positions: Map<string, Box>,
+	bars: Map<string, SiblingBar>,
+): void {
+	const parents = new Map<string, number>();
+	for (const edge of edges) {
+		if (!edge.layout || edge.kind !== "partner" || !bars.has(edge.target)) continue;
+		if (positions.has(edge.source)) parents.set(edge.target, (parents.get(edge.target) ?? 0) + 1);
+	}
+	for (const bar of bars.values()) {
+		const dot = positions.get(bar.unionNodeId);
+		if (dot && parents.get(bar.unionNodeId) === 1) dot.y = bar.y - dot.height / 2;
+	}
 }
 
 /**
@@ -983,15 +1088,15 @@ function generationBands(nodes: PositionedNode[], personHeight: number): Generat
  * edges then draw the line itself (see `partnerPath`), and the child drop leaves
  * from between the couple -- one stem, through the gutter the two cards share.
  *
- * A SINGLE-parent union keeps ELK's y in the generation gap and is centred under
- * its one parent instead: there is no couple to run a line between, and the
- * honest picture is the classic straight drop from parent to children. It also
- * cannot sit at mid-card height, because union nodes paint above cards and a
- * bead on somebody's face is not a junction.
+ * A SINGLE-parent union is centred under its one parent in the generation gap
+ * instead: there is no couple to run a line between, and the honest picture is
+ * the classic straight drop from parent to children. It also cannot sit at
+ * mid-card height, because union nodes paint above cards and a bead on
+ * somebody's face is not a junction. Once its children's bar has a lane, it moves
+ * onto the bar (`seatSingleParents`).
  *
- * A post-layout nudge rather than an ELK constraint, for the same reason
- * `siblingBars` is computed afterwards: the skeleton must not shift for
- * cosmetics, and moving a 12x12 dot cannot introduce an overlap that matters.
+ * A post-layout nudge rather than an ELK constraint: moving a 12x12 dot cannot
+ * introduce an overlap that matters.
  *
  * Where the couple's midpoint and the children's midpoint disagree, this prefers
  * the COUPLE. The junction's job is to say "these two are partners"; the bracket
@@ -1002,6 +1107,8 @@ function placeUnionJunctions(
 	nodes: FlowNode[],
 	edges: FlowEdge[],
 	positions: Map<string, Box>,
+	/** The level's generation gap: a marriage line that cannot run between the couple runs a third of it below them. */
+	rowGap: number,
 ): void {
 	/** Partners and children per union node id, indexed once rather than filtered per union. */
 	const partners = new Map<string, string[]>();
@@ -1096,8 +1203,11 @@ function placeUnionJunctions(
 				);
 			});
 		if (beadX === null || crossesCard) {
+			// A third of the gap under the couple, where a direct partnership's detour runs
+			// too (siblings.ts `detourY`), rather than the middle of the gap, which is lane 0:
+			// a marriage line there took the line that sibling brackets centre on.
 			dot.x = midX - dot.width / 2;
-			if (generationGapY !== null) dot.y = generationGapY;
+			dot.y = parentBottom + rowGap / 3 - dot.height / 2;
 			continue;
 		}
 

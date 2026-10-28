@@ -127,4 +127,62 @@ describe("layered layout", () => {
 		expect(personCollisions(nodes)).toEqual([]);
 		expect(junctionCollisions(nodes)).toEqual([]);
 	});
+
+	it.each(detailLevels)(
+		"gives every family's line in a gap its own lane, clear of the cards, at %s detail",
+		async (lod) => {
+			for (const combined of [true, false]) {
+				const sample = buildDemoView({ combined });
+				const { nodes, bars } = await layoutGraph(sample.nodes, sample.edges, lod);
+				const box = new Map(nodes.map((node) => [node.id, node]));
+				const centre = (node: PositionedNode) => node.position.x + node.width / 2;
+				const people = nodes.filter((node) => node.type === "person");
+				// The whole run at a bar's y: the bracket plus the stems from the junction.
+				const runs = [...bars.values()].map((bar) => {
+					const dot = box.get(bar.unionNodeId);
+					const junction = dot ? centre(dot) : bar.left;
+					return {
+						family: bar.unionNodeId,
+						y: bar.y,
+						from: Math.min(bar.left, junction),
+						to: Math.max(bar.right, junction),
+					};
+				});
+				const shared = runs.flatMap((a, index) =>
+					runs
+						.slice(index + 1)
+						.filter(
+							(b) =>
+								a.family !== b.family &&
+								Math.abs(a.y - b.y) < 1 &&
+								Math.min(a.to, b.to) - Math.max(a.from, b.from) > 1,
+						)
+						.map((b) => [a.family, b.family]),
+				);
+				expect(shared).toEqual([]);
+
+				// Every couple stands side by side: no junction routed below both partners, which
+				// is what Victoria Melita's three marriages were before the chain order.
+				const routed = nodes.filter((node) => {
+					if (node.type !== "union") return false;
+					const partners = sample.edges
+						.filter((edge) => edge.kind === "partner" && edge.target === node.id)
+						.flatMap((edge) => box.get(edge.source) ?? []);
+					const y = node.position.y + node.height / 2;
+					return partners.length === 2 && partners.every((p) => y > p.position.y + p.height);
+				});
+				expect(routed.map((node) => node.id)).toEqual([]);
+
+				const clearance = NODE_METRICS[lod].rowGap / 3;
+				for (const run of runs) {
+					const above = Math.max(
+						...people.map((p) => p.position.y + p.height).filter((bottom) => bottom <= run.y),
+					);
+					const below = Math.min(...people.map((p) => p.position.y).filter((top) => top >= run.y));
+					expect(run.y - above).toBeGreaterThanOrEqual(clearance - 0.01);
+					expect(below - run.y).toBeGreaterThanOrEqual(clearance - 0.01);
+				}
+			}
+		},
+	);
 });

@@ -44,9 +44,14 @@ async function settle(page: Page, ms = 1200) {
 }
 
 async function openPerson(page: Page, name: string) {
-	// The exact name, not a substring: "Edward VII" is also the start of "Edward VIII".
+	// Through search, as a visitor would: a card is not always inside the framed canvas
+	// (0.8.1's taller gaps put Edward VII under the toolbar), and on the read-only sample
+	// travelling to somebody opens their profile. The exact name, not a substring:
+	// "Edward VII" is also the start of "Edward VIII".
+	await page.getByLabel("Find a person in this graph").fill(name);
 	await page
-		.locator(".react-flow__node-person", { has: page.getByText(name, { exact: true }) })
+		.getByRole("button")
+		.filter({ has: page.getByText(name, { exact: true }) })
 		.first()
 		.click();
 	await settle(page, 1500);
