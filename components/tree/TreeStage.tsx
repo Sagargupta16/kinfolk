@@ -210,11 +210,22 @@ export function TreeStage({
 
 	// A fresh object per request, so searching the same name twice still travels. The
 	// canvas compares by identity for exactly this reason.
-	const [goTo, setGoTo] = useState<{ id: string } | null>(null);
+	const [goTo, setGoTo] = useState<{ id: string; profile: boolean } | null>(null);
+	// The People directory and the feed are for reading about somebody, so arriving from
+	// them opens the profile.
 	const onGoTo = useCallback(
 		(id: string) => {
 			changeViewed(id);
-			setGoTo({ id });
+			setGoTo({ id, profile: true });
+		},
+		[changeViewed],
+	);
+	// Search finds somebody to work on: it travels and selects, and on an editable canvas the
+	// card's own handles take it from there.
+	const onFind = useCallback(
+		(id: string) => {
+			changeViewed(id);
+			setGoTo({ id, profile: false });
 		},
 		[changeViewed],
 	);
@@ -312,7 +323,7 @@ export function TreeStage({
 							nodes={nodes}
 							selfId={selfId}
 							degree={degree}
-							onGoTo={onGoTo}
+							onGoTo={onFind}
 							focusRef={focusSearch}
 						/>
 					)}

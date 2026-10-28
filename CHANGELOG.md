@@ -6,6 +6,71 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.7.0 -- 2026-10-28
+
+Every edit happens on the card, and the tree moves to make room. No schema or migration
+change.
+
+### Changed
+
+- **On a family you can edit, a tap only picks a person.** It used to open the profile too,
+  a panel of Family, About and Contact sections that covered half a phone, so putting the
+  `+` handles on somebody always brought a box of sections with it. A tap now makes them
+  the viewed person and pins their relations, and nothing opens. The profile opens from the
+  edit strip's Profile button, the People list, the activity feed, or the `p` key; search
+  travels and selects without opening it. The demo and other read-only canvases keep
+  tap-to-read.
+- **The `+` opens a small strip at the card instead of a sheet.** No heading row, no label
+  row and no close button: the name field, whose placeholder says whose relative it is
+  ("Morgan and Alex's child"), the year, and the two answers. It opens beside the `+` on
+  the side the relative goes, flips when that side has no room, follows the card as the
+  canvas pans, and docks along the bottom of a phone. The open `+` turns into a cross that
+  closes it, as do a tap on the canvas and Escape.
+- **A second tap on the picked card edits it in place.** The edit strip holds the name and
+  year, Save, Profile, and Delete with its confirm in the same strip. Gender, status and the
+  other columns are left exactly as stored, and the full edit form is still in the profile.
+  An unchanged save closes without a write; `r` opens the strip from the keyboard.
+
+### Added
+
+- **Motion for every write from the canvas, as one storyboard under 1.5 seconds**, timed
+  with svg-forge's short preset. The strip grows out of the `+` on a damped spring and
+  folds back into it. Cards that change place glide there from where they were on screen
+  while the viewed card holds still. The new relative comes out of the `+` they were added
+  from and lands through a 4% overshoot with a ring, and the family lines that moved draw
+  back on as the cards come to rest. An edit sweeps a light across its card once, a deleted
+  person shrinks away before the record goes, and a refused save shakes the strip. Picking
+  a person pops their handles in one after another and pings them three times, inside five
+  seconds. The Reduced setting makes all of it instant.
+- `p` (profile) and `r` (edit in place) shortcuts, listed in the help sheet.
+
+### Fixed
+
+- The hold that keeps the viewed card still through a relayout now moves the viewport in
+  the same commit as the new positions. It used to wait for measurement, which left a frame
+  of new positions under the old viewport.
+
+### Verification
+
+- On an isolated in-memory database with a synthetic owner, by mouse and by touch: a first
+  tap on another card opened nothing and moved the handles there, and a second tap opened
+  the edit strip 18px beside the card with no heading and no visible label. A new year saved
+  and swept the card. The open `+` turned 45 degrees and its strip opened 18px below it.
+  Through a birth, the new card's first frame was centred exactly on the `+` (323, 486) at
+  30% scale; it overshot to 198px wide, rested at 191px with transform `none`, and the viewed
+  card moved 0px. Delete shrank the card first. Search opened nothing, `p` and `r` opened the
+  profile and the edit strip, and a write six seconds after a pick left every handle without
+  an animation. On a phone the strip docked 12px from the bottom and sides with no
+  horizontal overflow. Under Reduced the strip opened at full scale and the new animations
+  ran 0.01ms.
+- The read-only demo on both frontends, 1440x900 and 375x812, dark and light (8 runs): 151
+  nodes and 150 edges, 0 bad paths, 0 curves, one stroke treatment, 0 overlaps, no handles,
+  the feed rendering 80 rows, and no console errors. A tap on the Vite demo still opened the
+  profile.
+- Biome, both strict TypeScript projects, 88 Vitest cases, both production builds, the
+  dead-Tailwind guard, 0 inlined fonts in the Pages build, both dependency audits and
+  `git diff --check` pass.
+
 ## 0.6.1 -- 2026-10-27
 
 The Pages app no longer logs a Content Security Policy error on every load. No schema, API

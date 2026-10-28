@@ -438,3 +438,71 @@ export function hitBox(
 			: Math.min(hit, 2 * ((0.5 - FOLD_AT) * card.width - FOLD_PILL_HALF));
 	return { left: slot.x - width / 2, top, width, height };
 }
+
+/** Which way a strip opens from the control that opened it. */
+export type StripSide = "above" | "below" | "left" | "right";
+
+/** The way a `+` strip opens: away from the card, toward where its relative goes. */
+export function stripSide(slot: Pick<AddSlot, "kind" | "side">): StripSide {
+	if (slot.kind === "parent") return "above";
+	if (slot.kind === "partner") return slot.side === "left" ? "left" : "right";
+	return "below";
+}
+
+const OPPOSITE: Record<StripSide, StripSide> = {
+	above: "below",
+	below: "above",
+	left: "right",
+	right: "left",
+};
+
+/**
+ * Where a strip sits on screen, and the point inside it that it grows from.
+ *
+ * The strip opens beside the control on the side its relative goes, flips to the opposite
+ * side when that one has no room, and is then clamped into the canvas. The origin is the
+ * control's own point in the strip's box, so the strip grows OUT of the `+` and folds back
+ * into it even after clamping has moved it. All in screen pixels relative to the canvas.
+ */
+export function placeStrip(
+	anchor: { x: number; y: number },
+	side: StripSide,
+	size: { width: number; height: number },
+	bounds: { width: number; height: number },
+	gap = 18,
+	margin = 12,
+): { left: number; top: number; originX: number; originY: number; side: StripSide } {
+	const fits: Record<StripSide, boolean> = {
+		above: anchor.y - gap - size.height >= margin,
+		below: anchor.y + gap + size.height <= bounds.height - margin,
+		left: anchor.x - gap - size.width >= margin,
+		right: anchor.x + gap + size.width <= bounds.width - margin,
+	};
+	const chosen = fits[side] || !fits[OPPOSITE[side]] ? side : OPPOSITE[side];
+
+	let left = anchor.x - size.width / 2;
+	let top = anchor.y - size.height / 2;
+	if (chosen === "above") top = anchor.y - gap - size.height;
+	if (chosen === "below") top = anchor.y + gap;
+	if (chosen === "left") left = anchor.x - gap - size.width;
+	if (chosen === "right") left = anchor.x + gap;
+
+	const clamp = (value: number, room: number) =>
+		Math.min(Math.max(value, margin), Math.max(margin, room - margin));
+	left = clamp(left, bounds.width - size.width);
+	top = clamp(top, bounds.height - size.height);
+	return { left, top, originX: anchor.x - left, originY: anchor.y - top, side: chosen };
+}
+
+/**
+ * First names only, for a placeholder that has to fit a phone.
+ *
+ * "Alex Rivera and Morgan Rivera" reads "Alex and Morgan": the strip sits beside the card it
+ * belongs to, so the first name is enough to say whose relative is being added.
+ */
+export function shortSubject(subjectName: string): string {
+	return subjectName
+		.split(" and ")
+		.map((name) => name.trim().split(/\s+/)[0] || name)
+		.join(" and ");
+}
