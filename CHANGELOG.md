@@ -6,6 +6,19 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.8.2 -- 2026-10-31
+
+The tree's acceptance rules are written down. Documentation only; no schema, API or UI
+behavior change.
+
+### Documentation
+
+- `CLAUDE.md` gains "Tree acceptance rules": what the tree must look and feel like, in
+  layout, lines, cards, adding people, views and sample data, each with the date it was
+  asked for and the code that meets it today. The tree view was rebuilt seven times across
+  three coding agents while these rules lived only in chat; they now sit in the one file
+  every agent working in this repo reads.
+
 ## 0.8.1 -- 2026-10-28
 
 Every line between two generations gets a lane of its own, clear of the cards. Found by

@@ -313,6 +313,34 @@ Read this before adding a table or a query -- most "obvious" schema changes here
 - **`react-tree-graph` was evaluated on 2026-07-29 and rejected, on the same grounds as `d3-flextree`.** Registry facts, not memory: 8.0.3, published 2025-01-13, 3.7k weekly, built on `d3-hierarchy` (pinned `^2.0.0`, a full major behind the current 3.1.2 from 2022). `d3-hierarchy` is "layout algorithms for visualizing HIERARCHICAL data" -- a strict tree, one parent per node. A Kinfolk graph is a DAG: a child belongs to two unions (birth and adoptive), parentage hangs off `unions` precisely so remarriages and half-siblings work, and half the product is non-family relations that carry no generation at all. Feeding that to a strict-tree layout means either dropping the second parent or duplicating the node. It also has no edge routing, no port model and no non-family edge concept, so it cannot express the sibling bar, the relation overlay, or `anchorFamilylessNodes()`. The name matches what Kinfolk looked like three commits ago; it does not match what the schema models.
 - **Never send real user records, credentials, or private deployment data to an external LLM API.** Synthetic source and fixtures still need the same secret/PII review as any other outbound data.
 
+## Tree acceptance rules
+
+What Sagar asked the tree to look and feel like, collected from the sessions where he steered it (2026-07-29 to 2026-10-28). The tree view was rebuilt seven times across Claude Code, Kiro and Codex while these lived only in chat, so check any layout, connector or editing change against them before calling it done, and add a line here when he adds a rule. The mechanism that meets each one today is in brackets.
+
+Layout
+
+- A family reads top to bottom: parents directly above their children and centred over all of them, never placed off to the side (2026-07-29, 2026-08-08). [household alignment in `lib/tree/layout.ts`]
+- Children sit just below their parents with even spacing, and as the family widens (uncles, aunts, cousins) households stay evenly spaced instead of drifting sideways (2026-08-08). [`pedigreeOrder()`, gap sizing from `lib/tree/siblings.ts`]
+- Partners stand side by side on one row. A couple without children is two cards joined to each other, with no arrow between them (2026-08-06). [partner row, union dot]
+
+Lines
+
+- Every line can be followed by eye: no broken or split lines, nothing off-centre, and no two families' lines merged so that it is unclear whose child is whose. Lines do not have to be straight (2026-07-31, 2026-08-08). [sibling bracket, a lane per family per generation gap]
+- Direction is shown without heavy arrowheads; the first arrows were rejected as hard to read (2026-07-29, 2026-07-31). [tapered stroke, `#kf-taper`]
+- A line keeps the same gap from the card it meets above and below, so it never looks as if it touches a box early (2026-10-28).
+
+Cards and adding people
+
+- A card carries the name and the relationship, not handles, phone numbers or other detail (2026-07-29).
+- Adding a person asks only for a name and a gender answer; birth year is optional and living or passed away may be recorded; nothing else is asked (2026-07-31, 2026-10-27). [`NodeAdd.tsx` strip]
+- The family is built from the cards themselves: a `+` above for a parent, below for a child, beside for a partner, and once two people are partners their children come from one shared `+` under the pair. No separate input forms on the canvas (2026-07-31, 2026-10-27). [`lib/tree/node-add.ts`]
+
+Views and data
+
+- Besides the layered tree there is a view with the selected person in the centre and everyone else on rings around them, plus a 3D option (2026-07-31). [Orbit arrangement and the depth switch, `ViewControls.tsx`]
+- Look and motion follow portfolio-react (2026-07-30). [Repo-specific rules above]
+- The sample family is public sample data of a few hundred people, never his own family or family names (2026-07-29, 2026-10-28). [Wikidata sample in `lib/tree/sample.ts`]
+
 ## Demo mode
 
 Sample data is reachable before auth exists, following the ledger-sync pattern: ONE UI, two data sources, a flag, and mutation guards. The difference is that Kinfolk renders on the server, so the flag is an httpOnly cookie read in a server component rather than a client store -- which also keeps `lib/tree/sample.ts` out of the client bundle entirely.
