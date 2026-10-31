@@ -104,8 +104,9 @@ explain the research and the adapted portfolio-react visual direction.
 The layout stack was measured against the alternatives rather than assumed: `family-chart`
 and `relatives-tree` both require a binary gender on every node, which would corrupt a
 record whose sex column defaults to `unknown`, and neither models non-family relations.
-`d3-flextree` and `react-tree-graph` are strict trees, one parent per node. See CLAUDE.md
-before swapping any of it out.
+`d3-flextree` and `react-tree-graph` are strict trees, one parent per node. See
+[.claude/rules/layout-libraries.md](.claude/rules/layout-libraries.md) before swapping any
+of it out.
 
 ## Architecture
 

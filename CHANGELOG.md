@@ -18,6 +18,12 @@ behavior change.
   asked for and the code that meets it today. The tree view was rebuilt seven times across
   three coding agents while these rules lived only in chat; they now sit in the one file
   every agent working in this repo reads.
+- `CLAUDE.md` slimmed from 120,719 to 31,667 characters with no fact dropped: the area
+  gotchas and rules moved verbatim to eleven files in `.claude/rules/` (editing,
+  node-editor, layout, layout-libraries, canvas, edges, ui-styling, access, auth-hosting,
+  database, tree-view) that load only when a file matching their `paths:` is read or
+  edited, and the dated session history moved to `docs/agent-history.md`. A one-turn
+  session in the repo now sends 61,801 input tokens before replying, down from 93,235.
 
 ## 0.8.1 -- 2026-10-28
 
