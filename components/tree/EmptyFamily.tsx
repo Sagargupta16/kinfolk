@@ -1,24 +1,26 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useReducer, useTransition } from "react";
 import { addPerson } from "@/lib/tree/edit-actions";
 import { splitName } from "@/lib/tree/kin-plan";
+import { formError, freshForm, writeForm } from "@/lib/tree/write-form";
 
 export function EmptyFamily({ treeId }: { treeId: string | null }) {
 	const router = useRouter();
 	const id = useId();
-	const [error, setError] = useState("");
-	const [pending, startTransition] = useTransition();
+	const [, startTransition] = useTransition();
 	/**
-	 * Saved, and waiting for the view to change -- which unmounts this screen.
+	 * The write lifecycle (lib/tree/write-form.ts), ending in `done`: saved, and waiting for
+	 * the view to change -- which unmounts this screen.
 	 *
-	 * In Next the refresh is part of the transition, so `pending` covers it. In the SPA
-	 * `router.refresh()` only asks for a re-read and returns at once, so without this the
-	 * button came back with the name still typed and a second tap added the same person
-	 * twice.
+	 * That wait is a state of its own because the two runtimes differ. In Next the refresh is
+	 * part of the transition; in the SPA `router.refresh()` only asks for a re-read and returns
+	 * at once, so a form that went back to editing came back with the name still typed, and a
+	 * second tap added the same person twice.
 	 */
-	const [added, setAdded] = useState(false);
+	const [form, dispatch] = useReducer(writeForm, freshForm);
+	const error = formError(form)?.text;
 	return (
 		<div className="flex h-full items-center justify-center overflow-y-auto px-4 py-8">
 			<div className="w-full max-w-sm space-y-4">
@@ -30,26 +32,30 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 						</p>
 						<form
 							className="space-y-3"
-							aria-busy={pending || added}
+							aria-busy={form.phase !== "editing"}
 							onSubmit={(event) => {
 								event.preventDefault();
-								if (pending || added) return;
-								const form = new FormData(event.currentTarget);
+								if (form.phase !== "editing") return;
+								const data = new FormData(event.currentTarget);
 								// The two columns too, which is all the previous API version reads while the
 								// app and the API are mid-deploy; the current one lets `name` win.
-								const columns = splitName(String(form.get("name") ?? ""));
-								if (columns.givenName) form.set("givenName", columns.givenName);
-								if (columns.familyName) form.set("familyName", columns.familyName);
-								setError("");
+								const columns = splitName(String(data.get("name") ?? ""));
+								if (columns.givenName) data.set("givenName", columns.givenName);
+								if (columns.familyName) data.set("familyName", columns.familyName);
+								dispatch({ type: "save" });
 								startTransition(async () => {
 									try {
-										const result = await addPerson(form);
+										const result = await addPerson(data);
 										if (result.ok) {
-											setAdded(true);
+											dispatch({ type: "saved" });
 											router.refresh();
-										} else setError(result.error);
+										} else dispatch({ type: "refused", text: result.error, at: Date.now() });
 									} catch {
-										setError("Could not add that person. Try again.");
+										dispatch({
+											type: "refused",
+											text: "Could not add that person. Try again.",
+											at: Date.now(),
+										});
 									}
 								});
 							}}
@@ -71,10 +77,14 @@ export function EmptyFamily({ treeId }: { treeId: string | null }) {
 							/>
 							<button
 								type="submit"
-								disabled={pending || added}
+								disabled={form.phase !== "editing"}
 								className="min-h-11 w-full rounded-md bg-ink px-4 text-sm text-canvas disabled:opacity-60"
 							>
-								{pending ? "Adding..." : added ? "Added" : "Add the first person"}
+								{form.phase === "saving"
+									? "Adding..."
+									: form.phase === "done"
+										? "Added"
+										: "Add the first person"}
 							</button>
 						</form>
 						{error && (

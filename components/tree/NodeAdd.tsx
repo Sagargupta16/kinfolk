@@ -22,14 +22,16 @@ import {
 	useEffect,
 	useId,
 	useLayoutEffect,
+	useReducer,
 	useRef,
 	useState,
 } from "react";
 import { addRelative } from "@/lib/tree/edit-actions";
 import { type KinRole, ROLE_SEX, splitName } from "@/lib/tree/kin-plan";
 import { type AddSlot, type AddTarget, hitBox, shortSubject, stripSide } from "@/lib/tree/node-add";
+import { formError, freshForm, writeForm, writing } from "@/lib/tree/write-form";
 import { cn } from "@/lib/utils";
-import { NodeStrip, stripRow, useShake } from "./NodeStrip";
+import { NodeStrip, stripRow, useLateFailure, useShake } from "./NodeStrip";
 
 const ROLE_LABEL: Record<KinRole, string> = {
 	father: "Father",
@@ -223,25 +225,13 @@ function AddForm({
 	const yearRef = useRef<HTMLInputElement>(null);
 	const firstRoleRef = useRef<HTMLButtonElement>(null);
 	const firstChoiceRef = useRef<HTMLInputElement>(null);
-	const [pending, setPending] = useState(false);
-	const [error, setError] = useState<{ text: string; at: number } | null>(null);
+	// The add half of the write lifecycle (lib/tree/write-form.ts): editing, saving, done.
+	const [form, dispatch] = useReducer(writeForm, freshForm);
+	const pending = writing(form);
+	const error = formError(form);
 	const shake = useShake<HTMLFormElement>(error?.at);
-	/*
-	 * Whether the strip is still open when a write settles. A tap on the canvas, a new pick
-	 * or Escape can close it mid-write, and an error stored in this unmounted form would be
-	 * shown nowhere -- so a late failure goes to the canvas, which reports it as a toast.
-	 */
-	const mounted = useRef(true);
-	useEffect(() => {
-		mounted.current = true;
-		return () => {
-			mounted.current = false;
-		};
-	}, []);
-	const fail = (text: string) => {
-		if (mounted.current) setError({ text, at: Date.now() });
-		else onFailed?.(text);
-	};
+	const refuse = (text: string) => dispatch({ type: "refused", text, at: Date.now() });
+	const fail = useLateFailure(refuse, onFailed);
 
 	/**
 	 * Enter walks the form instead of submitting it.
@@ -257,18 +247,17 @@ function AddForm({
 		next();
 	};
 
-	async function submit(form: HTMLFormElement, role: KinRole) {
-		if (pending) return;
-		const data = new FormData(form);
+	async function submit(element: HTMLFormElement, role: KinRole) {
+		if (form.phase !== "editing") return;
+		const data = new FormData(element);
 		const name = String(data.get("name") ?? "").trim();
 		if (!name) {
-			setError({ text: "Type their name first.", at: Date.now() });
+			refuse("Type their name first.");
 			nameRef.current?.focus();
 			return;
 		}
 
-		setPending(true);
-		setError(null);
+		dispatch({ type: "save" });
 		data.set("subjectId", target.subjectId);
 		data.set("role", role);
 		if (target.unionId) data.set("unionId", target.unionId);
@@ -290,12 +279,11 @@ function AddForm({
 				fail(result.error);
 				return;
 			}
+			dispatch({ type: "saved" });
 			onDone({ id: result.id, name });
 			onClose();
 		} catch {
 			fail("Could not save that relative. Check your connection and try again.");
-		} finally {
-			if (mounted.current) setPending(false);
 		}
 	}
 
@@ -420,7 +408,9 @@ function AddForm({
 							type="submit"
 							name="role"
 							value={role}
-							disabled={pending}
+							// Through `done` too: the strip stays pressable while it folds away, and a
+							// second press there was a second relative.
+							disabled={form.phase !== "editing"}
 							className="kf-add-role"
 						>
 							{pending ? (

@@ -165,15 +165,17 @@ export function LinkPanel({ onClose }: { onClose: () => void }) {
 								<label className="block text-xs" htmlFor={`${id}-note`}>
 									Why these records describe the same person (optional)
 								</label>
+								{/* Keyed on the pair, with the note and the consent box each keyed apart: one
+								    shared key made them siblings React could not tell apart. */}
 								<textarea
-									key={`${fromId}:${toId}`}
+									key={`note:${fromId}:${toId}`}
 									id={`${id}-note`}
 									name="note"
 									className={`${field} py-2`}
 									rows={2}
 									maxLength={1000}
 								/>
-								<Consent key={`${fromId}:${toId}`} id={`${id}-propose`} />
+								<Consent key={`consent:${fromId}:${toId}`} id={`${id}-propose`} />
 								<button
 									type="submit"
 									className={`${button} w-full`}

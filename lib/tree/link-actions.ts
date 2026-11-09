@@ -7,7 +7,13 @@ import { people, personLinks, trees } from "../db/schema";
 import { NotAllowedError } from "./authz";
 import { displayName } from "./graph";
 import { isUuid } from "./ids";
-import type { LinkState } from "./links";
+import {
+	isLinkDecision,
+	LINK_STATUS_AFTER,
+	type LinkState,
+	linkDecisions,
+	REPROPOSABLE,
+} from "./links";
 import { withinHourlyBudget } from "./rate-limit";
 import { treeAccessForUser } from "./read-access";
 import { requestUserId } from "./request-user";
@@ -127,17 +133,22 @@ export async function linkState(): Promise<LinkState> {
 				owned: row.ownerId === userId,
 			}))
 			.sort((a, b) => a.name.localeCompare(b.name)),
-		proposals: proposals.map(({ link, personA: a, personB: b, treeA: ta, treeB: tb }) => ({
-			id: link.id,
-			a: `${displayName(a)} · ${ta.name}`,
-			b: `${displayName(b)} · ${tb.name}`,
-			note: link.note,
-			status: link.status,
-			canDecide:
-				link.status === "pending" && mayDecide(userId, link.proposedById, ta.ownerId, tb.ownerId),
-			canRevoke:
-				link.status === "accepted" || (link.status === "pending" && link.proposedById === userId),
-		})),
+		proposals: proposals.map(({ link, personA: a, personB: b, treeA: ta, treeB: tb }) => {
+			// The panel's buttons come from the same table `decideLink` checks.
+			const open = linkDecisions(link.status, {
+				decides: mayDecide(userId, link.proposedById, ta.ownerId, tb.ownerId),
+				proposed: link.proposedById === userId,
+			});
+			return {
+				id: link.id,
+				a: `${displayName(a)} · ${ta.name}`,
+				b: `${displayName(b)} · ${tb.name}`,
+				note: link.note,
+				status: link.status,
+				canDecide: open.includes("accept"),
+				canRevoke: open.includes("revoke"),
+			};
+		}),
 	};
 }
 
@@ -197,7 +208,7 @@ export async function proposeLink(form: FormData): Promise<Result> {
 				decidedById: null,
 				decidedAt: null,
 			},
-			setWhere: inArray(personLinks.status, ["rejected", "revoked"]),
+			setWhere: inArray(personLinks.status, [...REPROPOSABLE]),
 		})
 		.returning({ id: personLinks.id });
 	if (!saved) return { ok: false, error: "These records already have a pending or accepted link." };
@@ -210,22 +221,25 @@ export async function decideLink(form: FormData): Promise<Result> {
 	if (!userId) return { ok: false, error: "Sign in to manage family links." };
 	const linkId = String(form.get("linkId") ?? "");
 	const decision = String(form.get("decision") ?? "");
-	if (!isUuid(linkId) || !["accept", "reject", "revoke"].includes(decision)) {
+	if (!isUuid(linkId) || !isLinkDecision(decision)) {
 		return { ok: false, error: "Choose a link and a decision." };
 	}
 	const [row] = await proposalsFor(userId, linkId);
 	if (!row) return { ok: false, error: "You do not have permission to manage that link." };
 	const { link, treeA: a, treeB: b } = row;
-	const canDecide = mayDecide(userId, link.proposedById, a.ownerId, b.ownerId);
-	if (decision === "revoke") {
-		if (
-			link.status !== "accepted" &&
-			!(link.status === "pending" && link.proposedById === userId)
-		) {
-			return { ok: false, error: "That link is no longer active." };
-		}
-	} else if (link.status !== "pending" || !canDecide) {
-		return { ok: false, error: "Only the other family's owner can decide a pending proposal." };
+	// The lifecycle table the panel's buttons come from, so the two cannot disagree.
+	const open = linkDecisions(link.status, {
+		decides: mayDecide(userId, link.proposedById, a.ownerId, b.ownerId),
+		proposed: link.proposedById === userId,
+	});
+	if (!open.includes(decision)) {
+		return {
+			ok: false,
+			error:
+				decision === "revoke"
+					? "That link is no longer active."
+					: "Only the other family's owner can decide a pending proposal.",
+		};
 	}
 	if (decision === "accept" && form.get("consent") !== "true") {
 		return { ok: false, error: "Confirm what linking shares before accepting." };
@@ -236,7 +250,7 @@ export async function decideLink(form: FormData): Promise<Result> {
 	if (accepting && (await wouldMergeOneFamily(link.personAId, link.personBId))) {
 		return { ok: false, error: MERGES_ONE_FAMILY };
 	}
-	const status = accepting ? "accepted" : decision === "reject" ? "rejected" : "revoked";
+	const status = LINK_STATUS_AFTER[decision];
 	const changed = and(eq(personLinks.id, link.id), eq(personLinks.status, link.status));
 	// Two acceptances that are each fine alone can merge one family together, so every
 	// acceptance takes the same lock and re-checks inside it.

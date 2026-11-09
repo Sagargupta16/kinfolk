@@ -25,11 +25,12 @@
  */
 import { Check, Loader2, Pencil, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useReducer, useRef } from "react";
 import { deletePerson, updatePerson } from "@/lib/tree/edit-actions";
 import { dateInputValue, editInitialValues, editTarget } from "@/lib/tree/editable";
 import { displayName, type FusedPerson } from "@/lib/tree/graph";
 import { splitName } from "@/lib/tree/kin-plan";
+import { formError, freshForm, writeForm, writing } from "@/lib/tree/write-form";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
 import { joinedName } from "./NodeEdit";
@@ -69,9 +70,13 @@ export function PersonEdit({
 }) {
 	const target = editTarget(person, editableTreeIds);
 	const titleId = useId();
-	const [pending, setPending] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [confirmDelete, setConfirmDelete] = useState(false);
+	// The same write lifecycle as the edit strip (lib/tree/write-form.ts), so the two forms
+	// that edit one record cannot drift apart again.
+	const [form, dispatch] = useReducer(writeForm, freshForm);
+	const pending = writing(form);
+	const confirmDelete = form.phase === "confirming" || form.phase === "deleting";
+	const error = formError(form)?.text ?? null;
+	const refuse = (text: string) => dispatch({ type: "refused", text, at: Date.now() });
 	const firstField = useRef<HTMLInputElement>(null);
 
 	// Escape closes the edit sheet only -- the panel underneath keeps its own stack
@@ -96,9 +101,7 @@ export function PersonEdit({
 	const initialName = joinedName(values?.givenName, values?.familyName);
 
 	async function submit(formData: FormData) {
-		if (pending) return;
-		setPending(true);
-		setError(null);
+		if (form.phase !== "editing") return;
 		// The SOURCE row, not the fused id. The server would refuse the latter, and the message
 		// would tell somebody they may not edit their own record.
 		formData.set("personId", target.editable ? target.personId : "");
@@ -113,8 +116,7 @@ export function PersonEdit({
 		} else if (!typed) {
 			// Refused here as well as on the server, so a previous API version (which would
 			// write the two blank columns) can never erase a name.
-			setError("A person needs a name.");
-			setPending(false);
+			refuse("A person needs a name.");
 			return;
 		} else {
 			const columns = splitName(typed);
@@ -122,18 +124,18 @@ export function PersonEdit({
 			formData.set("familyName", columns.familyName ?? "");
 		}
 
+		dispatch({ type: "save" });
 		try {
 			const result = await updatePerson(formData);
 			if (!result.ok) {
-				setError(result.error);
+				refuse(result.error);
 				return;
 			}
+			dispatch({ type: "saved" });
 			onSaved();
 			onClose();
 		} catch {
-			setError("Could not save that. Try again.");
-		} finally {
-			setPending(false);
+			refuse("Could not save that. Try again.");
 		}
 	}
 
@@ -209,12 +211,12 @@ export function PersonEdit({
 						"hover:bg-accent/20 disabled:cursor-wait disabled:opacity-60",
 					)}
 				>
-					{pending ? (
+					{form.phase === "saving" ? (
 						<Loader2 className="size-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
 					) : (
 						<Check className="size-4" strokeWidth={2} aria-hidden="true" />
 					)}
-					{pending ? "Saving" : "Save"}
+					{form.phase === "saving" ? "Saving" : "Save"}
 				</button>
 			</form>
 			<section className="border-t border-hairline px-3 py-3">
@@ -236,35 +238,31 @@ export function PersonEdit({
 								disabled={pending}
 								className="min-h-11 rounded-md border border-danger px-3 text-xs text-danger disabled:opacity-60"
 								onClick={async () => {
-									setPending(true);
-									setError(null);
-									const form = new FormData();
-									form.set("personId", target.personId);
+									if (form.phase !== "confirming") return;
+									dispatch({ type: "delete" });
+									const data = new FormData();
+									data.set("personId", target.personId);
 									try {
-										const result = await deletePerson(form);
+										const result = await deletePerson(data);
 										if (!result.ok) {
-											setError(result.error);
+											refuse(result.error);
 											return;
 										}
+										dispatch({ type: "saved" });
 										onSaved();
 										onClose();
 									} catch {
-										setError("Could not delete that record. Try again.");
-									} finally {
-										setPending(false);
+										refuse("Could not delete that record. Try again.");
 									}
 								}}
 							>
-								{pending ? "Deleting..." : "Delete record"}
+								{form.phase === "deleting" ? "Deleting..." : "Delete record"}
 							</button>
 							<button
 								type="button"
 								disabled={pending}
 								className="min-h-11 rounded-md border border-hairline px-3 text-xs"
-								onClick={() => {
-									setConfirmDelete(false);
-									setError(null);
-								}}
+								onClick={() => dispatch({ type: "keep" })}
 							>
 								Keep record
 							</button>
@@ -280,10 +278,7 @@ export function PersonEdit({
 						type="button"
 						disabled={pending}
 						className="min-h-11 text-xs text-danger"
-						onClick={() => {
-							setConfirmDelete(true);
-							setError(null);
-						}}
+						onClick={() => dispatch({ type: "askDelete" })}
 					>
 						Delete this person's record
 					</button>

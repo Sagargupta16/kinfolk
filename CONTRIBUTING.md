@@ -2,7 +2,7 @@
 
 ## Before you start
 
-- Use Node.js 22 or newer and pnpm 11.
+- Use Node.js 22 or newer and pnpm 12.
 - Read [README.md](README.md) for the architecture and [CLAUDE.md](CLAUDE.md) for project invariants.
 - Open an issue before a large architectural change.
 - Never use real family records in fixtures, screenshots, logs, or pull requests.

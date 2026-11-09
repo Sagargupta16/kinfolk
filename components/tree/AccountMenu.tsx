@@ -14,7 +14,7 @@
  */
 import { ChevronDown, GitMerge, LogOut, Share2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { leave } from "@/lib/tree/share-actions";
 import { cn } from "@/lib/utils";
 import { useEscapeClose } from "./escape";
@@ -22,16 +22,25 @@ import { useEscapeClose } from "./escape";
 export function AccountMenu({
 	name,
 	email,
+	open,
+	onOpenChange,
 	/** Opens the share panel. Absent when this viewer cannot share anything. */
 	onShare,
 	onLinks,
 }: {
 	name: string | null;
 	email: string | null;
+	/**
+	 * Held by the account bar, not here: the menu, the share panel and the links panel open in
+	 * the same corner, so the bar keeps them to one at a time. Left to itself the menu opened
+	 * UNDER an open share panel, with its Sign out unreachable.
+	 */
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
 	onShare?: () => void;
 	onLinks?: () => void;
 }) {
-	const [open, setOpen] = useState(false);
+	const setOpen = onOpenChange;
 	const wrapper = useRef<HTMLDivElement>(null);
 	// Held here rather than inside the popover, so closing and reopening the menu still
 	// shows why the last attempt failed.
@@ -61,13 +70,13 @@ export function AccountMenu({
 		return () => {
 			window.removeEventListener("pointerdown", onPointer);
 		};
-	}, [open]);
+	}, [open, setOpen]);
 
 	return (
 		<div ref={wrapper} className="relative shrink-0">
 			<button
 				type="button"
-				onClick={() => setOpen((current) => !current)}
+				onClick={() => setOpen(!open)}
 				aria-label={`Account menu for ${label}`}
 				aria-expanded={open}
 				className={cn(

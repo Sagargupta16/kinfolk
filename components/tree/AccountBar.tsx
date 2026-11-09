@@ -38,6 +38,31 @@ function shareFailure(caught: unknown): string {
 	return SHARE_UNAVAILABLE;
 }
 
+/**
+ * Who has access, as far as the panel knows: being read, unreadable, or read -- in which case
+ * a failed RE-read, after an invite or a removal, is carried beside the list it failed to
+ * replace, because that list describes the state before the change and must say so.
+ */
+type Access =
+	| { status: "loading" }
+	| { status: "failed"; error: string }
+	| { status: "ready"; state: ShareState; refreshError: string | null };
+
+/**
+ * The one surface open in the account corner.
+ *
+ * The menu, the share panel and the links panel all open under the header's right edge, so
+ * two at once is one painted over the other: the menu opened UNDER an open share panel, with
+ * Link family records and Sign out unreachable. One value, so one of them at a time.
+ */
+type Corner =
+	| { kind: "closed" }
+	| { kind: "menu" }
+	| { kind: "share"; access: Access }
+	| { kind: "links" };
+
+const CLOSED: Corner = { kind: "closed" };
+
 export function AccountBar({
 	name,
 	email,
@@ -50,11 +75,8 @@ export function AccountBar({
 	editableTreeId: string | null;
 	editableTrees?: { id: string; name: string }[];
 }) {
-	const [state, setState] = useState<ShareState | null>(null);
-	const [shareOpen, setShareOpen] = useState(false);
-	const [shareError, setShareError] = useState<string | null>(null);
+	const [corner, setCorner] = useState<Corner>(CLOSED);
 	const [selectedTreeId, setSelectedTreeId] = useState(editableTreeId);
-	const [linksOpen, setLinksOpen] = useState(false);
 	const request = useRef(0);
 	const selectId = useId();
 	const [, startTransition] = useTransition();
@@ -63,29 +85,56 @@ export function AccountBar({
 		: editableTreeId;
 
 	/**
-	 * Load who has access, then show the panel.
+	 * Load who has access, and show the panel while it loads.
 	 *
 	 * Fetched on OPEN rather than passed down with the view. Most sessions never share
 	 * anything, so putting the member and invite lists in every page render would be two
 	 * extra queries per visit plus other people's names and email addresses in the payload
 	 * of a page that was not going to use them.
+	 *
+	 * A re-read keeps the list on screen and takes its failure banner away while it runs. An
+	 * answer lands only on the share panel that asked for it: the sequence drops one for a
+	 * tree no longer selected, and anything else opened in the corner meanwhile keeps it.
 	 */
 	const load = useCallback(
 		(requestedTreeId = treeId) => {
 			if (!requestedTreeId) return;
 			const sequence = ++request.current;
-			setShareError(null);
+			setCorner((current) =>
+				current.kind === "share" && current.access.status === "ready"
+					? { kind: "share", access: { ...current.access, refreshError: null } }
+					: { kind: "share", access: { status: "loading" } },
+			);
+			const land = (next: (current: Extract<Corner, { kind: "share" }>) => Corner) =>
+				setCorner((current) =>
+					current.kind === "share" && sequence === request.current ? next(current) : current,
+				);
 			startTransition(async () => {
 				try {
-					const next = await shareState(requestedTreeId);
-					if (sequence === request.current) setState(next);
+					const state = await shareState(requestedTreeId);
+					land(() => ({ kind: "share", access: { status: "ready", state, refreshError: null } }));
 				} catch (caught) {
-					if (sequence === request.current) setShareError(shareFailure(caught));
+					const error = shareFailure(caught);
+					land((current) =>
+						current.access.status === "ready"
+							? { kind: "share", access: { ...current.access, refreshError: error } }
+							: { kind: "share", access: { status: "failed", error } },
+					);
 				}
 			});
 		},
 		[treeId],
 	);
+	const openLinks = useCallback(() => setCorner({ kind: "links" }), []);
+	const close = useCallback(() => setCorner(CLOSED), []);
+	const onMenu = useCallback(
+		(open: boolean) =>
+			setCorner((current) =>
+				open ? { kind: "menu" } : current.kind === "menu" ? CLOSED : current,
+			),
+		[],
+	);
+	const share = corner.kind === "share" ? corner.access : null;
 
 	return (
 		<>
@@ -94,11 +143,7 @@ export function AccountBar({
 					type="button"
 					aria-label="Share family"
 					className="kf-share-trigger"
-					onClick={() => {
-						setLinksOpen(false);
-						setShareOpen(true);
-						load();
-					}}
+					onClick={() => load()}
 				>
 					<Share2 className="size-4" aria-hidden="true" />
 					<span>Share</span>
@@ -107,26 +152,15 @@ export function AccountBar({
 			<AccountMenu
 				name={name}
 				email={email}
+				open={corner.kind === "menu"}
+				onOpenChange={onMenu}
 				// Absent when there is nothing this viewer may share, so the menu shows two
 				// items instead of one that refuses.
-				onShare={
-					treeId
-						? () => {
-								setLinksOpen(false);
-								setShareOpen(true);
-								load();
-							}
-						: undefined
-				}
-				onLinks={() => {
-					request.current++;
-					setState(null);
-					setShareOpen(false);
-					setLinksOpen(true);
-				}}
+				onShare={treeId ? () => load() : undefined}
+				onLinks={openLinks}
 			/>
 
-			{treeId && shareOpen && (
+			{treeId && share && (
 				/*
 				 * Fixed, and anchored under the header rather than to the menu button.
 				 *
@@ -145,7 +179,8 @@ export function AccountBar({
 								value={treeId}
 								onChange={(event) => {
 									setSelectedTreeId(event.target.value);
-									setState(null);
+									// Another family's access: the list on screen is not a stale version of it.
+									setCorner({ kind: "share", access: { status: "loading" } });
 									load(event.target.value);
 								}}
 								// 16px: iOS Safari zooms the page into any field smaller than that,
@@ -165,12 +200,12 @@ export function AccountBar({
 					 * one from before the change, so it must not sit there unannounced looking
 					 * current.
 					 */}
-					{state && shareError && (
+					{share.status === "ready" && share.refreshError && (
 						<div
 							role="alert"
 							className="mb-2 flex w-[min(23rem,calc(100vw-1.5rem))] items-center gap-2 rounded-2xl border border-danger/40 bg-surface py-1 pr-1 pl-4 text-sm text-danger shadow-(--kf-shadow-panel)"
 						>
-							<p className="min-w-0 flex-1 py-2 leading-snug">{shareError}</p>
+							<p className="min-w-0 flex-1 py-2 leading-snug">{share.refreshError}</p>
 							<button
 								type="button"
 								className="min-h-11 shrink-0 rounded-lg px-3 text-accent-ink hover:bg-surface-raised"
@@ -180,28 +215,23 @@ export function AccountBar({
 							</button>
 						</div>
 					)}
-					{state ? (
+					{share.status === "ready" ? (
 						<SharePanel
 							key={treeId}
 							treeId={treeId}
-							state={state}
-							onClose={() => {
-								request.current++;
-								setState(null);
-								setShareError(null);
-								setShareOpen(false);
-							}}
+							state={share.state}
+							onClose={close}
 							// Re-read after every change, so revoking an invite or removing somebody
 							// updates the list rather than leaving it describing the previous state.
 							onChanged={() => load()}
 						/>
 					) : (
 						<div className="w-[min(23rem,calc(100vw-1.5rem))] rounded-2xl border border-hairline bg-surface p-4 text-sm">
-							<p role={shareError ? "alert" : "status"}>
-								{shareError ?? "Loading family access..."}
+							<p role={share.status === "failed" ? "alert" : "status"}>
+								{share.status === "failed" ? share.error : "Loading family access..."}
 							</p>
 							<div className="mt-2 flex gap-2">
-								{shareError && (
+								{share.status === "failed" && (
 									<button
 										type="button"
 										className="min-h-11 rounded-lg px-3 text-accent-ink hover:bg-surface-raised"
@@ -214,10 +244,7 @@ export function AccountBar({
 									type="button"
 									// 44 wide as well as tall: the word alone is about 36px.
 									className="min-h-11 min-w-11 rounded-lg px-3 text-ink-muted hover:bg-surface-raised hover:text-ink"
-									onClick={() => {
-										request.current++;
-										setShareOpen(false);
-									}}
+									onClick={close}
 								>
 									Close
 								</button>
@@ -226,7 +253,7 @@ export function AccountBar({
 					)}
 				</div>
 			)}
-			{linksOpen && (
+			{corner.kind === "links" && (
 				<div className="kf-share-anchor fixed right-3 top-16 z-40 sm:right-6">
 					{/*
 					 * The panel is its own chunk, and a deploy since this tab opened can have
@@ -253,7 +280,7 @@ export function AccountBar({
 									<button
 										type="button"
 										className="min-h-11 min-w-11 rounded-lg px-3 text-ink-muted hover:bg-surface-raised hover:text-ink"
-										onClick={() => setLinksOpen(false)}
+										onClick={close}
 									>
 										Close
 									</button>
@@ -271,7 +298,7 @@ export function AccountBar({
 								</p>
 							}
 						>
-							<LinkPanel onClose={() => setLinksOpen(false)} />
+							<LinkPanel onClose={close} />
 						</Suspense>
 					</LoadBoundary>
 				</div>

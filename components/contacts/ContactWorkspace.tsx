@@ -26,6 +26,15 @@ type ContactWorkspaceProps = {
 	initialError?: string;
 };
 
+/**
+ * Which detail is being changed: one row edits, or confirms a removal, at a time. Two values
+ * kept apart by every handler clearing the other is how a row ends up in both.
+ */
+type Row = { kind: "none" } | { kind: "editing"; id: string } | { kind: "removing"; id: string };
+const NO_ROW: Row = { kind: "none" };
+/** The add form's row id. */
+const NEW = "new";
+
 export function ContactWorkspace(props: ContactWorkspaceProps) {
 	return <ContactRecord key={props.personId} {...props} />;
 }
@@ -33,9 +42,14 @@ export function ContactWorkspace(props: ContactWorkspaceProps) {
 function ContactRecord({ personId, initialState, initialError }: ContactWorkspaceProps) {
 	const [state, setState] = useState(initialState);
 	const [error, setError] = useState(initialError ?? "");
-	const [editing, setEditing] = useState<string | null>(null);
-	const [deleting, setDeleting] = useState<string | null>(null);
+	const [row, setRow] = useState<Row>(NO_ROW);
+	const editing = (id: string) => row.kind === "editing" && row.id === id;
+	const removing = (id: string) => row.kind === "removing" && row.id === id;
 	const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+	const open = (next: Row) => {
+		setRow(next);
+		setMessage(null);
+	};
 	const [pending, startTransition] = useTransition();
 	const reload = useCallback(async () => {
 		try {
@@ -61,8 +75,7 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 					setMessage({ ok: false, text: result.error });
 					return;
 				}
-				setEditing(null);
-				setDeleting(null);
+				setRow(NO_ROW);
 				await reload();
 				setMessage({
 					ok: true,
@@ -121,13 +134,13 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 							)}
 							{state.contacts.map((contact) => (
 								<section key={contact.id} className="py-5">
-									{editing === contact.id ? (
+									{editing(contact.id) ? (
 										<ContactForm
 											contact={contact}
 											personId={personId}
 											pending={pending}
 											onSubmit={(form) => save(updateContact, form)}
-											onCancel={() => setEditing(null)}
+											onCancel={() => setRow(NO_ROW)}
 										/>
 									) : (
 										<>
@@ -154,11 +167,7 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 														className={cn(button, "min-w-11")}
 														disabled={pending}
 														aria-label={`Edit ${contact.label ?? contact.kind}`}
-														onClick={() => {
-															setEditing(contact.id);
-															setDeleting(null);
-															setMessage(null);
-														}}
+														onClick={() => open({ kind: "editing", id: contact.id })}
 													>
 														<Pencil className="size-4" aria-hidden />
 													</button>
@@ -166,7 +175,7 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 											</div>
 											{state.editable && (
 												<div className="mt-3">
-													{deleting === contact.id ? (
+													{removing(contact.id) ? (
 														<div className="flex flex-wrap items-center gap-2">
 															<p className="w-full text-sm text-ink-muted">
 																Remove this contact detail?
@@ -187,7 +196,7 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 																type="button"
 																className={button}
 																disabled={pending}
-																onClick={() => setDeleting(null)}
+																onClick={() => setRow(NO_ROW)}
 															>
 																Keep it
 															</button>
@@ -197,11 +206,7 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 															type="button"
 															className={button}
 															disabled={pending}
-															onClick={() => {
-																setDeleting(contact.id);
-																setEditing(null);
-																setMessage(null);
-															}}
+															onClick={() => open({ kind: "removing", id: contact.id })}
 														>
 															<Trash2 className="size-4" aria-hidden />
 															Remove
@@ -216,23 +221,19 @@ function ContactRecord({ personId, initialState, initialError }: ContactWorkspac
 						</div>
 						{state.editable && (
 							<div className="mt-6">
-								{editing === "new" ? (
+								{editing(NEW) ? (
 									<ContactForm
 										personId={personId}
 										pending={pending}
 										onSubmit={(form) => save(addContact, form)}
-										onCancel={() => setEditing(null)}
+										onCancel={() => setRow(NO_ROW)}
 									/>
 								) : (
 									<button
 										type="button"
 										className="kf-primary-action"
 										disabled={pending}
-										onClick={() => {
-											setEditing("new");
-											setDeleting(null);
-											setMessage(null);
-										}}
+										onClick={() => open({ kind: "editing", id: NEW })}
 									>
 										<Plus className="size-4" aria-hidden />
 										Add contact detail
