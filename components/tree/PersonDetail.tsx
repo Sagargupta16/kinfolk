@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { useEffect, useId, useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 import type { ContactKind, ParentRole } from "@/lib/db/schema";
 import { deleteRelation } from "@/lib/tree/edit-actions";
 import { editTarget } from "@/lib/tree/editable";
@@ -116,22 +116,23 @@ export function PersonDetail({
 	const [section, setSection] = useState<"family" | "about" | "contact">("family");
 
 	/*
-	 * A new subject closes the form, because it is now stale.
+	 * A new subject closes the form and returns to Family, because both belong to the person
+	 * they were opened on.
 	 *
-	 * Without this, clicking a relative in the panel while editing would leave the form open
-	 * on somebody else's record with the previous person's values in it -- and saving would
-	 * write them to the wrong row.
-	 *
-	 * The id is read in the BODY as well as listed, which is what makes the dependency honest:
-	 * Biome flags it as unnecessary because nothing in the callback consumes it, and that is
-	 * true of the data flow and wrong about the intent. Identity change IS the trigger.
+	 * Without this, travelling to a relative while editing would leave the form open on
+	 * somebody else's record with the previous person's values still in its fields -- and
+	 * saving would write them to the wrong row. Adjusted DURING render, against the subject
+	 * the state was set for, rather than in an effect: an effect ran after the new subject had
+	 * already rendered with the old form, and a travel arrives outside an input event, so that
+	 * frame was painted.
 	 */
 	const subjectId = person?.id;
-	useEffect(() => {
-		void subjectId;
+	const [shownFor, setShownFor] = useState(subjectId);
+	if (shownFor !== subjectId) {
+		setShownFor(subjectId);
 		setEditing(false);
 		setSection("family");
-	}, [subjectId]);
+	}
 
 	/**
 	 * Escape closes, from anywhere -- through the shared stack (see escape.ts), so a

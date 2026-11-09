@@ -28,7 +28,7 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { censusOf } from "@/lib/tree/census";
 import { degrees } from "@/lib/tree/density";
 import { familyFeed } from "@/lib/tree/feed";
@@ -40,6 +40,7 @@ import {
 } from "@/lib/tree/graph";
 import type { Kinship } from "@/lib/tree/kinship";
 import type { Lod } from "@/lib/tree/layout";
+import { feedShown, initialWorkspace, workspace } from "@/lib/tree/workspace";
 import { useEscapeClose } from "./escape";
 import { FeedPanel } from "./FeedPanel";
 import { PeopleDirectory } from "./PeopleDirectory";
@@ -184,12 +185,19 @@ export function TreeStage({
 			// A private window can reject storage. In-memory durability still works.
 		}
 	}, []);
-	const [viewedId, setViewedId] = useState<string | null>(defaultViewedId);
+	/*
+	 * The workspace as one state machine (lib/tree/workspace.ts): the viewed person, the
+	 * profile, the feed, the strip and a travel in flight. Held here, above the provider key,
+	 * so a detail-level or arrangement switch rebuilds the canvas without dropping any of it --
+	 * the reason the folds and the trail are held above the key too.
+	 */
+	const [space, dispatch] = useReducer(workspace, defaultViewedId, initialWorkspace);
+	const viewedId = space.viewed;
 	const changeViewed = useCallback(
 		(id: string) => {
 			const node = nodes.find((candidate) => candidate.type === "person" && candidate.id === id);
 			rememberViewed(node);
-			setViewedId(id);
+			dispatch({ type: "view", id });
 		},
 		[nodes, rememberViewed],
 	);
@@ -224,8 +232,18 @@ export function TreeStage({
 		);
 		const next = remapped?.type === "person" ? remapped : defaultViewedNode;
 		rememberViewed(next);
-		setViewedId(next?.id ?? null);
+		dispatch({ type: "view", id: next?.id ?? null });
 	}, [defaultViewedNode, nodes, rememberViewed, viewedId]);
+
+	// Who is in the graph now. A profile, an edit strip or a travel about anybody else goes,
+	// rather than leaving a closed-looking panel that still hides the feed beneath it.
+	const personIds = useMemo(
+		() => new Set(nodes.flatMap((node) => (node.type === "person" ? [node.id] : []))),
+		[nodes],
+	);
+	useEffect(() => {
+		dispatch({ type: "present", ids: personIds });
+	}, [personIds]);
 	/**
 	 * A list, because a merged person can carry a row in more than one graph the viewer
 	 * may write to. Today the view names one; the shape is right for when it names
@@ -240,68 +258,60 @@ export function TreeStage({
 		[editableTreeId, writableTreeIds],
 	);
 
-	// A fresh object per request, so searching the same name twice still travels. The
-	// canvas compares by identity for exactly this reason.
-	const [goTo, setGoTo] = useState<{ id: string; profile: boolean } | null>(null);
+	/**
+	 * Go to somebody. The request waits in the workspace until the canvas reports that it
+	 * arrived, so it completes exactly once: an unacknowledged request used to replay on any
+	 * re-run of the travel effect and reopen a panel somebody had just closed.
+	 */
+	const travel = useCallback(
+		(id: string, profile: boolean) => {
+			rememberViewed(nodes.find((candidate) => candidate.type === "person" && candidate.id === id));
+			dispatch({ type: "travel", id, profile });
+		},
+		[nodes, rememberViewed],
+	);
 	// The People directory and the feed are for reading about somebody, so arriving from
 	// them opens the profile.
-	const onGoTo = useCallback(
-		(id: string) => {
-			changeViewed(id);
-			setGoTo({ id, profile: true });
-		},
-		[changeViewed],
-	);
+	const onGoTo = useCallback((id: string) => travel(id, true), [travel]);
 	// Search finds somebody to work on: it travels and selects, and on an editable canvas the
-	// card's own handles take it from there.
-	const onFind = useCallback(
-		(id: string) => {
-			changeViewed(id);
-			setGoTo({ id, profile: false });
-		},
-		[changeViewed],
-	);
+	// card's own handles take it from there. A read-only canvas has no handles, so reading is
+	// the only thing a found person offers there, and their profile opens.
+	const canEdit = Boolean(editableTreeId);
+	const onFind = useCallback((id: string) => travel(id, !canEdit), [travel, canEdit]);
 
 	/**
-	 * Whether the person detail panel is open, reported by the canvas.
-	 *
-	 * On a desktop that panel is a full-height 22rem rail pinned to the RIGHT -- the
-	 * same edge this stage parks the arrangement, detail and legend controls on. The
-	 * panel is deliberately non-modal, so leaving the controls underneath it made
-	 * them dead while it was open (measured: every click landed on the panel). They
-	 * slide left instead of stacking above it, because chrome floating OVER a panel
-	 * of text is noise, and a control that moved aside is still where the eye saw it
-	 * go.
+	 * The family feed: the record as a stream, derived from the nodes already in memory (see
+	 * lib/tree/feed.ts). It shares the profile's rail and is a background surface: it waits
+	 * under a profile or a strip and comes back when they close, and pressing Recent activity
+	 * always shows it -- whatever covered it closes.
 	 */
-	const [detailOpen, setDetailOpen] = useState(false);
-
-	/**
-	 * The family feed: the record as a stream, derived from the nodes already in
-	 * memory (see lib/tree/feed.ts). It shares the detail panel's rail, so the two
-	 * are mutually exclusive by construction -- opening a person closes the feed
-	 * rather than stacking two sheets of glass on one edge.
-	 */
-	const [feedOpen, setFeedOpen] = useState(false);
 	const feedEvents = useMemo(() => familyFeed(nodes, edges), [nodes, edges]);
-	const feedVisible = feedOpen && !detailOpen;
+	const feedVisible = feedShown(space);
+	// Whether a profile is open. It and the feed take the right-hand rail (the bottom half of a
+	// phone), and the People directory makes room beside either rather than sitting under it.
+	const detailOpen = space.profile !== null;
 
 	/**
-	 * Ask the canvas to close the person panel, through a nonce the canvas acknowledges.
-	 *
-	 * The detail panel and the feed share one rail, and `detailId` lives inside the
-	 * canvas -- so without this, pressing FEED while a person was open toggled state the
-	 * viewer could not see: the button looked dead and `aria-pressed` disagreed with the
-	 * screen. Pressing FEED now means "show me the feed", whatever the rail holds.
+	 * A detail level or an arrangement rebuilds the canvas, which closes the strip: its point
+	 * belongs to the old layout. Only on a real change, so pressing the level already shown
+	 * does not fold a strip away.
 	 */
-	const [closeDetailRequest, setCloseDetailRequest] = useState<{ nonce: number } | null>(null);
-	const toggleFeed = useCallback(() => {
-		if (feedVisible) {
-			setFeedOpen(false);
-			return;
-		}
-		setFeedOpen(true);
-		setCloseDetailRequest({ nonce: Date.now() });
-	}, [feedVisible]);
+	const changeLod = useCallback(
+		(next: Lod) => {
+			if (next === lod) return;
+			setLod(next);
+			dispatch({ type: "rearranged" });
+		},
+		[lod],
+	);
+	const changeView = useCallback(
+		(next: ViewMode) => {
+			if (next === view) return;
+			setView(next);
+			dispatch({ type: "rearranged" });
+		},
+		[view],
+	);
 
 	/*
 	 * Computed here rather than in each consumer: the canvas draws presence rings from it
@@ -342,6 +352,9 @@ export function TreeStage({
 							onClick={() => {
 								setScreen(value);
 								setOptionsOpen(false);
+								// The directory covers the canvas: a strip left open would float over it,
+								// anchored to a card nobody can see, and still accept a save.
+								if (value === "people") dispatch({ type: "closeStrip" });
 							}}
 						>
 							<Icon className="size-4" aria-hidden="true" />
@@ -421,7 +434,7 @@ export function TreeStage({
 									<ViewControls
 										mode={view}
 										onMode={(mode) => {
-											setView(mode);
+											changeView(mode);
 											setScreen("tree");
 										}}
 										depth={depth}
@@ -439,7 +452,7 @@ export function TreeStage({
 												aria-pressed={lod === value}
 												title={hint}
 												onClick={() => {
-													setLod(value);
+													changeLod(value);
 													setScreen("tree");
 												}}
 											>
@@ -453,7 +466,7 @@ export function TreeStage({
 									<button
 										type="button"
 										onClick={() => {
-											toggleFeed();
+											dispatch({ type: "toggleFeed" });
 											setOptionsOpen(false);
 										}}
 										aria-pressed={feedVisible}
@@ -473,24 +486,21 @@ export function TreeStage({
 					nodes={nodes}
 					edges={edges}
 					selfId={selfId}
-					viewedId={viewedId}
+					workspace={space}
+					dispatch={dispatch}
 					onViewedChange={changeViewed}
+					onTravel={travel}
 					lod={lod}
-					onLodChange={setLod}
+					onLodChange={changeLod}
 					view={view}
 					depth={depth}
-					canEdit={Boolean(editableTreeId)}
+					canEdit={canEdit}
 					editableTreeIds={editableTreeIds}
 					editableUnions={editableUnions}
-					goTo={goTo}
-					onGoToHandled={() => setGoTo(null)}
 					degree={degree}
 					kinship={kinship}
 					showRelations={relationsOn}
 					onFocusSearch={onFocusSearch}
-					onDetailOpenChange={setDetailOpen}
-					closeDetailRequest={closeDetailRequest}
-					onCloseDetailHandled={() => setCloseDetailRequest(null)}
 					directory={
 						screen === "people" ? (
 							<PeopleDirectory
@@ -509,7 +519,7 @@ export function TreeStage({
 					events={feedEvents}
 					kinship={kinship}
 					onGoTo={onGoTo}
-					onClose={() => setFeedOpen(false)}
+					onClose={() => dispatch({ type: "closeFeed" })}
 				/>
 			</div>
 		</div>

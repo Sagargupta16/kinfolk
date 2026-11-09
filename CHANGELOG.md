@@ -6,6 +6,99 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.9.0 -- 2026-11-09
+
+Every state machine in the app, found and decided: 31 places where state moves through
+phases, inventoried in `.claude/rules/state.md`. Six were implicit in the costly way --
+pieces of state kept in agreement by an effect, a nonce or a "close the other one" in each
+handler -- and are now explicit, each a pure transition table or one value. The other 25
+stay as they are, each with the reason written down, so they are not "fixed" later. Three
+of the six carried bugs measured in the browser. No schema, API or migration change.
+
+### Fixed
+
+- **A strip, a profile and the feed never stack on a phone.** Opening a profile closed an
+  open strip, but nothing closed a profile or the feed when a strip opened, so on a phone
+  both docked along the bottom, the strip over the sheet: measured in all 4 combinations
+  tried at 375x812 before, 0 after. The workspace's surfaces are now one state machine
+  (`lib/tree/workspace.ts`): opening a strip closes the profile, opening a profile closes
+  the strip, and the feed waits beneath either and comes back when it closes.
+- **A profile survives a change of detail level or arrangement.** Pressing `d` with a
+  profile open rebuilt the canvas and closed it, on both frontends, while the folds and the
+  trail survived the same switch. The profile, the feed and a travel in flight now live
+  above the rebuild, with the viewed person; only the strip, whose point belongs to the old
+  layout, closes.
+- **No delete can be confirmed under a save.** The edit strip left its delete button live
+  while a save was in flight (measured with a save held for 2.5s: the confirmation opened
+  under it). The four forms that write a person -- the add strip, the edit strip, the
+  profile's edit form and the empty family -- now share one lifecycle
+  (`lib/tree/write-form.ts`), in which a write in flight starts no other, a strip folding
+  away after a save cannot save again, and Keep clears the error on both edit forms.
+- **The account menu opens over the share panel, not under it.** With Family access open,
+  the menu's Link family records and Sign out sat under the panel, unreachable. The menu,
+  the share panel and the links panel share one corner, and now one value, so one is open
+  at a time.
+- Deleting the person whose profile is open closes it. The profile kept their id, so with
+  nobody to show the stage still counted it open: the feed stayed hidden, and on a phone so
+  did the breadcrumb trail.
+- A pick made while a travel waits for its layout cancels it, instead of the travel landing
+  later and taking the subject back.
+- The profile's edit form closes in the same render that moves the profile to somebody
+  else, instead of in an effect afterwards, which first drew the form for them with the
+  previous person's values in its fields.
+- The link form's note and consent box no longer share a React key (2 console errors in
+  the panels probe before, 0 after).
+
+### Changed
+
+- The stage holds the workspace machine; the canvas reads it and dispatches events. Gone
+  with it: the `goTo` and `closeDetailRequest` request-and-acknowledge props, the
+  detail-open mirror, the canvas's own pending travel, and three effects that closed the
+  strip after the fact.
+- Record links are decided from one table, `linkDecisions` in `lib/tree/links.ts`: the
+  panel's buttons and the server's checks both read it, where each used to spell the rules
+  out.
+- The account corner, the contact rows (one row edits or confirms a removal at a time) and
+  the profile's per-person view are one value each.
+
+### Dependencies
+
+- Shipped with this release, merged since 0.8.2 by Renovate (#59, #60): Motion 14 in both
+  packages, pnpm 12.16.1, dotenv 18, Node 26 in the CI, Deploy, Pages and Health
+  workflows, and the `nanoid` override widened to `<7`. Every check below ran on them.
+
+### Documentation
+
+- `.claude/rules/state.md`, loaded with the files it covers: the rule (state that has to
+  agree with other state is a transition, never an effect that patches it afterwards),
+  each machine and its invariants, and the ones deliberately left alone with why.
+  CLAUDE.md, README and canvas.md point at it. README and CONTRIBUTING name Motion 14 and
+  pnpm 12.
+
+### Verification
+
+- `pnpm test`: 120 of 120, 29 of them new: the workspace's transitions plus 400 random
+  event sequences checking its invariants after every step (a strip and a profile never
+  together, no strip outliving its subject, a pending travel always to the viewed person),
+  the write lifecycle's table, and the link table against the database enum.
+- Playwright on `main` (0.8.2) and on this change, on both frontends (the SPA signed in
+  against an in-memory fixture, the SPA demo and the Next demo; 1440x900 and 375x812):
+  - 48 workspace scenarios, 88 steps: 69 identical and 19 changed, every one intended --
+    8 where opening a strip now closes the profile and the feed waits beneath, 6 where the
+    profile now survives `d`, and 5 that differ only in a width sampled mid-animation. 0
+    console errors.
+  - The account corner, contacts and edit strip: Link family records and Sign out
+    reachable with the share panel open (covered before), Delete disabled during a save
+    (live before), the link form's console errors gone; contacts, and a profile moving to
+    a relative while its form is open, unchanged.
+  - The 0.6.0 strip probe, 14 sections, identical but for one frame sampled mid-flight,
+    1px apart. The 0.8.0 release probe, 12 scenarios, identical, including 256 nodes, 265
+    edges and 40 junctions on the sample, 0 bad paths, 0 overlaps, and a fold hiding 37 of
+    the 216 people surviving a detail switch (179 cards before and after). Three of its
+    checks, draw-on and two phone taps, time out the same way on both runs.
+- `pnpm lint`, both typechecks, both builds, both audits (no known vulnerabilities), the
+  built-CSS guard (0 dead utilities) and 0 inlined fonts.
+
 ## 0.8.2 -- 2026-10-31
 
 The tree's acceptance rules are written down. Documentation only; no schema, API or UI

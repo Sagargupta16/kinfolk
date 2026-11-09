@@ -16,14 +16,15 @@
  */
 import { Check, Loader2, Trash2, UserRound } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useReducer, useRef } from "react";
 import { deletePerson, updatePerson } from "@/lib/tree/edit-actions";
 import { dateInputValue, editInitialValues, editTarget } from "@/lib/tree/editable";
 import { displayName, type FusedPerson } from "@/lib/tree/graph";
 import { splitName } from "@/lib/tree/kin-plan";
 import type { StripSide } from "@/lib/tree/node-add";
+import { formError, freshForm, writeForm, writing } from "@/lib/tree/write-form";
 import { cn } from "@/lib/utils";
-import { NodeStrip, stripRow, useShake } from "./NodeStrip";
+import { NodeStrip, stripRow, useLateFailure, useShake } from "./NodeStrip";
 
 /**
  * The two name columns as the one field shows them, whitespace collapsed for comparison.
@@ -117,27 +118,21 @@ function EditForm({
 	const nameId = useId();
 	const yearId = useId();
 	const nameRef = useRef<HTMLInputElement>(null);
-	const [pending, setPending] = useState(false);
-	const [confirming, setConfirming] = useState(false);
-	const [error, setError] = useState<{ text: string; at: number } | null>(null);
+	// The write lifecycle (lib/tree/write-form.ts): no delete can be asked for while a save is
+	// in flight, and no save starts while a delete is being confirmed.
+	const [form, dispatch] = useReducer(writeForm, freshForm);
+	const pending = writing(form);
+	const confirming = form.phase === "confirming" || form.phase === "deleting";
+	const error = formError(form);
 	const shake = useShake<HTMLFormElement>(error?.at);
+	const refuse = (text: string) => dispatch({ type: "refused", text, at: Date.now() });
 	// As in the add strip: a failure after the strip closed goes to the canvas instead.
-	const mounted = useRef(true);
-	useEffect(() => {
-		mounted.current = true;
-		return () => {
-			mounted.current = false;
-		};
-	}, []);
-	const fail = (text: string) => {
-		if (mounted.current) setError({ text, at: Date.now() });
-		else onFailed?.(text);
-	};
+	const fail = useLateFailure(refuse, onFailed);
 	const firstName = name.split(/\s+/)[0] || name;
 
-	async function save(form: HTMLFormElement) {
-		if (pending) return;
-		const data = new FormData(form);
+	async function save(element: HTMLFormElement) {
+		if (form.phase !== "editing") return;
+		const data = new FormData(element);
 		const typed = String(data.get("name") ?? "")
 			.replace(/\s+/g, " ")
 			.trim();
@@ -152,7 +147,7 @@ function EditForm({
 			// An untouched name is not posted, so the split it was stored with survives.
 			data.delete("name");
 		} else if (!typed) {
-			setError({ text: "A person needs a name.", at: Date.now() });
+			refuse("A person needs a name.");
 			nameRef.current?.focus();
 			return;
 		} else {
@@ -163,47 +158,43 @@ function EditForm({
 			data.set("familyName", columns.familyName ?? "");
 		}
 
-		setPending(true);
-		setError(null);
+		dispatch({ type: "save" });
 		try {
 			const result = await updatePerson(data);
 			if (!result.ok) {
 				fail(result.error);
 				return;
 			}
+			dispatch({ type: "saved" });
 			onSaved("updated");
 			onClose();
 		} catch {
 			fail("Could not save that. Try again.");
-		} finally {
-			if (mounted.current) setPending(false);
 		}
 	}
 
 	async function remove() {
-		if (pending) return;
-		setPending(true);
-		setError(null);
+		if (form.phase !== "confirming") return;
+		dispatch({ type: "delete" });
 		// The card shrinks away first, so the record and its picture leave together rather than
 		// the card blinking out when the refreshed graph arrives.
 		onLeaving(true);
 		await new Promise((resolve) => window.setTimeout(resolve, LEAVE_MS));
-		const form = new FormData();
-		form.set("personId", personId);
+		const data = new FormData();
+		data.set("personId", personId);
 		try {
-			const result = await deletePerson(form);
+			const result = await deletePerson(data);
 			if (!result.ok) {
 				onLeaving(false);
 				fail(result.error);
 				return;
 			}
+			dispatch({ type: "saved" });
 			onSaved("deleted");
 			onClose();
 		} catch {
 			onLeaving(false);
 			fail("Could not delete that record. Try again.");
-		} finally {
-			if (mounted.current) setPending(false);
 		}
 	}
 
@@ -294,7 +285,7 @@ function EditForm({
 					<button
 						type="button"
 						disabled={pending}
-						onClick={() => setConfirming(false)}
+						onClick={() => dispatch({ type: "keep" })}
 						className="kf-add-role px-3"
 					>
 						Keep
@@ -331,7 +322,10 @@ function EditForm({
 					{!claimed && (
 						<button
 							type="button"
-							onClick={() => setConfirming(true)}
+							// Disabled through a save as well: a delete confirmed under a save in flight
+							// was a second write racing the first.
+							disabled={pending}
+							onClick={() => dispatch({ type: "askDelete" })}
 							aria-label={`Delete ${name}`}
 							title="Delete"
 							className="kf-add-role kf-add-role--danger w-11 px-0"

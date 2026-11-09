@@ -38,8 +38,10 @@ a tap only picks a person, the `+` and a second tap open one small strip beside 
 and the tree moves to make room for each new relative. **0.8.0** is a whole-repository
 audit with every finding fixed, a sample family of real records from Wikidata, and layout
 in a Web Worker. **0.8.1** gives every line between two generations its own lane, clear of
-the cards, and stands each remarried person between the people they married; see the
-[changelog](CHANGELOG.md).
+the cards, and stands each remarried person between the people they married. **0.9.0**
+makes the app's implicit state machines explicit, so a strip, a profile, the feed and the
+account panels never cover one another, and a profile survives a change of detail level;
+see the [changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -98,7 +100,7 @@ explain the research and the adapted portfolio-react visual direction.
 | Auth | Auth.js v5, GitHub OAuth |
 | Graph canvas | React Flow (`@xyflow/react`) with ELK layered layout |
 | Styling | Tailwind 4 with shared light/dark family-atlas tokens |
-| Motion | Motion 13, for chrome only |
+| Motion | Motion 14, for chrome only |
 | Tooling | pnpm, Biome |
 
 The layout stack was measured against the alternatives rather than assumed: `family-chart`
@@ -282,7 +284,9 @@ viewed card and removes the panel for connecting existing people; its server act
 when asked for. 0.8.0 makes the sample family real (Wikidata), keeps contact values off the
 tree view, leaves access changes to a graph's owner, and fixes every finding of a full audit.
 0.8.1 gives each family's line between two generations a lane of its own, at least a third of
-the gap from the cards, growing a crowded gap to fit.
+the gap from the cards, growing a crowded gap to fit. 0.9.0 holds the workspace's surfaces in
+one state machine (one strip or panel at a time, the feed waiting beneath), gives the four
+record forms one write lifecycle, and decides record links from one table.
 
 Photo uploads still need an approved private-storage provider and authentication flow.
 Avatars use initials. Profiles linked to an account cannot be deleted; other deletion

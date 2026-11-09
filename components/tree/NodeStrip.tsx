@@ -76,6 +76,25 @@ export function useShake<T extends HTMLElement>(trigger: unknown) {
 	return scope;
 }
 
+/**
+ * Report a write's failure where somebody will see it.
+ *
+ * A tap on the canvas, a new pick or Escape can close a strip while its write is in flight,
+ * and an error stored in the unmounted form would be shown nowhere. So while the strip is
+ * open a failure goes to the form (`show`), and once it has closed, to the canvas
+ * (`onFailed`), which reports it as a toast. Both strips need exactly this, so it is one hook.
+ */
+export function useLateFailure(show: (text: string) => void, onFailed?: (text: string) => void) {
+	const open = useRef(true);
+	useEffect(() => {
+		open.current = true;
+		return () => {
+			open.current = false;
+		};
+	}, []);
+	return (text: string) => (open.current ? show(text) : onFailed?.(text));
+}
+
 export function NodeStrip({
 	anchor,
 	side,

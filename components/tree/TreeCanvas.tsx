@@ -82,11 +82,12 @@ import {
 	type PositionedNode,
 } from "@/lib/tree/layout";
 import { neighbourhood } from "@/lib/tree/neighbourhood";
-import { type AddSlot, type AddTarget, addSlots, nodeAffordances } from "@/lib/tree/node-add";
+import { type AddTarget, addSlots, nodeAffordances } from "@/lib/tree/node-add";
 import { type OverviewNode, overviewNodes } from "@/lib/tree/overview";
 import { collapseUnionEdges, radialLayout } from "@/lib/tree/radial";
 import { indexRelatives, relativesOf } from "@/lib/tree/relatives";
 import { detourY, type SiblingBar } from "@/lib/tree/siblings";
+import type { Workspace, WorkspaceEvent } from "@/lib/tree/workspace";
 import { cn } from "@/lib/utils";
 import { FamilyEdge } from "./FamilyEdge";
 import { GenerationRails } from "./GenerationRails";
@@ -222,10 +223,21 @@ type Props = {
 	edges: FlowEdge[];
 	showRelations?: boolean;
 	selfId?: string;
-	/** Durable person the workspace is organised around. */
-	viewedId?: string | null;
+	/**
+	 * The workspace machine the stage holds (lib/tree/workspace.ts): the viewed person, the
+	 * profile, the strip and a travel in flight. Read here, changed only through `dispatch`,
+	 * so a rule like "opening a profile closes the strip" is one transition rather than an
+	 * effect that runs after both have been drawn.
+	 */
+	workspace: Workspace;
+	dispatch: Dispatch<WorkspaceEvent>;
 	/** Changes the durable subject without conflating it with hover or panel state. */
 	onViewedChange?: (personId: string) => void;
+	/**
+	 * Go to somebody from inside the canvas -- a breadcrumb, a relative in a profile --
+	 * through the stage, which remembers the subject's source rows before the travel.
+	 */
+	onTravel?: (personId: string, profile: boolean) => void;
 	lod?: Lod;
 	/** Cycled by the `d` shortcut, so the control lives in the parent but the key is here. */
 	onLodChange?: (lod: Lod) => void;
@@ -256,45 +268,12 @@ type Props = {
 	 */
 	editableTreeIds?: readonly string[];
 	editableUnions?: UnionWithChildren[];
-	/**
-	 * A person to travel to, set by search, the People directory or the feed. An object rather
-	 * than a bare id so asking for the SAME person twice still moves: after panning away,
-	 * searching the name you just searched has to bring you back, and a plain string would
-	 * compare equal.
-	 *
-	 * `profile` says whether arriving opens their profile. The directory and the feed are
-	 * reading surfaces, so they do; search is how somebody finds a person to work on, so on an
-	 * editable canvas it only travels and selects, and the card's own handles take over.
-	 */
-	goTo?: { id: string; profile: boolean } | null;
-	/**
-	 * Acknowledge a handled travel, so the request cannot replay.
-	 *
-	 * Without this, `goTo` sits in state forever and ANY re-fire of the travel
-	 * effect -- `useNodesInitialized` flickering during a className rewrite is
-	 * enough -- replays the last navigation: close a panel after arriving from
-	 * search or the feed, and it reopens by itself. Same contract as
-	 * `onCloseDetailHandled`.
-	 */
-	onGoToHandled?: () => void;
 	/** How connected each person is. Passed in because search ranks by it too. */
 	degree: Map<string, Degree>;
 	/** What each person is to the viewer. Computed server-side: it needs the whole graph. */
 	kinship?: Map<string, Kinship>;
 	/** Focus the search box, for the `/` shortcut. */
 	onFocusSearch?: () => void;
-	/** Called with whether the detail panel is open, so the stage can move its chrome. */
-	onDetailOpenChange?: (open: boolean) => void;
-	/**
-	 * Ask for the person panel to close, from chrome that lives outside the canvas.
-	 *
-	 * The stage's feed shares the detail panel's rail but cannot see `detailId`; this is a
-	 * request/acknowledge contract because the canvas remounts when the detail level
-	 * changes, and an unacknowledged request would replay there.
-	 */
-	closeDetailRequest?: { nonce: number } | null;
-	/** Acknowledge a handled close, so the request cannot replay. */
-	onCloseDetailHandled?: () => void;
 	/** The directory shares this canvas's profile and editing surfaces. */
 	directory?: ReactNode;
 };
@@ -304,8 +283,10 @@ function Canvas({
 	edges: sourceEdges,
 	showRelations = true,
 	selfId,
-	viewedId,
+	workspace,
+	dispatch,
 	onViewedChange,
+	onTravel,
 	lod = "full",
 	onLodChange,
 	view = "tree",
@@ -313,17 +294,15 @@ function Canvas({
 	canEdit = false,
 	editableTreeIds = [],
 	editableUnions,
-	goTo,
-	onGoToHandled,
 	degree,
 	kinship,
 	onFocusSearch,
-	onDetailOpenChange,
-	closeDetailRequest,
-	onCloseDetailHandled,
 	directory,
 	held,
 }: Props & { held: Held }) {
+	// The profile, the strip and a pending travel are the workspace's, not this canvas's: the
+	// stage holds them above the provider key and every change goes through `dispatch`.
+	const { viewed: viewedId, profile: detailId, strip, travel } = workspace;
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	/**
 	 * The laid-out family skeleton, written once per layout.
@@ -423,15 +402,6 @@ function Canvas({
 	 * there is no hover at all, so this is the ONLY way relations appear.
 	 */
 	const [pinnedId, setPinnedId] = useState<string | null>(null);
-	/** Whose detail panel is open. Separate from the pin: closing the panel keeps the pin. */
-	const [detailId, setDetailId] = useState<string | null>(null);
-
-	// Reported upward so the stage can slide its control cluster out from under the
-	// desktop panel: the panel is deliberately non-modal, and a control that cannot
-	// be clicked while it is open is a dead control, not a design.
-	useEffect(() => {
-		onDetailOpenChange?.(detailId !== null);
-	}, [detailId, onDetailOpenChange]);
 
 	/**
 	 * Keep the open panel's subject in the unobscured part of the canvas.
@@ -476,17 +446,6 @@ function Canvas({
 	}, [detailId, measured, getNodes, getZoom, lod, setCenter]);
 	const { trail, setTrail } = held;
 	const [helpOpen, setHelpOpen] = useState(false);
-	/**
-	 * The one strip open on the canvas: adding from a pressed `+`, or editing the viewed card.
-	 *
-	 * The add strip keeps the whole SLOT, not only its target: the slot's point is where the
-	 * strip grows from, and where the new relative will be seen to come out of. Its accessible
-	 * name says whose relative it adds -- "Add a parent" with no name attached is how a father
-	 * gets recorded against the wrong person.
-	 */
-	const [strip, setStrip] = useState<
-		{ kind: "add"; slot: AddSlot } | { kind: "edit"; personId: string } | null
-	>(null);
 	/** The source row just written, until the relayout that contains it can light it up. */
 	const [createdPersonId, setCreatedPersonId] = useState<string | null>(null);
 	/** The fused id of the card currently wearing the "just added" flash. */
@@ -746,12 +705,6 @@ function Canvas({
 		sourceIndex,
 		relativeIndex,
 	]);
-
-	useEffect(() => {
-		if (!closeDetailRequest) return;
-		setDetailId(null);
-		onCloseDetailHandled?.();
-	}, [closeDetailRequest, onCloseDetailHandled]);
 
 	/**
 	 * The relation edges to actually DRAW -- only those touching the revealed person.
@@ -1438,7 +1391,8 @@ function Canvas({
 	]);
 
 	/**
-	 * Travel to a person: centre them, select them, pin them, open their panel.
+	 * Travel to a person: centre them, select them, pin them. Whether their profile opens is
+	 * the workspace's to decide when the travel is reported arrived.
 	 *
 	 * All of it, because arriving is not the same as finding. A viewport that has moved
 	 * leaves you looking at a wall of cards with no idea which one you asked for.
@@ -1449,7 +1403,7 @@ function Canvas({
 	 * a viewer's deliberate zoom-in.
 	 */
 	const travelTo = useCallback(
-		(personId: string, { openDetail = false }: { openDetail?: boolean } = {}): boolean => {
+		(personId: string): boolean => {
 			const target = getNodes().find((node) => node.id === personId);
 			if (!target) return false;
 
@@ -1470,7 +1424,6 @@ function Canvas({
 			// and "who is this connected to" is usually why you searched them.
 			setPinnedId(personId);
 			setTrail((current) => pushTrail(current, personId));
-			if (openDetail) setDetailId(personId);
 			setNodes((current) =>
 				current.map((node) => {
 					const selected = node.id === personId;
@@ -1484,42 +1437,27 @@ function Canvas({
 
 	/*
 	 * Travel from inside the canvas -- a relative in the profile, a breadcrumb -- even to
-	 * somebody a fold hides or the orbit leaves out. `travelTo` alone returned false for an
-	 * unplaced person, so tapping a folded child in their mother's profile did nothing at
-	 * all. Making them the viewed person anchors them, which brings them back on the next
-	 * layout, and the travel completes from there.
+	 * somebody a fold hides or the orbit leaves out. Travelling makes them the viewed person,
+	 * which anchors them, so the next layout brings them back and the travel completes there:
+	 * centring an unplaced person alone did nothing at all for a folded child tapped in their
+	 * mother's profile.
 	 */
-	const [pendingTravel, setPendingTravel] = useState<{ id: string; openDetail: boolean } | null>(
-		null,
-	);
 	const goToPerson = useCallback(
-		(id: string, openDetail = false) => {
-			if (travelTo(id, { openDetail })) return;
-			onViewedChange?.(id);
-			setPendingTravel({ id, openDetail });
-		},
-		[travelTo, onViewedChange],
+		(id: string, profile = false) => onTravel?.(id, profile),
+		[onTravel],
 	);
-	useEffect(() => {
-		if (!pendingTravel || !measured) return;
-		void layoutEpoch;
-		if (!people.has(pendingTravel.id)) {
-			setPendingTravel(null);
-			return;
-		}
-		if (travelTo(pendingTravel.id, { openDetail: pendingTravel.openDetail }))
-			setPendingTravel(null);
-	}, [pendingTravel, measured, layoutEpoch, travelTo, people]);
 
+	/*
+	 * Complete the workspace's travel once a layout contains its person, from search, the
+	 * directory, the feed or the canvas itself. A request from an older projection waits for
+	 * the relayout that places its target; `layoutEpoch` is the retry trigger. Reporting the
+	 * arrival is what ends it, so a re-run of this effect cannot replay a finished travel.
+	 */
 	useEffect(() => {
-		if (!goTo || !measured) return;
-		// A travel requested from an older projection stays pending until the relayout
-		// actually contains its target. `layoutEpoch` is the retry trigger.
+		if (!travel || !measured) return;
 		void layoutEpoch;
-		// Search on a read-only canvas still opens the profile: with no handles there, reading
-		// is the only thing a found person offers.
-		if (travelTo(goTo.id, { openDetail: goTo.profile || !canEdit })) onGoToHandled?.();
-	}, [goTo, measured, layoutEpoch, travelTo, onGoToHandled, canEdit]);
+		if (travelTo(travel.id)) dispatch({ type: "arrived", id: travel.id });
+	}, [travel, measured, layoutEpoch, travelTo, dispatch]);
 
 	/*
 	 * Light up a person just added, once a layout that contains them has landed.
@@ -1551,31 +1489,6 @@ function Canvas({
 		const timer = window.setTimeout(() => setNewId(null), 2400);
 		return () => window.clearTimeout(timer);
 	}, [newId]);
-
-	/*
-	 * A strip belongs to the person whose card opened it, so selecting somebody else closes it.
-	 *
-	 * Left open it would still be anchored to the old card, but the handles have moved to
-	 * another one, and a strip for one person beside the handles of another is two subjects on
-	 * screen at once. The id is read in the body because identity change IS the trigger, the
-	 * same pattern the detail panel uses.
-	 */
-	useEffect(() => {
-		void viewedId;
-		setStrip(null);
-	}, [viewedId]);
-
-	// The People tab covers the canvas; a strip left open would float over it, anchored to
-	// a card nobody can see, and still accept a save.
-	const showingDirectory = Boolean(directory);
-	useEffect(() => {
-		if (showingDirectory) setStrip(null);
-	}, [showingDirectory]);
-	// Opening a profile, from the `p` key or anywhere else, closes the strip: on a phone the
-	// two share the bottom of the screen, and the strip painted over the sheet it opened.
-	useEffect(() => {
-		if (detailId) setStrip(null);
-	}, [detailId]);
 
 	/**
 	 * Unfold whatever would hide the person just added.
@@ -1755,17 +1668,16 @@ function Canvas({
 	const clear = useCallback(() => {
 		setFocusedId(null);
 		setPinnedId(null);
-		setDetailId(null);
-		// A tap on the canvas around an open strip dismisses it, which is why the strip needs no
-		// close button of its own.
-		setStrip(null);
+		// The profile and the strip: a tap on the canvas around an open strip dismisses it,
+		// which is why the strip needs no close button of its own.
+		dispatch({ type: "clear" });
 		setNodes((current) =>
 			current.map((node) => {
 				const selected = node.type === "person" && node.id === viewedId;
 				return node.selected === selected ? node : { ...node, selected };
 			}),
 		);
-	}, [setNodes, viewedId]);
+	}, [setNodes, viewedId, dispatch]);
 
 	/** Whether this viewer may write a person's own row: an edit strip, or only a profile. */
 	const editable = useCallback(
@@ -1807,7 +1719,7 @@ function Canvas({
 			if (!canEdit) {
 				setPinnedId((current) => (current === node.id ? null : node.id));
 				onViewedChange?.(node.id);
-				setDetailId((current) => (current === node.id ? null : node.id));
+				dispatch({ type: "toggleProfile", id: node.id });
 				setTrail((current) => pushTrail(current, node.id));
 				return;
 			}
@@ -1815,24 +1727,20 @@ function Canvas({
 			if (node.id !== viewedId) {
 				setPinnedId(node.id);
 				onViewedChange?.(node.id);
-				setDetailId(null);
+				dispatch({ type: "closeProfile" });
 				setTrail((current) => pushTrail(current, node.id));
 				return;
 			}
 
 			// The second tap on the person already carrying the handles.
 			setPinnedId(node.id);
-			if (editable(node.id)) {
-				setStrip((current) =>
-					current?.kind === "edit" && current.personId === node.id
-						? null
-						: { kind: "edit", personId: node.id },
-				);
-			} else {
-				setDetailId((current) => (current === node.id ? null : node.id));
-			}
+			dispatch(
+				editable(node.id)
+					? { type: "toggleStrip", strip: { kind: "edit", personId: node.id } }
+					: { type: "toggleProfile", id: node.id },
+			);
 		},
-		[focus, onViewedChange, canEdit, viewedId, editable, setTrail],
+		[focus, onViewedChange, canEdit, viewedId, editable, setTrail, dispatch],
 	);
 
 	/**
@@ -1896,12 +1804,12 @@ function Canvas({
 				case "edit":
 					// The keyboard's second tap: the edit strip on the viewed card, when it is yours.
 					if (viewedId && canEdit && editable(viewedId)) {
-						setStrip({ kind: "edit", personId: viewedId });
+						dispatch({ type: "openStrip", strip: { kind: "edit", personId: viewedId } });
 					}
 					break;
 				case "profile":
 					// Taps no longer open the profile on an editable canvas, so it needs a key.
-					if (viewedId) setDetailId((current) => (current === viewedId ? null : viewedId));
+					if (viewedId) dispatch({ type: "toggleProfile", id: viewedId });
 					break;
 				case "theme": {
 					// Reads the LIVE attribute rather than component state, because the theme is
@@ -1942,6 +1850,7 @@ function Canvas({
 			canEdit,
 			editable,
 			setCollapsed,
+			dispatch,
 		],
 	);
 
@@ -2085,13 +1994,7 @@ function Canvas({
 						}}
 						openKey={strip?.kind === "add" ? strip.slot.key : null}
 						// The open `+` is also its close: pressing it again folds the strip back in.
-						onOpen={(slot) =>
-							setStrip((current) =>
-								current?.kind === "add" && current.slot.key === slot.key
-									? null
-									: { kind: "add", slot },
-							)
-						}
+						onOpen={(slot) => dispatch({ type: "toggleStrip", strip: { kind: "add", slot } })}
 					/>
 
 					{/*
@@ -2185,7 +2088,7 @@ function Canvas({
 				// there is what knows the new graph -- and fusion, kinship and layout all derive
 				// from it.
 				onSaved={() => router.refresh()}
-				onClose={() => setDetailId(null)}
+				onClose={() => dispatch({ type: "closeProfile" })}
 				// Travelling from the panel keeps the panel open on the NEW person, which is what
 				// makes it a way to walk the family: parents to their parents to their siblings.
 				onGoTo={(id) => goToPerson(id, true)}
@@ -2220,7 +2123,7 @@ function Canvas({
 							router.refresh();
 						}}
 						onFailed={setFailure}
-						onClose={() => setStrip(null)}
+						onClose={() => dispatch({ type: "closeStrip" })}
 					/>
 				)}
 				{strip?.kind === "edit" && editPerson && editAnchor && (
@@ -2240,11 +2143,9 @@ function Canvas({
 						}}
 						onLeaving={(leaving) => setLeavingId(leaving ? strip.personId : null)}
 						onFailed={setFailure}
-						onProfile={() => {
-							setStrip(null);
-							setDetailId(strip.personId);
-						}}
-						onClose={() => setStrip(null)}
+						// Opening the profile closes the strip, in the same transition.
+						onProfile={() => dispatch({ type: "openProfile", id: strip.personId })}
+						onClose={() => dispatch({ type: "closeStrip" })}
 					/>
 				)}
 			</AnimatePresence>
@@ -2348,7 +2249,8 @@ function ZoomVariable() {
  * orbit builds a fresh canvas. Folds and the visited trail lived inside it, so that
  * silently unfolded every branch and reset the breadcrumbs to one name -- while the viewed
  * person, lifted to the stage for exactly this remount, survived it. Both are held here,
- * above the key.
+ * above the key; the profile, the feed and a pending travel are held with the viewed person
+ * in the stage's workspace machine, for the same reason.
  */
 type Held = {
 	collapsed: Collapsed;
@@ -2370,7 +2272,9 @@ type Held = {
  */
 export function TreeCanvas(props: Props) {
 	const [collapsed, setCollapsed] = useState<Collapsed>(NOTHING_COLLAPSED);
-	const [trail, setTrail] = useState<string[]>(() => (props.viewedId ? [props.viewedId] : []));
+	const [trail, setTrail] = useState<string[]>(() =>
+		props.workspace.viewed ? [props.workspace.viewed] : [],
+	);
 	const held = useMemo(() => ({ collapsed, setCollapsed, trail, setTrail }), [collapsed, trail]);
 	return (
 		<ReactFlowProvider key={`${props.lod ?? "full"}:${props.view ?? "tree"}`}>
