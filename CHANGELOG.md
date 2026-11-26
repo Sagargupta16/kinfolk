@@ -36,6 +36,13 @@ layout or UI change.
   fetch is an anonymous CORS request and a preconnect serves only requests in its own
   mode. A build with no API origin emits no hint.
 
+### Security
+
+- **Next 16.4.2 to 16.4.6.** `pnpm audit` reported seven moderate Next advisories, every one
+  covering 16.4.4 and earlier, so CI's audit step failed on `main` and on this release
+  alike. The lockfile moves `next`, `@next/env` and the `@next/swc-*` binaries and nothing
+  else.
+
 ### Verification
 
 - The SPA built with the Pages settings before and after, and the output compared: the
@@ -46,6 +53,12 @@ layout or UI change.
   `index.html` carries one `crossorigin` preconnect to the API origin, none in a build
   without one.
 - `pnpm test`: 120 of 120. `pnpm lint`, both typechecks and the SPA build pass.
+- On Next 16.4.6: both `pnpm audit` runs report no known vulnerabilities and `pnpm build`
+  passes. Served by `next start`, `/` and `/signin` answer 200, `/demo` 307 to the sample,
+  a signed-out `/tree` 307 to sign-in, and `/api/tree?demo=1` 200. The sample canvas,
+  in the Next app at 1440x900 light and in the SPA at 375x812 dark through that API:
+  256 nodes (216 cards, 40 junctions), 265 edges, 0 non-finite paths, 0 junctions over a
+  card, no horizontal overflow and no console errors.
 
 ## 0.9.0 -- 2026-11-09
 
