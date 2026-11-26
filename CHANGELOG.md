@@ -6,6 +6,60 @@ Dates are absolute. Each entry says what changed and, where it matters, what was
 measured to know it was right -- several of the fixes below were invisible to a file
 read and only showed up on a live canvas.
 
+## 0.9.1 -- 2026-11-26
+
+Opening the tree starts its downloads with the read of the family instead of after it.
+The same modules, the same worker and the same layout, fetched earlier. No schema, API,
+layout or UI change.
+
+### Changed
+
+- **The SPA's `/tree` downloads what it draws with while `/api/tree` answers.** The
+  workspace chunk loaded only once the view had arrived, elk-api only once that chunk ran
+  its first layout, and the ELK worker script only once elk-api had started it: three
+  downloads in a row behind the API. Timed against production on 2026-11-26, the workspace
+  chunk was 162 KB on the wire in 0.42 s, the worker 438 KB in 0.44 s, and `/api/tree` for
+  the sample 0.12 to 1.33 s. `TreeScreen` now starts the workspace import and a warm-up of
+  the layout worker (`warmLayoutWorker` in `lib/tree/layout.ts`, the same memoised worker
+  the first layout uses) in the same run that sends the request, so they overlap it. Both
+  are caught: the screen and the first layout still load through the same imports and
+  handle a failure as they always have.
+- Who downloads it: a signed-out visitor to `/tree` is sent to the front door and
+  downloads none of it, as before. A read that comes back empty, expired (401) or failed
+  now downloads the workspace chunk and the worker too, where it used to download neither.
+- The layout module is a chunk of its own (`layout-*.js`, 17 KB, 6 KB compressed), which
+  the warm-up and the workspace chunk both import; the workspace chunk is 17 KB smaller for
+  it. The entry chunk gains only the warm-up (267 bytes, 106 compressed) and the bundler
+  runtime 127 bytes; no layout or ELK code moved into either.
+- **The Pages build preconnects to the API origin**, so DNS, TCP and TLS to Vercel overlap
+  the entry script instead of waiting for the first fetch. `crossorigin`, because every API
+  fetch is an anonymous CORS request and a preconnect serves only requests in its own
+  mode. A build with no API origin emits no hint.
+
+### Security
+
+- **Next 16.4.2 to 16.4.6.** `pnpm audit` reported seven moderate Next advisories, every one
+  covering 16.4.4 and earlier, so CI's audit step failed on `main` and on this release
+  alike. The lockfile moves `next`, `@next/env` and the `@next/swc-*` binaries and nothing
+  else.
+
+### Verification
+
+- The SPA built with the Pages settings before and after, and the output compared: the
+  tree screen's load now calls the warm-up before `readTree`, in the same synchronous run;
+  the warm-up preloads the workspace chunk and the layout chunk, and the lazy screen uses
+  the same loader; the layout chunk exports the warm-up and leads to elk-api and
+  `new Worker` for the ELK worker; the entry chunk holds no layout or ELK code; and
+  `index.html` carries one `crossorigin` preconnect to the API origin, none in a build
+  without one.
+- `pnpm test`: 120 of 120. `pnpm lint`, both typechecks and the SPA build pass.
+- On Next 16.4.6: both `pnpm audit` runs report no known vulnerabilities and `pnpm build`
+  passes. Served by `next start`, `/` and `/signin` answer 200, `/demo` 307 to the sample,
+  a signed-out `/tree` 307 to sign-in, and `/api/tree?demo=1` 200. The sample canvas,
+  in the Next app at 1440x900 light and in the SPA at 375x812 dark through that API:
+  256 nodes (216 cards, 40 junctions), 265 edges, 0 non-finite paths, 0 junctions over a
+  card, no horizontal overflow and no console errors.
+
 ## 0.9.0 -- 2026-11-09
 
 Every state machine in the app, found and decided: 31 places where state moves through
