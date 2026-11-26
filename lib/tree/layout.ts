@@ -212,6 +212,18 @@ function workerElk(): Promise<ElkEngine | null> {
 	return worker;
 }
 
+/**
+ * Start the layout worker before there is a graph to lay out.
+ *
+ * The SPA calls this as it requests `/api/tree`, so elk-api and the worker script download
+ * while that request is in flight rather than after the first layout asks for them. It
+ * builds the same memoised worker `runElk` uses, so the layout itself is unchanged, and a
+ * worker that cannot start falls back to this thread exactly as it would on first use.
+ */
+export function warmLayoutWorker(): void {
+	void workerElk();
+}
+
 async function runElk(graph: ElkNode): Promise<ElkNode> {
 	const engine = await workerElk();
 	if (engine) {

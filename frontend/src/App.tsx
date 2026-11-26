@@ -31,8 +31,10 @@ import { Landing } from "./screens/Landing";
 import { LoadingScreen, MessageScreen, ReloadScreen } from "./screens/States";
 import { REFRESH_EVENT } from "./shims/next-navigation";
 
+/** One loader for the tree's chunk, so `warmTree` and the lazy screen ask for the same import. */
+const treeWorkspace = () => import("@/components/tree/TreeWorkspace");
 const TreeWorkspace = lazy(() =>
-	import("@/components/tree/TreeWorkspace").then((module) => ({ default: module.TreeWorkspace })),
+	treeWorkspace().then((module) => ({ default: module.TreeWorkspace })),
 );
 const ContactWorkspace = lazy(() =>
 	import("@/components/contacts/ContactWorkspace").then((module) => ({
@@ -198,6 +200,21 @@ function outOfStep(reason: string): Read {
 	};
 }
 
+/**
+ * Start downloading what the tree draws with while `/api/tree` is still answering.
+ *
+ * The workspace chunk renders only once the view has arrived, and the ELK worker starts on
+ * the first layout, so the chunk, elk-api and the worker script used to download one after
+ * another behind the API. Started with the read they overlap it. Only `TreeScreen` calls
+ * this, so a signed-out visitor sent to the front door downloads none of it. Both are
+ * caught, so the warm-up only starts downloads: the screen and the first layout still load
+ * through the same imports and handle a failure as they always have.
+ */
+function warmTree(): void {
+	treeWorkspace().catch(() => {});
+	import("@/lib/tree/layout").then(({ warmLayoutWorker }) => warmLayoutWorker()).catch(() => {});
+}
+
 function TreeScreen() {
 	const [data, setData] = useState<Data>({ state: "loading" });
 	const activeRequest = useRef<AbortController | null>(null);
@@ -207,6 +224,7 @@ function TreeScreen() {
 		const controller = new AbortController();
 		activeRequest.current = controller;
 
+		warmTree();
 		const read = await readTree(controller.signal);
 		// Superseded by a newer load, whose answer is the one that counts.
 		if (controller.signal.aborted) return;

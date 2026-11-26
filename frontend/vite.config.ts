@@ -66,7 +66,7 @@ export default defineConfig(({ command, mode }) => {
 				transformIndexHtml(html) {
 					const connectSources =
 						command === "build" ? productionConnectSources : developmentConnectSources;
-					return html
+					const page = html
 						.replace("__KINFOLK_CONNECT_SOURCES__", connectSources)
 						.replace(
 							"__KINFOLK_COMMIT__",
@@ -74,6 +74,20 @@ export default defineConfig(({ command, mode }) => {
 								? (process.env.GITHUB_SHA ?? "")
 								: "development",
 						);
+					if (!apiOrigin) return page;
+					// The API is another origin, so its DNS, TCP and TLS waited for the first fetch.
+					// `crossorigin` because every API fetch is an anonymous CORS request (no
+					// credentials), and a preconnect only serves requests in its own mode.
+					return {
+						html: page,
+						tags: [
+							{
+								tag: "link",
+								attrs: { rel: "preconnect", href: apiOrigin, crossorigin: true },
+								injectTo: "head",
+							},
+						],
+					};
 				},
 			},
 			react(),

@@ -40,8 +40,9 @@ audit with every finding fixed, a sample family of real records from Wikidata, a
 in a Web Worker. **0.8.1** gives every line between two generations its own lane, clear of
 the cards, and stands each remarried person between the people they married. **0.9.0**
 makes the app's implicit state machines explicit, so a strip, a profile, the feed and the
-account panels never cover one another, and a profile survives a change of detail level;
-see the [changelog](CHANGELOG.md).
+account panels never cover one another, and a profile survives a change of detail level.
+**0.9.1** downloads the tree's code and its layout worker while the family is being read,
+instead of one after another once it has arrived; see the [changelog](CHANGELOG.md).
 
 ## Why this is not just a tree widget
 
@@ -286,7 +287,8 @@ tree view, leaves access changes to a graph's owner, and fixes every finding of 
 0.8.1 gives each family's line between two generations a lane of its own, at least a third of
 the gap from the cards, growing a crowded gap to fit. 0.9.0 holds the workspace's surfaces in
 one state machine (one strip or panel at a time, the feed waiting beneath), gives the four
-record forms one write lifecycle, and decides record links from one table.
+record forms one write lifecycle, and decides record links from one table. 0.9.1 starts the
+tree's code and layout worker downloading with the read of the family rather than after it.
 
 Photo uploads still need an approved private-storage provider and authentication flow.
 Avatars use initials. Profiles linked to an account cannot be deleted; other deletion
